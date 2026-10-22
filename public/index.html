@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>1venue — live events & meetings</title>
+  <meta name="description" content="Host and discover live talk shows, seminars, sermons and meetings. Stage seats, scripture, transcripts, AI summaries.">
+  <meta name="theme-color" content="#f6f7fb">
+  <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="1venue">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/brand/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="/icons/icon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta property="og:title" content="1venue"><meta property="og:image" content="/icons/icon-512.png">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/room.css">
+  <script>
+    // apply saved theme before first paint (no flash)
+    try { var p = JSON.parse(localStorage.getItem('venue.prefs') || '{}'); var d = p.theme === 'dark' || ((!p.theme || p.theme === 'system') && matchMedia('(prefers-color-scheme: dark)').matches);
+      var r = document.documentElement; r.dataset.theme = d ? 'dark' : 'light'; if (p.accent) r.style.setProperty('--accent', p.accent); if (p.accent2) r.style.setProperty('--accent-2', p.accent2); if (p.fontScale) r.style.setProperty('--font-scale', p.fontScale); } catch (e) {}
+  </script>
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <div id="app"><div style="min-height:100dvh;display:grid;place-items:center"><svg width="56" viewBox="0 0 160 160" fill="none" stroke="var(--accent)" stroke-linecap="round" stroke-linejoin="round"><path d="M36 54 L62 34 L62 122" stroke-width="16"/><path d="M88 36 L128 62 L128 118 L88 118 L88 98" stroke-width="5.5"/></svg></div></div>
+  <noscript>1venue needs JavaScript to run.</noscript>
+</body>
+</html>
