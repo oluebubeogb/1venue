@@ -1,0 +1,54 @@
+# Backup / self-host deployment: app + PostgreSQL (+ optional N-ATLaS STT sidecar).
+#   cp .env.example .env   # fill in secrets
+#   docker compose up -d --build
+#   docker compose --profile stt up -d --build   # also run the speech-to-text sidecar
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-venue}
+      POSTGRES_USER: ${POSTGRES_USER:-venue}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40", "-c", "work_mem=4MB"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 256m
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-venue}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-venue}
+      AUTO_MIGRATE: "true"
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - appdata:/data
+    mem_limit: 512m
+
+  stt:
+    profiles: ["stt"]
+    build: ./stt-sidecar
+    restart: unless-stopped
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      STT_LANGS: ${STT_LANGS:-en}
+    volumes:
+      - hfcache:/root/.cache/huggingface
+    mem_limit: 3g
+
+volumes:
+  pgdata:
+  appdata:
+  hfcache:
