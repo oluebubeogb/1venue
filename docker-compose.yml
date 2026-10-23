@@ -23,16 +23,84 @@ services:
   app:
     build: .
     restart: unless-stopped
-    env_file: .env
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-venue}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-venue}
-      AUTO_MIGRATE: "true"
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-venue}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-venue}}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
       PORT: 3000
+      APP_NAME: ${APP_NAME:-1venue}
+      PUBLIC_URL: ${PUBLIC_URL:-https://venue.collab.name.ng}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_TTL: ${JWT_TTL:-30d}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-240}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      ACCOUNTS_URL: ${ACCOUNTS_URL:-https://accounts.collab.name.ng}
+      ACCOUNTS_LOGIN_URL: ${ACCOUNTS_LOGIN_URL:-https://accounts.collab.name.ng/login}
+      ACCOUNTS_ACCESS_COOKIE: ${ACCOUNTS_ACCESS_COOKIE:-access_token}
+      ACCOUNTS_REFRESH_COOKIE: ${ACCOUNTS_REFRESH_COOKIE:-refresh_token}
+      ACCOUNTS_JWT_SECRET: ${ACCOUNTS_JWT_SECRET:-}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-.collab.name.ng}
+      ALLOW_LOCAL_SIGNUP: ${ALLOW_LOCAL_SIGNUP:-true}
+      LIVEKIT_URL: ${LIVEKIT_URL:-wss://livekit.example.com}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      SIMULCAST: ${SIMULCAST:-true}
+      DYNACAST: ${DYNACAST:-true}
+      ADAPTIVE_STREAM: ${ADAPTIVE_STREAM:-true}
+      VIDEO_RESOLUTION: ${VIDEO_RESOLUTION:-720p}
+      VIDEO_MAX_BITRATE: ${VIDEO_MAX_BITRATE:-1200000}
+      VIDEO_MAX_FPS: ${VIDEO_MAX_FPS:-24}
+      SCREEN_MAX_BITRATE: ${SCREEN_MAX_BITRATE:-2500000}
+      SCREEN_MAX_FPS: ${SCREEN_MAX_FPS:-15}
+      AUDIO_PRESET: ${AUDIO_PRESET:-speech}
+      MAX_PARTICIPANTS: ${MAX_PARTICIPANTS:-50}
+      MAX_AUDIENCE: ${MAX_AUDIENCE:-300}
+      DEFAULT_SPEAKER_SEATS: ${DEFAULT_SPEAKER_SEATS:-4}
+      MEETING_INACTIVITY_HOURS: ${MEETING_INACTIVITY_HOURS:-12}
+      AI_PRIMARY_NAME: ${AI_PRIMARY_NAME:-runpod}
+      AI_PRIMARY_BASE_URL: ${AI_PRIMARY_BASE_URL:-}
+      AI_PRIMARY_API_KEY: ${AI_PRIMARY_API_KEY:-}
+      AI_PRIMARY_MODEL: ${AI_PRIMARY_MODEL:-}
+      AI_SECONDARY_NAME: ${AI_SECONDARY_NAME:-secondary}
+      AI_SECONDARY_BASE_URL: ${AI_SECONDARY_BASE_URL:-}
+      AI_SECONDARY_API_KEY: ${AI_SECONDARY_API_KEY:-}
+      AI_SECONDARY_MODEL: ${AI_SECONDARY_MODEL:-}
+      AI_MAX_TOKENS: ${AI_MAX_TOKENS:-900}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-45000}
+      AI_MOCK: ${AI_MOCK:-false}
+      STT_PROVIDER: ${STT_PROVIDER:-auto}
+      STT_PRIMARY_NAME: ${STT_PRIMARY_NAME:-N-ATLaS}
+      STT_PRIMARY_BASE_URL: ${STT_PRIMARY_BASE_URL:-}
+      STT_PRIMARY_API_KEY: ${STT_PRIMARY_API_KEY:-}
+      STT_PRIMARY_MODEL: ${STT_PRIMARY_MODEL:-NCAIR1/NigerianAccentedEnglish}
+      STT_SECONDARY_NAME: ${STT_SECONDARY_NAME:-Whisper}
+      STT_SECONDARY_BASE_URL: ${STT_SECONDARY_BASE_URL:-}
+      STT_SECONDARY_API_KEY: ${STT_SECONDARY_API_KEY:-}
+      STT_SECONDARY_MODEL: ${STT_SECONDARY_MODEL:-whisper-1}
+      STT_CHUNK_SECONDS: ${STT_CHUNK_SECONDS:-8}
+      STT_MAX_CHUNK_BYTES: ${STT_MAX_CHUNK_BYTES:-2000000}
+      STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-30000}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      BIBLE_API_BASE: ${BIBLE_API_BASE:-https://bible.helloao.org/api}
+      BIBLE_FALLBACK_BASE: ${BIBLE_FALLBACK_BASE:-https://bible-api.com}
+      BIBLE_DEFAULT_TRANSLATION: ${BIBLE_DEFAULT_TRANSLATION:-eng_kjv}
+      BIBLE_CACHE_DAYS: ${BIBLE_CACHE_DAYS:-30}
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "${APP_PORT:-3000}:3000"
+    # No host port: Coolify's proxy routes your domain to container port 3000.
+    # Plain Docker host without a proxy? Add:  ports: ["${APP_PORT:-8080}:3000"]
+    expose:
+      - "3000"
     volumes:
       - appdata:/data
     mem_limit: 512m
