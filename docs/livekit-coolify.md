@@ -57,7 +57,7 @@ You'll use the same pair in both the LiveKit service and the 1venue app.
 ## 3. Deploy LiveKit in Coolify
 
 1. **New Resource → Docker Compose** (or "Docker Compose Empty") on the same server.
-2. Paste `docs/livekit/docker-compose.yml`, and add `livekit.yaml` from `docs/livekit/livekit.yaml`. You can paste it as a file in the resource's *Storage* or commit both into a small repo.
+2. In the resource, set **Base Directory** to `/docs/livekit` and **Docker Compose Location** to `/docker-compose.yml` (not `livekit.yaml`, which is only a reference copy of the config; the compose file already contains it inline as `LIVEKIT_CONFIG`). If you edit settings, edit them in the compose file.
 3. **Environment variables** for the resource:
    ```
    LIVEKIT_API_KEY=APIxxxxxxxx

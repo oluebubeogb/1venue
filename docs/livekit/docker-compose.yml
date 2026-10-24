@@ -1,5 +1,7 @@
 # LiveKit for 1venue — deploy as a separate Coolify "Docker Compose" resource.
-# Domain in Coolify:  https://1v.collab.name.ng  → service "livekit", port 7880 (websockets on).
+# Coolify: Base Directory = /docs/livekit, Docker Compose Location = /docker-compose.yml
+# Domain: https://1v.collab.name.ng on service "livekit", port 7880.
+# Self-contained: the LiveKit config is inline below (LIVEKIT_CONFIG), so no file mount is needed.
 services:
   livekit:
     image: livekit/livekit-server:v1.13.10
@@ -10,9 +12,46 @@ services:
     environment:
       # "key: secret" — must equal 1venue's LIVEKIT_API_KEY / LIVEKIT_API_SECRET
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set in Coolify env}: ${LIVEKIT_API_SECRET:?set in Coolify env}"
-    command: ["--config", "/etc/livekit.yaml"]
-    volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
+      LIVEKIT_CONFIG: |
+        # LiveKit server config for 1venue — lean single-node setup on 1v.collab.name.ng
+        port: 7880                      # HTTP + WebSocket signalling (Coolify proxies https://1v.collab.name.ng → here)
+        bind_addresses: [""]           # all interfaces inside the container
+        log_level: info
+
+        rtc:
+          tcp_port: 7881                # ICE over TCP fallback (open on the host firewall)
+          port_range_start: 50000       # ICE over UDP (open 50000-60000/udp on the host firewall)
+          port_range_end: 60000
+          use_external_ip: true         # discover the public IP via STUN; set node_ip instead if that fails
+          # node_ip: 203.0.113.10       # ← uncomment and set your server's public IPv4 if use_external_ip picks the wrong one
+          # Lean: no simulcast layers beyond what clients send; congestion control on.
+          congestion_control:
+            enabled: true
+            allow_pause: true
+
+        # Keys are NOT stored here: docker-compose.yml passes LIVEKIT_KEYS="<key>: <secret>" from Coolify env,
+        # the same LIVEKIT_API_KEY / LIVEKIT_API_SECRET you give 1venue.
+
+        room:
+          empty_timeout: 300            # close empty rooms after 5 min (saves RAM)
+          departure_timeout: 20
+          max_participants: 0           # 0 = unlimited; set e.g. 100 to cap load
+          auto_create: true
+
+        # Built-in TURN — needed for people behind strict NAT/corporate Wi-Fi.
+        # Uses ONLY 1v.collab.name.ng and its certificate (no deeper subdomains).
+        turn:
+          enabled: true
+          domain: 1v.collab.name.ng
+          udp_port: 3478                # TURN/UDP on the host — always works, no certificate needed
+          # TURN/TLS (optional, guide §5): Coolify's Traefik terminates TLS for 1v.collab.name.ng on :5349
+          # and forwards plain TCP to tls_port below — same domain, same Let's Encrypt cert.
+          # tls_port: 5350
+          # external_tls: true
+          relay_range_start: 30000
+          relay_range_end: 30100
+
+        # Webhooks are not needed by 1venue. Redis is not needed for a single node.
     deploy:
       resources:
         limits: { memory: 1g }
