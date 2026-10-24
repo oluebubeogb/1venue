@@ -293,7 +293,7 @@ module.exports = {
       const keys = [
         'waitingRoom', 'guestAccess', 'locked',
         'participantScreenShare', 'participantMicrophone', 'participantCamera',
-        'chat', 'reactions', 'raiseHand',
+        'chat', 'reactions', 'raiseHand', 'sounds',
         'participantsCanInvite', 'guestsCanInvite',
       ];
       const prevShare = s.participantScreenShare !== false;

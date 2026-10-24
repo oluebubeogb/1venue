@@ -1,13 +1,47 @@
 // Tool views for the room panel (rendered inside panels.js → Tools).
 import { h, esc, api, toast, toastErr, copy, download, md, uploadFile, timeAgo, debounce, fmtDur } from '../ui.js';
+import { state } from '../app.js';
 import { icon } from '../icons.js';
 import { translationSelect, versesEl, refLabel } from '../pages/bible.js';
 import { createBoard, boardToolbar } from '../pages/whiteboard.js';
 import { SpeechRec } from './captions.js';
+import { SOUNDS, playSound, soundsMuted, setSoundsMuted } from './sounds.js';
+import { ytId } from './youtube.js';
 
 const btn = (ic, label, run, { group = '', cls = '', disabled } = {}) => h('button', { class: `btn ${cls}`, 'data-group': group, type: 'button', disabled: !!disabled, onclick: run, html: icon(ic, { size: 16 }) + (label ? `<span>${esc(label)}</span>` : '') });
+
+// Content sharing helpers live at module level: the panel re-renders often, so the file input and progress must survive it.
+let presentBusy = '';
+const startContent = (R, payload) => { R.send('content-start', payload); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); };
+let contentInput = null;
+function pickContentFile(R) {
+  if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true }); document.body.append(contentInput); }
+  contentInput.onchange = () => { const f = contentInput.files[0]; contentInput.value = ''; if (f) shareContentFile(R, f); };
+  contentInput.click();
+}
+export async function shareContentFile(R, f) {
+  const setBusy = (t) => { presentBusy = t || ''; R.panel.refresh('tools'); };
+  const name = f.name.replace(/\.[^.]+$/, '').slice(0, 80);
+  try {
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      setBusy('Preparing slides…');
+      const { pdfToImages } = await import('./pdfslides.js');
+      const { files, total, truncated } = await pdfToImages(f, { onProgress: (i, n) => setBusy(`Rendering page ${i} of ${n}…`) });
+      const pages = [];
+      for (let i = 0; i < files.length; i++) { setBusy(`Uploading page ${i + 1} of ${files.length}…`); pages.push((await uploadFile(files[i], { purpose: 'content', headers: R.headers() })).url); }
+      startContent(R, { contentType: 'slides', pages, title: name || 'Slides', fileMeta: { name: f.name, size: f.size, mime: f.type } });
+      if (truncated) toast(`Only the first ${files.length} of ${total} pages were shared`, { icon: 'alert' });
+    } else if (f.type.startsWith('image/')) {
+      setBusy('Uploading…');
+      const r = await uploadFile(f, { purpose: 'content', headers: R.headers() });
+      startContent(R, { contentType: 'image', url: r.url, title: name || 'Image', fileMeta: { name: f.name, size: f.size, mime: f.type } });
+    } else toast('Pick a PDF or an image', { icon: 'alert' });
+  } catch (e) { toastErr(e); } finally { setBusy(''); }
+}
 const sw = (checked, onchange, disabled) => h('span', { class: 'switch' }, h('input', { type: 'checkbox', checked: !!checked, disabled: !!disabled, onchange: (e) => onchange(e.target.checked) }), h('span'));
 const row = (ic, label, sub, ctl) => h('label', { class: 'set-row' }, h('span', { class: 'ico', html: icon(ic, { size: 18 }) }), h('span', { class: 'grow' }, h('b', null, label), sub ? h('small', { class: 'muted block' }, sub) : null), ctl);
+const lsGetRaw = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSetRaw = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
 const note = (t) => h('p', { class: 'tiny muted', style: { margin: '.4rem 0' } }, t);
 
 export function buildTools(R) {
@@ -43,16 +77,31 @@ export function buildTools(R) {
       const cfg = R.config.stt || {};
       const LANGS = [['en', 'English (Nigeria)'], ['pcm', 'Naijá / Pidgin'], ['yo', 'Yorùbá'], ['ig', 'Igbo'], ['ha', 'Hausa']];
       const lang = h('select', { class: 'input sm', onchange: (e) => R.setCaptionLang(e.target.value) }, LANGS.map(([v, l]) => h('option', { value: v, selected: R.captionLang() === v }, l)));
-      box.append(
-        row('captions', 'Show captions', 'Overlay live captions on the stage', sw(R.showCaptions, (v) => R.setShowCaptions(v))),
-        row('mic', 'Caption my voice', c.on ? `Active · ${c.mode === 'stt' ? 'Nigerian STT (' + (cfg.providers || []).join(' → ') + ')' : 'on-device speech'}` : (cfg.server ? 'Uses ' + (cfg.providers || []).join(' → ') : SpeechRec ? 'Uses your browser’s speech engine' : 'Not supported on this browser'), sw(c.on, (v) => v ? c.start().then(() => R.panel.render()) : (c.stop(), R.panel.render()))),
-        row('languages', 'Spoken language', 'N-ATLaS understands Nigerian English, Pidgin, Yorùbá, Igbo and Hausa', lang),
-        R.isMod() ? row('fileText', 'Save transcript', 'Store captions for summaries after the session', sw(R.transcribe, (v) => R.send('transcript-toggle', { on: v }))) : null);
+      const open = lsGetRaw('venue.cap.settings') === '1';
+      const toggleOpen = () => { lsSetRaw('venue.cap.settings', open ? '0' : '1'); R.panel.render(); };
+      const chip = (ic, label, on, run, tip, disabled) => h('button', { class: `chip sm${on ? ' on' : ''}`, type: 'button', 'data-group': 'media', 'aria-pressed': on ? 'true' : 'false', 'data-tip': tip, 'aria-label': label, disabled: !!disabled, onclick: run, html: icon(ic, { size: 14 }) + `<span>${esc(label)}</span>` });
+      const text = () => R.data.captions.map((l) => `${l.name}: ${l.text}`).join('\n');
+      const ib = (ic, tip, run, group) => h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': tip, 'aria-label': tip, 'data-group': group || undefined, onclick: run, html: icon(ic, { size: 15 }) });
+      const canMic = !!(cfg.server || SpeechRec);
+      const micSub = c.on ? `Active · ${c.mode === 'stt' ? 'Nigerian STT (' + (cfg.providers || []).join(' → ') + ')' : 'on-device speech'}` : (cfg.server ? 'Uses ' + (cfg.providers || []).join(' → ') : SpeechRec ? 'Uses your browser’s speech engine' : 'Not supported on this browser');
+      const head = h('div', { class: 'cap-head' },
+        h('div', { class: 'cap-bar' },
+          chip('captions', 'Show', R.showCaptions, () => { R.setShowCaptions(!R.showCaptions); R.panel.render(); }, 'Overlay captions on the stage'),
+          chip('mic', c.on ? 'Captioning me' : 'Caption me', c.on, () => (c.on ? (c.stop(), R.panel.render()) : c.start().then(() => R.panel.render()).catch(toastErr)), micSub, !canMic && !c.on),
+          R.transcribe ? h('span', { class: 'pill sm live', 'data-tip': 'Transcript is being saved' }, 'Saving') : null,
+          h('span', { class: 'grow' }),
+          ib('copy', 'Copy transcript', () => copy(text(), 'Transcript copied')),
+          ib('download', 'Download .txt', () => download(`${R.code}-transcript.txt`, text())),
+          R.historyId ? ib('sparkles', 'Summary & full transcript', () => window.open('/session/' + R.historyId, '_blank'), 'ai') : null,
+          h('button', { class: `icon-btn sm cap-more${open ? ' on' : ''}`, type: 'button', 'aria-expanded': open ? 'true' : 'false', 'data-tip': open ? 'Hide settings' : 'Settings', 'aria-label': 'Caption settings', onclick: toggleOpen, html: icon('settings', { size: 15 }) })),
+        open ? h('div', { class: 'cap-settings' },
+          row('languages', 'Spoken language', 'Nigerian English, Pidgin, Yorùbá, Igbo and Hausa', lang),
+          row('mic', 'Caption my voice', micSub, sw(c.on, (v) => v ? c.start().then(() => R.panel.render()).catch(toastErr) : (c.stop(), R.panel.render()), !canMic && !c.on)),
+          R.isMod() ? row('fileText', 'Save transcript', 'Store captions for summaries after the session', sw(R.transcribe, (v) => R.send('transcript-toggle', { on: v }))) : null) : null);
       const lines = R.data.captions.slice(-200);
       const list = h('div', { class: 'transcript live', 'data-autoscroll': '' }, lines.length ? lines.map((l) => h('div', { class: 'tline' }, h('span', { class: 'ts' }, new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), h('span', null, h('b', null, l.name + ': '), l.text))) : h('div', { class: 'empty sm' }, h('p', null, 'Captions will appear here as people speak.')));
-      const text = () => R.data.captions.map((l) => `${l.name}: ${l.text}`).join('\n');
-      box.append(h('div', { class: 'row gap-s wrap' }, btn('copy', 'Copy', () => copy(text(), 'Transcript copied'), { cls: 'sm' }), btn('download', '.txt', () => download(`${R.code}-transcript.txt`, text()), { cls: 'sm' }),
-        R.historyId ? btn('sparkles', 'Summary & full transcript', () => window.open('/session/' + R.historyId, '_blank'), { cls: 'sm', group: 'ai' }) : null), list);
+      box.classList.add('cap-view');
+      box.append(head, list);
       return box;
     },
     ai() {
@@ -66,7 +115,7 @@ export function buildTools(R) {
       const cu = btn('history', 'Catch me up (10 min)', () => run('Catch-up', '/api/ai/catchup', { minutes: 10 }, cu), { group: 'ai' });
       const lang = h('select', { class: 'input sm' }, ['Yoruba', 'Igbo', 'Hausa', 'Nigerian Pidgin', 'French', 'English'].map((l) => h('option', null, l)));
       const tr = btn('languages', 'Translate last captions', () => { const t = R.data.captions.slice(-8).map((l) => `${l.name}: ${l.text}`).join('\n'); if (!t) return toast('No captions yet', { icon: 'captions' }); run('Translation → ' + lang.value, '/api/ai/translate', { text: t, lang: lang.value }, tr); }, { group: 'ai', cls: 'sm' });
-      box.append(h('div', { class: 'compose-card' }, q, h('div', { class: 'row' }, h('span', { class: 'tiny muted grow' }, R.config.ai?.providers?.length ? 'AI: ' + R.config.ai.providers.join(' → ') : 'AI'), ask)),
+      box.append(h('div', { class: 'compose-card' }, q, h('div', { class: 'row' }, h('span', { class: 'tiny muted grow' }, R.config.ai?.providers?.length ? 'AI: ' + R.config.ai.providers.map((p) => (p && typeof p === 'object' ? p.name || p.model : p)).filter(Boolean).join(' → ') : 'AI'), ask)),
         h('div', { class: 'chips' }, cu, R.isMod() ? btn('fileText', 'Summarise so far', () => run('Summary so far', '/api/ai/ask', { question: 'Summarise the session so far in 5 bullet points, then list action items.' }), { group: 'ai' }) : null),
         h('div', { class: 'row gap-s' }, lang, tr), out);
       return box;
@@ -74,8 +123,8 @@ export function buildTools(R) {
     boards() {
       const box = h('div', { class: 'stack' });
       const sharing = R.boardSharing;
-      box.append(h('div', { class: 'tool-hero', 'data-group': 'content' }, h('b', null, 'Your personal board'), note('Only you can draw on it. Share it and others can watch live (read-only).'),
-        h('div', { class: 'row gap-s wrap' }, btn('pen', 'Open my board', () => R.openMyBoard(), { group: 'content', cls: 'primary' }), btn(sharing ? 'eyeOff' : 'eye', sharing ? 'Stop sharing' : 'Share to view', () => R.shareBoard(!sharing), { group: 'content' }))));
+      box.append(h('div', { class: 'tool-hero', 'data-group': 'content' }, h('b', null, 'Your personal board'), note(R.myBoardRef ? `“${R.myBoardRef.title}” · autosaves to My boards. Share it and others watch live.` : 'Only you draw on it. Pages, pencil, pen, airbrush, images and .mwb files. Share it and others watch live.'),
+        h('div', { class: 'row gap-s wrap' }, btn('pen', 'Open my board', () => R.openMyBoard(), { group: 'content', cls: 'primary' }), btn(sharing ? 'eyeOff' : 'eye', sharing ? 'Stop sharing' : 'Share live', () => R.shareBoard(!sharing), { group: 'content' }), state.user ? btn('folder', 'Open saved board', () => { R.openSavedBoard(); }, { group: 'content' }) : null)));
       const others = R.boards.filter((b) => b.ownerId !== R.me.id);
       box.append(h('div', { class: 'sec-sub' }, `Boards shared in this room (${others.length})`));
       others.forEach((b) => box.append(h('button', { class: 'list-item', onclick: () => R.viewBoard(b.ownerId) }, h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon('board', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, `${b.name}’s board`), h('div', { class: 'tiny muted' }, 'Live · ' + timeAgo(b.at))), h('span', { html: icon('chevronRight', { size: 16 }) }))));
@@ -92,20 +141,28 @@ export function buildTools(R) {
           c.remoteHolderId === R.me.id || c.ownerId === R.me.id ? null : btn('hand', 'Request remote', () => R.send('remote-claim', {}), { cls: 'sm ghost' }))));
       const canPresent = R.perm('screenShare') || R.isMod();
       if (!canPresent) { box.append(note('The host controls who can present.')); return box; }
-      const url = h('input', { class: 'input', placeholder: 'Paste a link (web page, YouTube, slides, .mp4)…' });
-      const title = h('input', { class: 'input sm', placeholder: 'Title (optional)' });
-      const start = (contentType, u, t, fileMeta) => { R.send('content-start', { contentType, url: u, title: t || u, scrollMode: 'follow', fileMeta }); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); };
-      const yt = (u) => { const m = u.match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{11})/); return m ? `https://www.youtube-nocookie.com/embed/${m[1]}?enablejsapi=1` : null; };
-      const file = h('input', { type: 'file', accept: 'application/pdf,video/*,image/*', hidden: true, onchange: async () => {
-        const f = file.files[0]; file.value = ''; if (!f) return;
-        try { toast('Uploading…', { icon: 'upload' }); const r = await uploadFile(f, { purpose: 'content', headers: R.headers() });
-          start(f.type === 'application/pdf' ? 'pdf' : f.type.startsWith('video/') ? 'video' : 'image', r.url, title.value || f.name, { name: f.name, size: f.size, mime: f.type }); } catch (e) { toastErr(e); }
-      } });
-      box.append(btn('screen', R.media.sharing ? 'Stop sharing screen' : 'Share your screen', () => R.toggleShare(), { group: 'media', cls: 'primary block' }),
-        h('div', { class: 'sec-sub' }, 'Or present content'), url, title,
-        h('div', { class: 'row gap-s wrap' }, btn('globe', 'Present link', () => { const u = url.value.trim(); if (!u) return; const y = yt(u); start(y ? 'video-embed' : /\.(mp4|webm|mov)(\?|$)/i.test(u) ? 'video' : /\.pdf(\?|$)/i.test(u) ? 'pdf' : 'url', y || u, title.value); }, { group: 'content' }),
-          btn('upload', 'Upload PDF / video', () => file.click(), { group: 'content' }), file),
-        note('PDFs open in each viewer’s browser; video play/pause/seek follows the presenter.'));
+      const yurl = h('input', { class: 'input', type: 'url', inputmode: 'url', 'data-focus': '', value: R.ytDraft || '', placeholder: 'Paste a YouTube link…', oninput: (e) => { R.ytDraft = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') goYT(); } });
+      const goYT = () => { const id = ytId(yurl.value); if (!id) { toast('That doesn’t look like a YouTube link', { icon: 'alert' }); return; } startContent(R, { contentType: 'youtube', videoId: id, title: 'YouTube video' }); R.ytDraft = ''; yurl.value = ''; };
+      const busy = presentBusy ? h('div', { class: 'tiny muted row gap-s' }, h('span', { class: 'spin sm' }), presentBusy) : null;
+      const lkOk = !!R.media.room;
+      box.append(btn('screen', R.media.sharing ? 'Stop sharing screen' : 'Share your screen', () => R.toggleShare(), { group: 'media', cls: 'primary block', disabled: !lkOk }),
+        lkOk ? null : note('Screen sharing needs the audio/video server, which isn’t connected right now.'),
+        h('div', { class: 'sec-sub' }, 'Watch together'),
+        h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, yurl), btn('youtube', 'Play', goYT, { group: 'content' })),
+        h('div', { class: 'sec-sub' }, 'Slides & images'),
+        h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF or image', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })), busy,
+        note('These work even when audio/video is down. YouTube streams from YouTube on each device and play, pause and seek follow the presenter. PDFs become page images everyone can see on any phone.'));
+      return box;
+    },
+    sounds() {
+      const box = h('div', { class: 'stack' });
+      const off = R.security.sounds === false && !R.isMod();
+      box.append(h('div', { class: 'sound-grid' }, SOUNDS.map((sd) => h('div', { class: 'sound-card' },
+        h('button', { class: 'sound-play', type: 'button', disabled: off, 'aria-label': `Play ${sd.label} for everyone`, onclick: () => R.playRoomSound(sd.id) }, h('span', { class: 'em' }, sd.emoji), h('b', null, sd.label)),
+        h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Preview just for me', 'aria-label': `Preview ${sd.label}`, onclick: () => playSound(sd.id, { force: true }), html: icon('headphones', { size: 14 }) })))),
+        row(soundsMuted() ? 'volumeX' : 'volume', 'Mute sounds for me', 'Others still hear them', sw(soundsMuted(), (v) => { setSoundsMuted(v); R.panel.render(); })),
+        R.isMod() ? row('shield', 'Allow everyone to play sounds', 'Off = only hosts and moderators', sw(R.security.sounds !== false, (v) => R.send('update-security', { settings: { sounds: v } }))) : null,
+        note(off ? 'The host has turned sounds off for this room.' : 'Plays for everyone in the room. One sound every few seconds per person. Tip: type “applause” or “sounds” in the command bar or chat.'));
       return box;
     },
     timeline() {
@@ -165,6 +222,7 @@ export function buildTools(R) {
         row('chat', 'Send chat messages', null, sw(s.chat !== false, set('chat'))),
         row('smile', 'Send reactions', null, sw(s.reactions !== false, set('reactions'))),
         row('hand', 'Raise hand', null, sw(s.raiseHand !== false, set('raiseHand'))),
+        row('music', 'Play sounds', 'Applause, drum roll… (rate-limited)', sw(s.sounds !== false, set('sounds'))),
         row('userPlus', 'Invite others', null, sw(s.participantsCanInvite !== false, set('participantsCanInvite'))),
         row('users', 'Max participants', 'Cap the room size', max),
         btn('refresh', 'Reset invite link', async () => { try { const r = await api('/api/invite/regenerate', { method: 'POST', headers: R.headers(), body: { code: R.code, participantId: R.me.id } }); R.inviteKey = r.key || r.inviteKey || null; toast('New invite link created — old links stop working', { icon: 'link', group: 'admin' }); } catch (e) { toastErr(e); } }, { cls: 'block' }),

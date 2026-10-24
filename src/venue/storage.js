@@ -71,7 +71,7 @@ async function getS3(key) {
 }
 
 /** Save a buffer and return a file record + public URL. */
-async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose } = {}) {
+async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose, roomCode } = {}) {
   if (buf.length > S.maxUploadBytes) { const e = new Error(`File too large (max ${Math.round(S.maxUploadBytes / 1048576)} MB)`); e.status = 413; throw e; }
   const id = newId();
   const d = driver();
@@ -79,7 +79,7 @@ async function save(buf, { filename, mime, ownerUserId, ownerKey, purpose } = {}
   const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}-${safeName(filename)}`;
   if (d === 's3') await putS3(key, buf, mime || 'application/octet-stream');
   else await putLocal(key, buf);
-  const rec = { id, driver: d, objectKey: key, filename: safeName(filename), mime: mime || 'application/octet-stream', size: buf.length, ownerUserId, ownerKey, purpose };
+  const rec = { id, driver: d, objectKey: key, filename: safeName(filename), mime: mime || 'application/octet-stream', size: buf.length, ownerUserId, ownerKey, purpose, roomCode };
   await require('./data').insertFile(rec);
   return { ...rec, url: publicUrl(rec) };
 }

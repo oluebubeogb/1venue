@@ -1,7 +1,10 @@
 // Room side panel: Chat (everyone / direct / groups), People (stage, waiting, hands, roster + moderation),
 // Engage (polls, Q&A, comments) and Tools (scripture, captions, AI, boards, content, breakouts, …).
-import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md } from '../ui.js';
+import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet } from '../ui.js';
 import { icon } from '../icons.js';
+import { pillComposer } from '../composer.js';
+import { searchSounds } from './sounds.js';
+import { passageCard } from '../passage.js';
 
 const I = (n, s = 18) => h('span', { class: 'i', html: icon(n, { size: s }) });
 const btn = (ic, label, run, { group = '', cls = '', tip, disabled } = {}) => h('button', { class: `btn ${cls}`, 'data-group': group, 'data-tip': tip || null, disabled: !!disabled, type: 'button', onclick: run, html: icon(ic, { size: 16 }) + (label ? `<span>${esc(label)}</span>` : '') });
@@ -52,6 +55,8 @@ export function createPanel(R) {
   function render() { cancelAnimationFrame(rq); rq = requestAnimationFrame(doRender); }
   function doRender() {
     if (!tab) return;
+    const hadFocus = document.activeElement && body.contains(document.activeElement) && document.activeElement.matches('[data-focus]');
+    if (hadFocus) R.focusNext = true;
     const keep = body.scrollTop, stick = body.scrollHeight - body.clientHeight - body.scrollTop < 40;
     const view = { chat: chatView, people: peopleView, engage: engageView, tools: toolsView }[tab]();
     body.replaceChildren(view);
@@ -64,54 +69,35 @@ export function createPanel(R) {
   const seg = (items, cur, onPick) => h('div', { class: 'seg block' }, items.map(([v, l, n]) => h('button', { class: v === cur ? 'on' : '', type: 'button', onclick: () => onPick(v) }, l, n ? h('em', { class: 'badge' }, n) : null)));
 
   /* ------------------------------------------------------------ CHAT */
+  function viewImage(src, name) { const s2 = sheet({ title: name || 'Photo', icon: 'image', wide: true }); s2.body.append(h('img', { src, alt: name || '', style: { width: '100%', borderRadius: '12px' } })); }
   function msgEl(m, { mine, name, at }) {
     const a = m.attachment;
     let att = null;
-    if (a && a.dataUrl) {
-      if (a.kind === 'image') att = h('img', { class: 'msg-img', src: a.dataUrl, alt: a.name || 'image', loading: 'lazy', onclick: () => window.open().document.write(`<img src="${a.dataUrl}" style="max-width:100%">`) });
-      else if (a.kind === 'voice') att = h('audio', { class: 'msg-voice', controls: true, src: a.dataUrl, preload: 'metadata' });
-      else att = h('a', { class: 'msg-file', href: a.dataUrl, download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span><small>${Math.round((a.size || 0) / 1024)} KB</small>` });
+    const src = a && (a.url || a.dataUrl);
+    if (a && a.kind === 'passage') att = passageCard(a, { compact: true });
+    else if (src) {
+      const kb = a.size ? (a.size > 1048576 ? (a.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(a.size / 1024)) + ' KB') : '';
+      if (a.kind === 'image') att = h('img', { class: 'msg-img', src, alt: a.name || 'image', loading: 'lazy', onclick: () => viewImage(src, a.name) });
+      else if (a.kind === 'voice') att = h('audio', { class: 'msg-voice', controls: true, src, preload: 'metadata' });
+      else att = h('a', { class: 'msg-file', href: src, target: '_blank', rel: 'noopener', download: a.name || 'file', html: icon('file', { size: 18 }) + `<span>${esc(a.name || 'file')}</span>${kb ? `<small>${kb}</small>` : ''}` });
     }
     return h('div', { class: `msg${mine ? ' mine' : ''}` }, mine ? null : avatar(name, null, 'sm'),
       h('div', { class: 'bubble' }, mine ? null : h('b', { class: 'who' }, name), m.text ? h('div', { class: 'txt', html: linkify(m.text) }) : null, att, h('time', null, fmtTime(at))));
   }
+  // One composer per conversation, reused across re-renders so text, uploads and recordings survive.
+  const composers = new Map();
   function composer({ placeholder, onSend, disabled }) {
-    const ta = h('textarea', { rows: 1, placeholder: disabled ? 'Chat is turned off by the host' : placeholder, disabled: !!disabled, 'data-focus': '', enterkeyhint: 'send', 'aria-label': placeholder });
-    const draftKey = 'draft:' + placeholder; ta.value = R.drafts[draftKey] || '';
-    let pending = null;
-    const prev = h('div', { class: 'att-prev', hidden: true });
-    const showPrev = () => { prev.hidden = !pending; prev.replaceChildren(...(pending ? [I(pending.kind === 'image' ? 'image' : pending.kind === 'voice' ? 'mic' : 'paperclip', 16), h('span', { class: 'grow' }, pending.name), ibtn('x', 'Remove', () => { pending = null; showPrev(); })] : [])); };
-    const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; };
-    ta.addEventListener('input', () => { R.drafts[draftKey] = ta.value; fit(); });
-    const send = () => {
-      const text = ta.value.trim();
-      if (!text && !pending) return;
-      onSend(text, pending); ta.value = ''; R.drafts[draftKey] = ''; pending = null; showPrev(); fit(); R.justSent = true; R.focusNext = true;
-    };
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
-    const file = h('input', { type: 'file', hidden: true, onchange: async () => {
-      const f = file.files[0]; file.value = ''; if (!f) return;
-      try {
-        if (f.type.startsWith('image/')) pending = { kind: 'image', name: f.name, mime: 'image/webp', ...(await compressImage(f)) };
-        else { if (f.size > 5 * 1024 * 1024) throw new Error('Files up to 5 MB'); pending = { kind: 'file', name: f.name, mime: f.type || 'application/octet-stream', size: f.size, dataUrl: await readFileAsDataUrl(f) }; }
-        showPrev();
-      } catch (e) { toastErr(e); }
-    } });
-    let rec = null;
-    const voiceBtn = ibtn('mic', 'Voice note', async () => {
-      if (rec) { rec.stop(); return; }
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const chunks = []; rec = new MediaRecorder(s, { audioBitsPerSecond: 32000 });
-        rec.ondataavailable = (e) => chunks.push(e.data);
-        rec.onstop = async () => { s.getTracks().forEach((t) => t.stop()); voiceBtn.classList.remove('rec'); const b = new Blob(chunks, { type: rec.mimeType }); rec = null; pending = { kind: 'voice', name: 'Voice note.webm', mime: b.type, size: b.size, dataUrl: await readFileAsDataUrl(b) }; showPrev(); };
-        rec.start(); voiceBtn.classList.add('rec'); toast('Recording voice note… tap again to stop', { icon: 'mic', group: 'media' });
-        setTimeout(() => rec && rec.state === 'recording' && rec.stop(), 60000);
-      } catch (e) { toastErr(e); }
-    }, { group: 'media' });
-    return h('div', { class: 'composer' }, prev, h('div', { class: 'row' },
-      ibtn('paperclip', 'Attach photo or file', () => file.click(), { group: 'content' }), voiceBtn, ta, file,
-      h('button', { class: 'send-btn', type: 'button', 'aria-label': 'Send', 'data-tip': 'Send (Enter)', disabled: !!disabled, onclick: send, html: icon('send', { size: 18 }) })));
+    const key = placeholder + (disabled ? ':off' : '');
+    let c = composers.get(key);
+    if (!c) {
+      c = pillComposer({ placeholder, disabled, drafts: R.drafts, draftKey: 'draft:' + placeholder, limits: R.config.storage?.limits,
+        upload: (f, purpose) => uploadFile(f, { purpose, headers: R.headers() }),
+        suggest: (t) => (t.length <= 24 ? searchSounds(t).map((sd) => ({ glyph: sd.emoji, label: sd.label, tip: `Play ${sd.label} for everyone`, run: () => { R.playRoomSound(sd.id); c.clear(); } })) : []),
+        onSend: (text, att) => { (c.onSend)(text, att); R.justSent = true; R.focusNext = true; } });
+      composers.set(key, c);
+    }
+    c.onSend = onSend;
+    return c.el;
   }
   function chatView() {
     const mode = sub.chat || 'all';
@@ -372,9 +358,10 @@ export function createPanel(R) {
   const TOOLS = [
     ['scripture', 'Scripture', 'bookOpen', 'faith', 'Show verses — everyone reads in their own translation'],
     ['captions', 'Captions & transcript', 'captions', 'ai', 'Live “Name: text” captions, saved for summaries'],
+    ['sounds', 'Sounds', 'music', 'engage', 'Applause, drum roll, suspense — for everyone'],
     ['ai', 'AI assistant', 'sparkles', 'ai', 'Catch up, ask, summarise, translate'],
     ['boards', 'Whiteboards', 'pen', 'content', 'Your personal board — share it to view'],
-    ['present', 'Present content', 'presentation', 'content', 'Web page, PDF or video for everyone'],
+    ['present', 'Present content', 'presentation', 'content', 'YouTube, slides or an image for everyone'],
     ['timeline', 'Screen timeline', 'timeline', 'content', 'Snapshot slides into a shared strip'],
     ['record', 'Record', 'record', 'media', 'Saved to your device, never our servers'],
     ['breakouts', 'Breakout rooms', 'split', 'people', 'Split into small groups'],

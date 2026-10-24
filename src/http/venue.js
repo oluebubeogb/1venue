@@ -189,7 +189,7 @@ route('POST', '/api/posts', async (ctx) => {
   const u = await requireUser(ctx.req, ctx.res);
   if (!rateLimit(`p:${u.id}`, 10)) throw httpError(429, 'Slow down a little');
   const b = await ctx.body();
-  return data.createPost(u.id, { kind: 'post', body: b.body, eventId: b.eventId, media: Array.isArray(b.media) ? b.media.filter((m) => m && /^\/files\/|^https:\/\//.test(m.url)) : [] });
+  return data.createPost(u.id, { kind: 'post', body: b.body, eventId: b.eventId, media: normalizePostMedia(b.media) });
 });
 route('POST', '/api/posts/(\\d+)/like', async (ctx, [id]) => data.togglePostLike(int(id), (await requireUser(ctx.req, ctx.res)).id));
 route('DELETE', '/api/posts/(\\d+)', async (ctx, [id]) => {
@@ -238,15 +238,20 @@ route('GET', '/api/search', async (ctx) => {
 
 // ------------------------------------------------------------ files
 route('POST', '/api/files', async (ctx) => {
+  const uploads = require('../venue/uploads');
   const u = await getAuthUser(ctx.req, ctx.res);
-  const rp = u ? null : roomParticipant(ctx.req);
+  const rp = roomParticipant(ctx.req);
   if (!u && !rp) throw httpError(401, 'Sign in or join a room to upload');
-  if (!rateLimit(`f:${clientIp(ctx.req)}`, 30)) throw httpError(429, 'Too many uploads');
-  const buf = await readRaw(ctx.req, config.STORAGE.maxUploadBytes + 1);
+  const mime = String(ctx.req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  const ownerKey = !u && rp ? `p:${rp.participant.id}` : null;
+  const max = uploads.precheck({ mime, declaredSize: Number(ctx.req.headers['content-length']) || 0, rateKey: u ? `u:${u.id}` : `ip:${clientIp(ctx.req)}` });
+  let buf;
+  try { buf = await readRaw(ctx.req, max); } catch (e) { if (e.status === 413) throw httpError(413, `That file is too big (max ${uploads.fmtMB(max)})`); throw e; }
+  if (!buf.length) throw httpError(400, 'The file is empty');
+  const roomCode = rp ? rp.code : null;
+  await uploads.quota(data, { size: buf.length, userId: u && u.id, ownerKey, roomCode });
   const filename = decodeURIComponent(String(ctx.req.headers['x-file-name'] || 'upload'));
-  const mime = String(ctx.req.headers['content-type'] || 'application/octet-stream').split(';')[0];
-  if (/html|javascript|svg/i.test(mime)) throw httpError(415, 'That file type is not allowed');
-  const rec = await storage().save(buf, { filename, mime, ownerUserId: u && u.id, ownerKey: rp ? `p:${rp.participant.id}` : null, purpose: ctx.url.searchParams.get('purpose') || 'attachment' });
+  const rec = await storage().save(buf, { filename, mime, ownerUserId: u && u.id, ownerKey, roomCode, purpose: uploads.normalizePurpose(ctx.url.searchParams.get('purpose')) });
   return { id: rec.id, url: rec.url, filename: rec.filename, mime: rec.mime, size: rec.size };
 });
 
@@ -372,6 +377,41 @@ route('PUT', '/api/whiteboards/board', async (ctx) => {
   const b = await ctx.body(2e6);
   return data.saveWhiteboard(u.id, b.title || 'My board', { strokes: Array.isArray(b.strokes) ? b.strokes.slice(-5000) : [], bg: b.bg || null });
 });
+// Board document: { version: 2, bg, activePage, pages: [{ strokes: [{ tool, color, width, points: [[x, y, w]] }], images: [{ url, x, y, w, h }], texts: [{ x, y, text, size, color }] }] }
+function cleanBoard(d) {
+  if (!d || typeof d !== 'object') return null;
+  const pages = (Array.isArray(d.pages) ? d.pages : [{ strokes: d.strokes || [] }]).slice(0, 50).map((p) => ({
+    strokes: Array.isArray(p && p.strokes) ? p.strokes.slice(-6000) : [],
+    images: Array.isArray(p && p.images) ? p.images.slice(0, 40).filter((i) => i && typeof i.url === 'string' && /^(\/files\/|data:image\/)/.test(i.url) && i.url.length < 1_500_000) : [],
+    texts: Array.isArray(p && p.texts) ? p.texts.slice(0, 300).filter((t) => t && typeof t.text === 'string').map((t) => ({ ...t, text: t.text.slice(0, 2000) })) : [],
+  }));
+  return { version: 2, bg: typeof d.bg === 'string' ? d.bg.slice(0, 20) : 'dots', activePage: Math.max(0, Math.min(pages.length - 1, Number(d.activePage) || 0)), pages: pages.length ? pages : [{ strokes: [], images: [], texts: [] }] };
+}
+route('POST', '/api/whiteboards', async (ctx) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  if (!rateLimit(`wb:${u.id}`, 30)) throw httpError(429, 'Slow down a little');
+  const b = await ctx.body(6e6);
+  if ((await data.listWhiteboards(u.id)).length >= 200) throw httpError(400, 'You have 200 boards — delete some first');
+  return data.createWhiteboard(u.id, String(b.title || 'Untitled board').trim() || 'Untitled board', cleanBoard(b.data) || cleanBoard({}));
+});
+route('GET', '/api/whiteboards/(\\d+)', async (ctx, [id]) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  const b = await data.getWhiteboardById(u.id, int(id));
+  if (!b) throw httpError(404, 'Board not found');
+  return b;
+});
+route('PUT', '/api/whiteboards/(\\d+)', async (ctx, [id]) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  const b = await ctx.body(6e6);
+  const out = await data.updateWhiteboard(u.id, int(id), { title: typeof b.title === 'string' && b.title.trim() ? b.title.trim() : null, data: b.data ? cleanBoard(b.data) : null });
+  if (!out) throw httpError(404, 'Board not found');
+  return { id: out.id, title: out.title, updatedAt: out.updatedAt };
+});
+route('DELETE', '/api/whiteboards/(\\d+)', async (ctx, [id]) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  if (!(await data.deleteWhiteboard(u.id, int(id)))) throw httpError(404, 'Board not found');
+  return { ok: true };
+});
 
 // ------------------------------------------------------------ live room helpers (REST mirror for slow clients)
 route('GET', '/api/rooms/([A-Za-z0-9-]+)/stage', async (ctx, [code]) => {
@@ -397,7 +437,7 @@ async function handleVenueRoutes(req, res, parsed) {
       const inline = /^(image|audio|video)\//.test(row.mime) || row.mime === 'application/pdf';
       const headers = {
         'Content-Type': row.mime, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff',
-        'Content-Security-Policy': "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+        'Content-Security-Policy': row.mime === 'application/pdf' ? "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'" : "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
         ...(inline ? {} : attach(row.filename)),
       };
       if (f.stream) { res.writeHead(200, { ...headers, 'Content-Length': f.size }); f.stream.pipe(res); }
@@ -427,4 +467,20 @@ async function handleVenueRoutes(req, res, parsed) {
   return false;
 }
 
+// Post attachments: uploaded images (/files/… or https) and Bible passage cards.
+function normalizePostMedia(list) {
+  if (!Array.isArray(list)) return [];
+  const str = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+  const out = [];
+  for (const m of list) {
+    if (!m || typeof m !== 'object') continue;
+    if (m.type === 'passage') {
+      const reference = str(m.reference, 80), text = str(m.text, 1500);
+      if (!reference || !text) continue;
+      const translation = str(m.translation, 40).replace(/[^\w-]/g, '');
+      out.push({ type: 'passage', reference, text, translation, short: str(m.short, 16), url: `/bible?ref=${encodeURIComponent(reference)}${translation ? `&t=${translation}` : ''}` });
+    } else if (typeof m.url === 'string' && /^\/files\/|^https:\/\//.test(m.url)) out.push({ url: m.url.slice(0, 500), mime: str(m.mime, 80) });
+  }
+  return out.slice(0, 4);
+}
 module.exports = { handleVenueRoutes, roomParticipant };

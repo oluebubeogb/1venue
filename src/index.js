@@ -23,7 +23,7 @@ async function start() {
       if (!res.headersSent) {
         try {
           res.writeHead(err.status || 500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: err.status ? err.message : 'Server error' }));
+          res.end(JSON.stringify({ error: err.status ? err.message : 'Something went wrong on our side — please try again' }));
         } catch (_) {}
       }
     });

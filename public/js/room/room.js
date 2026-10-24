@@ -3,6 +3,8 @@ import { h, esc, api, toast, toastErr, sheet, menu, confirmDlg, promptDlg, copy,
 import { icon, LOGO } from '../icons.js';
 import { state, navigate, requireLogin, toggleTheme } from '../app.js';
 import { registerCommands, unregisterCommands, setBarContext, refreshBar, focusBar } from '../commands.js';
+import { QUICK, emojiName, emojiPopover, pushRecent, searchEmoji } from '../emoji.js';
+import { searchSounds } from './sounds.js';
 import { Media, listDevices, devicePrefs, AUDIO_CONSTRAINTS } from './media.js';
 import { createPanel } from './panels.js';
 import { buildTools } from './tools.js';
@@ -187,7 +189,7 @@ Object.assign(Room.prototype, {
     this.roomName = r.name || fmtCode(this.code);
     this.data = { chat: [], dms: [], groups: new Map(), polls: [], questions: [], comments: [], captions: [], activity: [] };
     this.unread = { chat: 0, dm: 0, engage: 0 };
-    Object.assign(this, { dmNames: {}, dmRead: {}, drafts: {}, replyOpen: new Set(), speaking: new Set(), quality: {}, viewStrokes: {}, boards: [], groupOpen: null, dmWith: null });
+    Object.assign(this, { dmNames: {}, dmRead: {}, drafts: {}, replyOpen: new Set(), speaking: new Set(), quality: {}, viewFrames: {}, boards: [], groupOpen: null, dmWith: null });
     this.security = r.security || {}; this.maxParticipants = this.security.maxParticipants || this.config.maxParticipants;
     this.waiting = r.waiting || []; this.hands = r.raisedHands || [];
     this.stage = { enabled: false, requests: [], speakers: [] };
@@ -195,7 +197,7 @@ Object.assign(Room.prototype, {
     this.content = r.content || null; this.scripture = null; this.stageView = null;
     this.layout = lsGet('venue.layout', 'grid'); this.pinned = null; this.mirror = lsGet('venue.mirror', true);
     this.isMobile = isMobile(); this.showCaptions = lsGet('venue.showCaptions', true);
-    this.myStrokes = lsGet('venue.myboard', []); this.boardSharing = false; this.teamStrokes = [];
+    this.myBoard = lsGet('venue.myboard2', null) || { strokes: lsGet('venue.myboard', []) }; this.myBoardRef = state.user ? lsGet('venue.myboard.ref', null) : null; this.boardSharing = false; this.teamStrokes = [];
     this.peopleMap = new Map(); this.setPeople(r.participants || []);
     this.startedAt = Date.now(); this.recording = null; this.transcribe = false;
     this.media = new Media({
@@ -241,7 +243,41 @@ Object.assign(Room.prototype, {
   setCaptionLang(v) { lsSet('venue.captionLang', v); if (this.captioner.on) { this.captioner.stop(); this.captioner.start(); } },
   setShowCaptions(v) { this.showCaptions = v; lsSet('venue.showCaptions', v); this.stageR.paintCaps(); },
   onCaptionMode(mode) { this.captionMode = mode; this.panel.refresh(); },
-  saveMyBoard() { clearTimeout(this.mbT); this.mbT = setTimeout(() => lsSet('venue.myboard', (this.myStrokes || []).slice(-3000)), 500); },
+  // My board: kept on this device; when it came from (or was saved to) your account, edits autosave there too.
+  saveMyBoard() {
+    clearTimeout(this.mbT);
+    this.mbT = setTimeout(() => {
+      try { lsSet('venue.myboard2', this.myBoard); } catch { /* storage full: account copy still saves */ }
+      const ref = this.myBoardRef;
+      if (ref && state.user) api(`/api/whiteboards/${ref.id}`, { method: 'PUT', body: { data: this.myBoard } }).catch((e) => { if (e.status === 404) { this.myBoardRef = null; lsSet('venue.myboard.ref', null); } else toastErr(e); });
+    }, 700);
+  },
+  boardFrame() { const d = this.myBoard || {}; const pages = d.pages || [{ strokes: d.strokes || [] }]; const i = Math.min(d.activePage || 0, pages.length - 1); const p = pages[i] || {}; return { page: i, pages: pages.length, bg: d.bg || 'dots', strokes: (p.strokes || []).slice(-1500), images: p.images || [], texts: p.texts || [] }; },
+  // Live view for others: single strokes go out at once; page changes / edits as a throttled full frame.
+  sendBoardFrame(info) {
+    if (!this.boardSharing) return;
+    if (info && info.type === 'stroke') { this.send('pboard-frame', { append: true, page: this.boardFrame().page, strokes: [info.stroke] }); return; }
+    clearTimeout(this.bfT); const wait = Math.max(0, 300 - (Date.now() - (this.bfAt || 0)));
+    this.bfT = setTimeout(() => { this.bfAt = Date.now(); this.send('pboard-frame', this.boardFrame()); }, wait);
+  },
+  setMyBoard(doc, ref) { this.myBoard = doc; this.myBoardRef = ref || null; lsSet('venue.myboard.ref', this.myBoardRef); this.saveMyBoard(); this.sendBoardFrame(); if (this.stageView === 'my-board') this.renderStage(true); },
+  async openSavedBoard() {
+    if (!state.user) return requireLogin('Sign in to open your saved boards');
+    const s = sheet({ title: 'Open a saved board', icon: 'board', group: 'content' });
+    s.body.append(h('p', { class: 'small muted' }, 'Loading…'));
+    try {
+      const { boards = [] } = await api('/api/whiteboards');
+      s.body.replaceChildren(boards.length ? h('div', { class: 'stack-s' }, ...boards.map((b) => h('button', { class: 'list-item', type: 'button', onclick: async () => { try { const r = await api(`/api/whiteboards/${b.id}`); this.setMyBoard(r.data || {}, { id: r.id, title: r.title }); s.close(); toast(`Opened “${r.title}”`, { icon: 'board', group: 'content' }); } catch (e) { toastErr(e); } } },
+        h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon('board', { size: 16 }) }), h('div', { class: 'grow' }, h('b', null, b.title), h('div', { class: 'tiny muted' }, `${b.pages || 1} page${(b.pages || 1) === 1 ? '' : 's'}`)), h('span', { html: icon('chevronRight', { size: 16 }) }))))
+        : h('p', { class: 'small muted' }, 'No saved boards yet. Draw here and use “Save to my boards”.'));
+    } catch (e) { s.body.replaceChildren(h('p', { class: 'small muted' }, e.message || 'Could not load your boards')); }
+  },
+  async saveBoardToAccount() {
+    if (!state.user) return requireLogin('Sign in to save boards');
+    const title = await promptDlg('Save board as', { value: `${this.event?.title || "Meeting"} board`, ok: 'Save' });
+    if (title == null) return;
+    try { const r = await api('/api/whiteboards', { method: 'POST', body: { title: title.trim() || 'Meeting board', data: this.myBoard } }); this.myBoardRef = { id: r.id, title: r.title }; lsSet('venue.myboard.ref', this.myBoardRef); toast('Saved to My boards — edits now autosave', { icon: 'check', group: 'content' }); if (this.stageView === 'my-board') this.renderStage(true); } catch (e) { toastErr(e); }
+  },
   refreshBar() { refreshBar(); },
   toolBadge(id) { return (id === 'record' && this.recorder.state !== 'idle') || (id === 'captions' && this.captioner.on) || (id === 'boards' && this.boardSharing) || (id === 'present' && !!this.content); },
   recountDm() { const inc = {}; this.data.dms.forEach((e) => { if (e.fromId !== this.me.id) inc[e.fromId] = (inc[e.fromId] || 0) + 1; }); this.unread.dm = Object.keys(inc).reduce((s, k) => s + Math.max(0, inc[k] - (this.dmRead[k] || 0)), 0); },
@@ -322,11 +358,23 @@ Object.assign(Room.prototype, {
     if (this.stage.enabled && !this.isSpeaker(this.me.id)) { const mine = (this.stage.requests || []).some((q) => q.id === this.me.id); if (mine) this.send('stage-cancel', {}); else this.requestStage(); return; }
     const up = this.meP()?.handRaised; this.send(up ? 'lower-hand' : 'raise-hand', {});
   },
-  react(emoji) { if (this.security.reactions === false && !this.isMod()) return toast('Reactions are off', { icon: 'smile' }); this.send('reaction', { emoji }); },
-  reactMenu(anchor) {
-    const EM = ['👍', '❤️', '😂', '👏', '🎉', '🙏', '🔥', '😮', '💯', '🙌'];
-    const box = h('div', { class: 'react-pop' }, EM.map((e) => h('button', { type: 'button', class: 'react-b', onclick: () => { this.react(e); } }, e)));
-    sheet({ title: 'React', icon: 'smile', group: 'engage', body: box });
+  react(emoji) {
+    if (this.security.reactions === false && !this.isMod()) return toast('Reactions are off', { icon: 'smile' });
+    this.send('reaction', { emoji });
+    if (emoji !== this.lastEmoji()) { lsSet('venue.react.last', emoji); pushRecent(emoji); refreshBar(); }
+  },
+  lastEmoji() { return lsGet('venue.react.last', '👏'); },
+  reactMenu() {
+    const EM = [...new Set([this.lastEmoji(), ...QUICK])].slice(0, 10);
+    const s = sheet({ title: 'React', icon: 'smile', group: 'engage' });
+    const box = h('div', { class: 'react-pop' }, EM.map((e) => h('button', { type: 'button', class: 'react-b', 'aria-label': emojiName(e), onclick: () => { this.react(e); } }, e)));
+    const more = h('button', { class: 'btn sm block', type: 'button', html: icon('search', { size: 16 }) + '<span>Search all emoji</span>' });
+    more.onclick = () => emojiPopover(more, (e) => this.react(e), { keepOpen: true });
+    s.body.append(box, more);
+  },
+  playRoomSound(id) {
+    if (this.security.sounds === false && !this.isMod()) return toast('The host has turned off sounds', { icon: 'volumeX' });
+    this.send('sound', { id });
   },
 });
 
@@ -440,7 +488,7 @@ Object.assign(Room.prototype, {
   openMyBoard() { this.stageView = this.stageView === 'my-board' ? null : 'my-board'; this.renderStage(true); refreshBar(); },
   openTeamBoard() { this.stageView = this.stageView === 'team-board' ? null : 'team-board'; this.renderStage(true); refreshBar(); },
   viewBoard(ownerId) { this.send('pboard-view', { ownerId }); this.stageView = 'pboard:' + ownerId; this.renderStage(true); this.panel.isOpen() && this.isMobile && this.panel.close(); },
-  shareBoard(on) { this.boardSharing = on; this.send('pboard-share', { on }); if (on) this.send('pboard-frame', { strokes: (this.myStrokes || []).slice(-800) }); toast(on ? 'Your board is now viewable by others' : 'Board is private again', { icon: on ? 'eye' : 'eyeOff', group: 'content' }); this.panel.refresh(); },
+  shareBoard(on) { this.boardSharing = on; this.send('pboard-share', { on }); if (on) this.send('pboard-frame', this.boardFrame()); toast(on ? 'Your board is now viewable by others' : 'Board is private again', { icon: on ? 'eye' : 'eyeOff', group: 'content' }); this.panel.refresh(); },
   snapshotToTimeline() {
     const v = this.stageR.el.querySelector('.tile.screen video') || this.stageR.el.querySelector('.present video') || [...this.stageR.el.querySelectorAll('.tile video')].find((x) => x.srcObject);
     let canvas;
@@ -507,10 +555,11 @@ Object.assign(Room.prototype, {
       { id: 'r-cam', label: 'Camera on/off', short: () => (R.media.cam ? 'Stop video' : 'Video'), icon: () => (R.media.cam ? 'video' : 'videoOff'), group: 'media', kbd: 'V', active: () => R.media.cam, keywords: 'camera webcam face video', run: () => R.toggleCam() },
       { id: 'r-share', label: 'Share screen', short: () => (R.media.sharing ? 'Stop share' : 'Share'), icon: () => (R.media.sharing ? 'screenOff' : 'screen'), group: 'media', kbd: 'S', active: () => R.media.sharing, keywords: 'present screen share display slides', when: () => !R.stage.enabled || R.isSpeaker(R.me.id), run: () => R.toggleShare() },
       { id: 'r-hand', label: 'Raise hand / request to speak', short: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? ((R.stage.requests || []).some((q) => q.id === R.me.id) ? 'Queued' : 'Ask to speak') : R.meP()?.handRaised ? 'Lower' : 'Hand'), icon: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? 'stage' : 'hand'), group: 'engage', kbd: 'H', active: () => !!R.meP()?.handRaised || (R.stage.requests || []).some((q) => q.id === R.me.id), keywords: 'raise hand question speak stage queue mic request', run: () => R.raiseHand() },
-      { id: 'r-react', label: 'React', short: 'React', icon: 'smile', group: 'engage', keywords: 'emoji reaction clap love like applause', run: () => R.reactMenu() },
+      { id: 'r-react', label: 'React', short: 'React', icon: 'smile', group: 'engage', keywords: 'emoji reaction clap love like', run: () => R.reactMenu() },
+      { id: 'r-again', label: () => `Send ${R.lastEmoji()} again`, tip: () => `Send ${R.lastEmoji()} again`, short: 'Again', glyph: () => R.lastEmoji(), group: 'engage', keywords: 'emoji again repeat last reaction', run: () => R.react(R.lastEmoji()) },
       { id: 'r-chat', label: 'Chat', short: () => 'Chat' + (R.unread.chat + R.unread.dm ? ` ·${R.unread.chat + R.unread.dm}` : ''), icon: 'chat', group: 'social', kbd: 'C', active: () => R.panel.tab === 'chat', keywords: 'message talk dm private group', run: () => R.panel.toggle('chat') },
       { id: 'r-people', label: 'People', short: () => `People ${R.peopleMap.size}`, icon: 'users', group: 'people', kbd: 'P', active: () => R.panel.tab === 'people', keywords: 'participants attendees roster waiting audience speakers', run: () => R.panel.toggle('people') },
-      { id: 'r-engage', label: 'Polls, Q&A & comments', short: () => 'Engage' + (R.unread.engage ? ` ·${R.unread.engage}` : ''), icon: 'poll', group: 'engage', kbd: 'E', active: () => R.panel.tab === 'engage', keywords: 'poll vote question qa comments feed', run: () => R.panel.toggle('engage') },
+      { id: 'r-engage', label: 'Polls, Q&A & comments', short: () => 'Engage' + (R.unread.engage ? ` ·${R.unread.engage}` : ''), icon: 'poll', group: 'engage', kbd: 'E', active: () => R.panel.tab === 'engage', keywords: 'engage engagement poll vote question qa comments feed', run: () => R.panel.toggle('engage') },
       { id: 'r-tools', label: 'Tools', short: 'Tools', icon: 'wand', group: 'content', kbd: 'T', active: () => R.panel.tab === 'tools', keywords: 'tools bible scripture captions ai board record more', run: () => R.panel.toggle('tools') },
       { id: 'r-layout', label: 'Change layout', short: () => ({ grid: 'Grid', spotlight: 'Spotlight', speaker: 'Speaker' }[R.layout]), icon: () => ({ grid: 'grid', spotlight: 'spotlight', speaker: 'speaker' }[R.layout]), group: 'media', kbd: 'G', keywords: 'view layout grid spotlight speaker gallery tiles', run: () => R.cycleLayout(1) },
       { id: 'r-more', label: 'More', short: 'More', icon: 'more', group: 'nav', keywords: 'more menu options', run: () => R.moreMenu() },
@@ -532,9 +581,10 @@ Object.assign(Room.prototype, {
       { id: 'r-myboard', label: 'My whiteboard', icon: 'pen', group: 'content', active: () => R.stageView === 'my-board', keywords: 'whiteboard draw sketch personal board notes', run: () => R.openMyBoard() },
       { id: 'r-teamboard', label: 'Team whiteboard', icon: 'board', group: 'content', active: () => R.stageView === 'team-board', keywords: 'shared whiteboard collaborate draw', run: () => R.openTeamBoard() },
       { id: 'r-boards', label: 'Shared boards', icon: 'eye', group: 'content', keywords: 'view boards others', run: tool('boards') },
-      { id: 'r-present', label: 'Present a file, video or link', icon: 'presentation', group: 'content', keywords: 'present pdf slides video youtube link image file', run: tool('present') },
+      { id: 'r-present', label: 'Present YouTube, slides or an image', icon: 'presentation', group: 'content', keywords: 'present pdf slides youtube watch together image file deck', run: tool('present') },
       { id: 'r-timeline', label: 'Screen timeline', icon: 'timeline', group: 'content', keywords: 'timeline snapshots slides history slideshow', run: tool('timeline') },
       { id: 'r-snap', label: 'Snapshot to timeline', icon: 'camera', group: 'content', keywords: 'screenshot capture snapshot', run: () => R.snapshotToTimeline() },
+      { id: 'r-sounds', label: 'Sounds: applause, drum roll, suspense…', icon: 'music', group: 'engage', keywords: 'sounds sound effects sfx applause clap drum roll suspense laugh cheers ding boo crickets tada', run: tool('sounds') },
       { id: 'r-ai', label: 'AI assistant', icon: 'sparkles', group: 'ai', keywords: 'ai ask summary catch up translate assistant gpt', run: tool('ai') },
       { id: 'r-catchup', label: 'AI catch-up: what did I miss?', icon: 'sparkles', group: 'ai', keywords: 'summary recap missed catch up', run: () => R.panel.open('tools', 'ai') },
       { id: 'r-devices', label: 'Audio & video devices', icon: 'headphones', group: 'media', keywords: 'microphone camera speaker device settings input output', run: () => R.deviceSheet() },
@@ -558,10 +608,12 @@ Object.assign(Room.prototype, {
     const by = (id) => cmds.find((c) => c.id === id);
     setBarContext({
       placeholders: ['Type: mute, share, poll, John 3:16…', 'Try “captions”', 'Try “my whiteboard”', 'Try “invite”', 'Try “what did I miss”'],
-      pinned: () => ['r-mic', 'r-cam', 'r-share', 'r-hand', 'r-react', 'r-chat', 'r-people', 'r-engage', 'r-tools', 'r-layout', 'r-more', 'r-leave'].map(by),
+      pinned: () => ['r-mic', 'r-cam', 'r-share', 'r-hand', 'r-react', 'r-again', 'r-chat', 'r-people', 'r-engage', 'r-tools', 'r-layout', 'r-more', 'r-leave'].map(by),
       dynamic: (q) => {
         const out = [];
-        const em = q.match(/^(👍|❤️|😂|👏|🎉|🙏|🔥|😮|💯|🙌)$/u); if (em) out.push({ id: 'dyn-react', label: 'React ' + em[1], icon: 'smile', group: 'engage', run: () => R.react(em[1]) });
+        const em = q.match(/^(\p{Extended_Pictographic}\uFE0F?)$/u); if (em) out.push({ id: 'dyn-react', label: 'React ' + em[1], glyph: em[1], short: 'React', group: 'engage', run: () => R.react(em[1]) });
+        searchSounds(q).forEach((sd) => out.push({ id: 'dyn-snd-' + sd.id, label: `Play ${sd.label} for everyone`, short: sd.label, glyph: sd.emoji, group: 'engage', run: () => R.playRoomSound(sd.id) }));
+        if (q.trim().length >= 3 && !/\s/.test(q.trim())) searchEmoji(q.trim(), 4).forEach((e) => out.push({ id: 'dyn-em-' + e, label: `React ${e} (${emojiName(e)})`, short: emojiName(e).split(' ')[0], glyph: e, group: 'engage', run: () => R.react(e) }));
         if (/^[1-3]?\s?[a-z]+\.?\s+\d+(:\d+(-\d+)?)?$/i.test(q.trim())) out.push({ id: 'dyn-scr', label: `Scripture: ${q.trim()}`, short: q.trim(), icon: 'bookOpen', group: 'faith', run: () => { R.scriptureDraft = q.trim(); R.panel.open('tools', 'scripture'); } });
         const pp = R.people().filter((p) => p.id !== R.me.id && p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 3);
         pp.forEach((p) => out.push({ id: 'dyn-p' + p.id, label: `Message ${p.name}`, short: p.name, icon: 'user', group: 'people', tail: true, run: () => { R.panel.sub.chat = 'dm'; R.dmWith = p.id; R.focusNext = true; R.panel.open('chat'); } }));

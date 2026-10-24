@@ -472,23 +472,44 @@ async function logAiUsage({ useCase, provider, model, ok, latencyMs, error }) {
 
 // ---------------------------------------------------------------- files / whiteboards / bible cache
 async function insertFile(f) {
-  await q(`INSERT INTO files (id, owner_user_id, owner_key, driver, object_key, filename, mime, size_bytes, purpose) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [f.id, f.ownerUserId || null, f.ownerKey || null, f.driver, f.objectKey, f.filename, f.mime, f.size, f.purpose || 'attachment']);
+  await q(`INSERT INTO files (id, owner_user_id, owner_key, driver, object_key, filename, mime, size_bytes, purpose, room_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [f.id, f.ownerUserId || null, f.ownerKey || null, f.driver, f.objectKey, f.filename, f.mime, f.size, f.purpose || 'attachment', f.roomCode || null]);
+}
+/** Bytes stored by a user, a guest key or a meeting (for quotas). */
+async function fileUsage({ userId, ownerKey, roomCode } = {}) {
+  const [col, val] = userId ? ['owner_user_id', userId] : ownerKey ? ['owner_key', ownerKey] : roomCode ? ['room_code', roomCode] : [];
+  if (!col) return 0;
+  const r = await one(`SELECT COALESCE(SUM(size_bytes),0)::bigint AS n FROM files WHERE ${col}=$1`, [val]);
+  return Number(r && r.n) || 0;
 }
 async function getFile(id) { return one('SELECT * FROM files WHERE id=$1', [id]); }
 async function getWhiteboard(userId, title = 'My board') {
-  const r = await one('SELECT * FROM whiteboards WHERE user_id=$1 AND title=$2', [userId, title]);
+  const r = await one('SELECT * FROM whiteboards WHERE user_id=$1 AND title=$2 ORDER BY updated_at DESC LIMIT 1', [userId, title]);
   return r ? { id: Number(r.id), title: r.title, data: r.data, updatedAt: r.updated_at } : { id: null, title, data: {}, updatedAt: null };
 }
 async function saveWhiteboard(userId, title = 'My board', data = {}) {
-  const r = await one(`INSERT INTO whiteboards (user_id, title, data, updated_at) VALUES ($1,$2,$3,NOW())
-    ON CONFLICT (user_id, title) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW() RETURNING *`, [userId, String(title).slice(0, 80), JSON.stringify(data)]);
+  // Legacy title-addressed save (the old single "Personal" board). Updates the newest board with that title.
+  const t = String(title).slice(0, 80);
+  const ex = await one('SELECT id FROM whiteboards WHERE user_id=$1 AND title=$2 ORDER BY updated_at DESC LIMIT 1', [userId, t]);
+  const r = ex ? await one('UPDATE whiteboards SET data=$2, updated_at=NOW() WHERE id=$1 RETURNING *', [ex.id, JSON.stringify(data)])
+    : await one('INSERT INTO whiteboards (user_id, title, data, updated_at) VALUES ($1,$2,$3,NOW()) RETURNING *', [userId, t, JSON.stringify(data)]);
   return { id: Number(r.id), title: r.title, updatedAt: r.updated_at };
 }
 async function listWhiteboards(userId) {
-  return (await many('SELECT id, title, updated_at FROM whiteboards WHERE user_id=$1 ORDER BY updated_at DESC', [userId]))
-    .map((r) => ({ id: Number(r.id), title: r.title, updatedAt: r.updated_at }));
+  return (await many(`SELECT id, title, updated_at, COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(data->'pages')='array' THEN data->'pages' END),1) AS pages
+    FROM whiteboards WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 200`, [userId]))
+    .map((r) => ({ id: Number(r.id), title: r.title, updatedAt: r.updated_at, pages: Number(r.pages) || 1 }));
 }
+const boardOut = (r) => r && { id: Number(r.id), title: r.title, data: r.data || {}, updatedAt: r.updated_at };
+async function createWhiteboard(userId, title, data = {}) {
+  return boardOut(await one('INSERT INTO whiteboards (user_id, title, data) VALUES ($1,$2,$3) RETURNING *', [userId, String(title || 'Untitled board').slice(0, 80), JSON.stringify(data)]));
+}
+async function getWhiteboardById(userId, id) { return boardOut(await one('SELECT * FROM whiteboards WHERE id=$1 AND user_id=$2', [id, userId])); }
+async function updateWhiteboard(userId, id, { title, data }) {
+  return boardOut(await one(`UPDATE whiteboards SET title=COALESCE($3,title), data=COALESCE($4::jsonb,data), updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING *`,
+    [id, userId, title == null ? null : String(title).slice(0, 80), data == null ? null : JSON.stringify(data)]));
+}
+async function deleteWhiteboard(userId, id) { return !!(await one('DELETE FROM whiteboards WHERE id=$1 AND user_id=$2 RETURNING id', [id, userId])); }
 async function bibleCacheGet(t, b, c, maxAgeDays) {
   const r = await one(`SELECT payload FROM bible_cache WHERE translation=$1 AND book=$2 AND chapter=$3 AND fetched_at > NOW() - ($4 || ' days')::interval`, [t, b, c, String(maxAgeDays)]);
   return r ? r.payload : null;
@@ -524,5 +545,5 @@ module.exports = {
   createPoll, votePoll, closePoll, listPolls, pollResults,
   addQuestion, upvoteQuestion, setQuestionStatus, listQuestions,
   addTranscriptSegment, getTranscript, transcriptToText, saveSummary, latestSummaries, getHistory, canAccessHistory, logAiUsage,
-  insertFile, getFile, getWhiteboard, saveWhiteboard, listWhiteboards, bibleCacheGet, bibleCachePut, dashboard,
+  insertFile, fileUsage, getFile, getWhiteboard, saveWhiteboard, listWhiteboards, createWhiteboard, getWhiteboardById, updateWhiteboard, deleteWhiteboard, bibleCacheGet, bibleCachePut, dashboard,
 };

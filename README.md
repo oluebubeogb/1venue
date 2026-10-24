@@ -46,6 +46,8 @@ npm run icons   # regenerate PWA icons from the mark (needs python3 + Pillow)
 
 If `LIVEKIT_*` is not set, rooms still work for chat, polls, Q&A, boards, Bible, transcripts (through Web Speech) and so on. Audio and video stay off until you configure LiveKit.
 
+Deploying LiveKit on Coolify (`wss://1v.collab.name.ng`): see [docs/livekit-coolify.md](docs/livekit-coolify.md). Check it with `npm run livekit:check`.
+
 ## Auth: Collab Accounts SSO
 
 - The app reads the `access_token` cookie. If it has `ACCOUNTS_JWT_SECRET` it verifies the token locally; otherwise it calls `ACCOUNTS_URL/auth/me`.

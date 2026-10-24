@@ -1,0 +1,18 @@
+# LiveKit for 1venue — deploy as a separate Coolify "Docker Compose" resource.
+# Domain in Coolify:  https://1v.collab.name.ng  → service "livekit", port 7880 (websockets on).
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.10
+    restart: unless-stopped
+    # Host networking = real UDP ports with no Docker NAT (best quality, lowest CPU).
+    # Coolify's proxy still reaches it on <host>:7880.
+    network_mode: host
+    environment:
+      # "key: secret" — must equal 1venue's LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set in Coolify env}: ${LIVEKIT_API_SECRET:?set in Coolify env}"
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    deploy:
+      resources:
+        limits: { memory: 1g }

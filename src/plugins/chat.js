@@ -9,6 +9,8 @@ const MAX_IMAGE_DATA_CHARS = 900_000;
 const MAX_FILE_DATA_CHARS = 7_000_000; // ~5 MB binary as data URL
 const MAX_HISTORY = 150;
 
+const { normalizeAttachment } = require('../lib/attachment');
+
 module.exports = {
   id: 'chat',
   register(ctx) {
@@ -29,26 +31,7 @@ module.exports = {
             .filter((m) => m.id || m.name)
         : [];
 
-      let attachment = null;
-      if (msg.attachment && typeof msg.attachment === 'object') {
-        let kind = 'file';
-        if (msg.attachment.kind === 'image') kind = 'image';
-        else if (msg.attachment.kind === 'voice') kind = 'voice';
-        const name = String(msg.attachment.name || (kind === 'voice' ? 'voice.webm' : 'file')).slice(0, 120);
-        const mime = String(msg.attachment.mime || (kind === 'voice' ? 'audio/webm' : 'application/octet-stream')).slice(0, 120);
-        const dataUrl = String(msg.attachment.dataUrl || '');
-        const maxChars = kind === 'image' ? MAX_IMAGE_DATA_CHARS : MAX_FILE_DATA_CHARS;
-        if (dataUrl.startsWith('data:') && dataUrl.length <= maxChars) {
-          attachment = {
-            kind,
-            name,
-            mime,
-            size: Number(msg.attachment.size) || dataUrl.length,
-            dataUrl,
-          };
-        }
-      }
-
+      const attachment = normalizeAttachment(msg.attachment);
       if (!text && !attachment) return;
 
       const chatMsg = {
@@ -77,6 +60,7 @@ module.exports = {
             mime: attachment.mime,
             size: attachment.size,
             dataUrl: attachment.dataUrl || null,
+            url: attachment.url || null,
           }
         : null;
 

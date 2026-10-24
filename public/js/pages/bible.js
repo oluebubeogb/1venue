@@ -2,6 +2,7 @@ import { icon } from '../icons.js';
 import { h, api, esc, toast, toastErr, copy, sheet, md, debounce } from '../ui.js';
 import { state, setPrefs, navigate } from '../app.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
+import { sharePassageToFeed } from '../passage.js';
 
 let TR = null, BOOKS = null;
 export async function bibleMeta() {
@@ -13,7 +14,7 @@ export function translationSelect(value, onChange, { compact = false } = {}) {
   bibleMeta().then(({ translations }) => {
     const byLang = {};
     translations.forEach((t) => (byLang[t.language] ||= []).push(t));
-    Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value }, `${t.short} — ${t.name}`)))));
+    Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`)))));
     sel.value = value;
   });
   sel.onchange = () => onChange(sel.value);
@@ -37,8 +38,8 @@ export async function mount(view, params) {
   let book = 'JHN', chapter = 1, highlight = [];
   const refIn = h('input', { class: 'input', placeholder: 'Go to… John 3:16, Ps 23, Rom 8:28-39', 'aria-label': 'Reference' });
   const bookSel = h('select', { class: 'input', 'aria-label': 'Book' }, h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))), h('optgroup', { label: 'New Testament' }, books.filter((b) => b.testament === 'NT').map((b) => h('option', { value: b.id }, b.name))));
-  const chSel = h('select', { class: 'input', 'aria-label': 'Chapter', style: { maxWidth: '6.5rem' } });
-  const trSel = translationSelect(tr, (v) => { tr = v; setPrefs({ bibleTranslation: v }); load(); });
+  const chSel = h('select', { class: 'input', 'aria-label': 'Chapter' });
+  const trSel = translationSelect(tr, (v) => { tr = v; setPrefs({ bibleTranslation: v }); load(); }, { compact: true });
   const body = h('div', { class: 'card pad-lg bible-page' });
   const selBar = h('div', { class: 'sel-bar hidden' });
   const fillCh = () => { const b = books.find((x) => x.id === book); chSel.innerHTML = ''; for (let i = 1; i <= (b?.chapters || 1); i++) chSel.append(h('option', { value: i }, `Ch ${i}`)); chSel.value = chapter; };
@@ -70,11 +71,12 @@ export async function mount(view, params) {
     const ref = refLabel(cur.bookName, chapter, highlight);
     const t = TR.find((x) => x.id === tr);
     selBar.innerHTML = '';
-    selBar.append(h('strong', null, ref),
-      h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Copy', 'aria-label': 'Copy', html: icon('copy'), onclick: () => copy(`“${selectedText()}” — ${ref} (${t?.short})`, 'Verse copied') }),
-      h('button', { class: 'icon-btn', 'data-group': 'social', 'data-tip': 'Post to feed', 'aria-label': 'Post', html: icon('feed'), onclick: () => { sessionStorage.setItem('venue.compose', `“${selectedText()}” — ${ref} (${t?.short})`); navigate('/feed?compose=1'); } }),
-      h('button', { class: 'icon-btn', 'data-group': 'ai', 'data-tip': 'Explain with AI', 'aria-label': 'Explain', html: icon('sparkles'), onclick: () => explain(ref, selectedText()) }),
-      h('button', { class: 'icon-btn', 'data-tip': 'Clear', 'aria-label': 'Clear', html: icon('x'), onclick: () => { highlight = []; body.querySelectorAll('.verse.sel').forEach((e) => e.classList.remove('sel')); paintSel(); } }));
+    const passage = { reference: ref, text: selectedText(), translation: tr, short: t?.short || '' };
+    selBar.append(h('span', { class: 'sel-ref' }, h('strong', null, ref), h('small', null, `${highlight.length} verse${highlight.length > 1 ? 's' : ''}`)),
+      h('button', { class: 'btn sm primary', 'data-group': 'social', onclick: () => sharePassageToFeed(passage), html: icon('feed', { size: 15 }) + '<span>Share to feed</span>' }),
+      h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Copy', 'aria-label': 'Copy', html: icon('copy'), onclick: () => copy(`“${passage.text}” — ${ref} (${t?.short})`, 'Verse copied') }),
+      h('button', { class: 'icon-btn', 'data-group': 'ai', 'data-tip': 'Explain with AI', 'aria-label': 'Explain', html: icon('sparkles'), onclick: () => explain(ref, passage.text) }),
+      h('button', { class: 'icon-btn', 'data-tip': 'Clear selection', 'aria-label': 'Clear selection', html: icon('x'), onclick: () => { highlight = []; body.querySelectorAll('.verse.sel').forEach((e) => e.classList.remove('sel')); paintSel(); } }));
   }
   async function explain(ref, text) {
     if (!state.user) return toast('Sign in to use AI', { icon: 'login' });
@@ -91,7 +93,7 @@ export async function mount(view, params) {
   }
   refIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && refIn.value.trim()) goRef(refIn.value.trim()); });
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('bookOpen', { size: 28 }) + 'Bible' }), h('p', { class: 'muted' }, 'Open-licence translations in English, Yorùbá, Igbo, Hausa, French, Spanish and more.')),
-    h('div', { class: 'bible-tools card pad layer' }, refIn, h('div', { class: 'row wrap', style: { gap: '.5rem' } }, bookSel, chSel, trSel)), selBar, body);
+    h('div', { class: 'bible-tools card layer' }, h('span', { class: 'bt-ic', html: icon('search', { size: 16 }) }), refIn, bookSel, chSel, trSel), body, selBar);
   bookSel.value = book; fillCh();
   if (params.ref) goRef(params.ref); else load();
   registerCommands('page', [

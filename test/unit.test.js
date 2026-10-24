@@ -72,3 +72,49 @@ test('command bar fuzzy + synonym matching', async () => {
   assert.equal(m.searchCommands('zzqx').length, 0);
   m.unregisterCommands('t');
 });
+
+test('whiteboard core: v1 .mwb import, normalisation and v2 round-trip', async () => {
+  const wb = await import(pathToFileURL(path.join(__dirname, '../public/js/wbcore.js')).href);
+  const v1 = { format: 'mwb', version: 1, activeBoard: 1, boards: [
+    { index: 0, strokes: [{ points: [{ x: 0, y: 0 }, { x: 1920, y: 1080 }], color: '#000000', width: 2, baseWidth: 2, tool: 'pencil' }], texts: [{ id: 't', x: 96, y: 54, text: 'Hi', fontSize: 40, color: '#2563eb' }] },
+    { index: 1, strokes: [{ points: [{ x: 10, y: 10 }], color: '#16a34a', width: 4, tool: 'brush' }, { points: [{ x: 1, y: 1 }, { x: 2, y: 2 }], erase: true, width: 3 }], texts: [] },
+  ] };
+  const d = wb.normalizeBoard(v1);
+  assert.equal(d.version, 2);
+  assert.equal(d.pages.length, 2);
+  assert.equal(d.activePage, 1);
+  const s = d.pages[0].strokes[0];
+  assert.equal(s.tool, 'pencil');
+  assert.equal(s.color, 'ink', 'legacy black maps to theme ink');
+  assert.ok(Math.abs(s.points[1][0] - 1600) < 1, 'scaled to the 1600-wide page');
+  assert.equal(d.pages[0].texts[0].text, 'Hi');
+  assert.equal(d.pages[1].strokes[1].tool, 'eraser');
+  // junk is dropped, unsafe image URLs are rejected
+  const n = wb.normalizeBoard({ pages: [{ strokes: [{ points: 'x' }, null], images: [{ url: 'javascript:alert(1)', x: 0, y: 0, w: 10, h: 10 }, { url: '/files/abc', x: 0, y: 0, w: 10, h: 10 }], texts: [] }] });
+  assert.equal(n.pages[0].strokes.length, 0);
+  assert.deepEqual(n.pages[0].images.map((i) => i.url), ['/files/abc']);
+  assert.equal(wb.normalizeBoard(null).pages.length, 1);
+  // gzip round trip
+  const blob = await wb.toMwb(d, { title: 'Test board', inline: false });
+  const u8 = new Uint8Array(await blob.arrayBuffer());
+  assert.ok(wb.isGzip(u8));
+  const back = await wb.fromMwbBytes(u8);
+  assert.equal(back.title, 'Test board');
+  assert.equal(back.doc.pages.length, 2);
+  assert.deepEqual(back.doc.pages[0].strokes[0].points, d.pages[0].strokes[0].points);
+  // plain (non-gzipped) v1 JSON also imports
+  const plain = await wb.fromMwbBytes(new TextEncoder().encode(JSON.stringify(v1)));
+  assert.equal(plain.doc.pages.length, 2);
+  await assert.rejects(() => wb.fromMwbBytes(new TextEncoder().encode('{"hello":1}')));
+});
+
+test('content sharing: only youtube/slides/image with safe sources', () => {
+  const { sanitizeContent } = require('../src/plugins/content.js');
+  assert.equal(sanitizeContent({ contentType: 'url', url: 'https://example.com' }), null);
+  assert.equal(sanitizeContent({ contentType: 'video', url: '/files/a/b.mp4' }), null);
+  assert.equal(sanitizeContent({ contentType: 'youtube', videoId: 'bad id' }), null);
+  assert.equal(sanitizeContent({ contentType: 'youtube', videoId: 'M7lc1UVf-VE' }).url, 'https://www.youtube.com/watch?v=M7lc1UVf-VE');
+  const s = sanitizeContent({ contentType: 'slides', pages: ['/files/ab-1/p1.jpg', 'javascript:alert(1)', 'https://evil/x.jpg', '/files/../x'] });
+  assert.deepEqual(s.pages, ['/files/ab-1/p1.jpg']);
+  assert.equal(sanitizeContent({ contentType: 'image', url: 'https://evil/x.png' }), null);
+});

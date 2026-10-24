@@ -58,7 +58,7 @@ function subseq(q, s) { let i = 0; for (const c of s) if (c === q[i]) i++; retur
 
 const registry = new Map(); // scope -> commands[]
 const listeners = new Set();
-export function registerCommands(scope, cmds) { registry.set(scope, cmds); listeners.forEach((f) => f()); }
+export function registerCommands(scope, cmds) { cmds.forEach((c) => { if (c && typeof c === 'object') c._scope = scope; }); registry.set(scope, cmds); listeners.forEach((f) => f()); }
 export function unregisterCommands(scope) { registry.delete(scope); listeners.forEach((f) => f()); }
 export function allCommands() { return [...registry.values()].flat().filter((c) => !c.when || c.when()); }
 
@@ -89,7 +89,9 @@ export function scoreCommand(c, q) {
   return score + (c.boost || 0);
 }
 export function searchCommands(q, limit = 12) {
-  return allCommands().map((c) => [c, scoreCommand(c, q)]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([c]) => c);
+  // Inside a meeting, in-room commands win over app-wide ones (which may navigate away from the call).
+  const local = registry.has('room') || registry.has('page');
+  return allCommands().map((c) => { let s = scoreCommand(c, q); if (s > 0 && local && c._scope === 'global') s = Math.max(0.1, s - 3); return [c, s]; }).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([c]) => c);
 }
 
 /* ---------- footer bar ---------- */
@@ -128,8 +130,8 @@ function render() {
   current.forEach((c, i) => {
     const on = typeof c.active === 'function' ? c.active() : false;
     const b = h('button', {
-      class: `cmd-act${i === sel && q ? ' sel' : ''}${on ? ' on' : ''}`, 'data-group': c.group || 'nav', 'data-tip': c.tip || c.label, 'data-kbd': c.kbd || null, 'data-id': c.id || null, type: 'button',
-      'aria-label': c.label, html: icon(typeof c.icon === 'function' ? c.icon() : c.icon || 'sparkle', { size: 18 }) + `<span class="lbl">${esc(typeof c.short === 'function' ? c.short() : c.short || c.label)}</span>`,
+      class: `cmd-act${i === sel && q ? ' sel' : ''}${on ? ' on' : ''}`, 'data-group': c.group || 'nav', 'data-tip': (typeof c.tip === 'function' ? c.tip() : c.tip) || (typeof c.label === 'function' ? c.label() : c.label), 'data-kbd': c.kbd || null, 'data-id': c.id || null, type: 'button',
+      'aria-label': typeof c.label === 'function' ? c.label() : c.label, html: (c.glyph ? `<span class="glyph" aria-hidden="true">${esc(typeof c.glyph === 'function' ? c.glyph() : c.glyph)}</span>` : icon(typeof c.icon === 'function' ? c.icon() : c.icon || 'sparkle', { size: 18 })) + `<span class="lbl">${esc(typeof c.short === 'function' ? c.short() : c.short || c.label)}</span>`,
     });
     b.addEventListener('click', () => run(c));
     actionsEl.append(b);

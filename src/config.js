@@ -109,6 +109,22 @@ const STORAGE = {
   },
 };
 
+// Upload limits. Lean defaults; every value can be tuned by env. 0 disables a type.
+const mb = (k, d) => Math.round(Number(env(k, String(d))) * 1024 * 1024);
+const UPLOADS = {
+  maxImageBytes: mb('UPLOAD_MAX_IMAGE_MB', 8),
+  maxPdfBytes: mb('UPLOAD_MAX_PDF_MB', 20),
+  maxAudioBytes: mb('UPLOAD_MAX_AUDIO_MB', 10),
+  maxVideoBytes: mb('UPLOAD_MAX_VIDEO_MB', 0), // video uploads are off: they would stream through the app server
+  maxOtherBytes: mb('UPLOAD_MAX_OTHER_MB', 10),
+  userQuotaBytes: mb('UPLOAD_USER_QUOTA_MB', 250),
+  guestQuotaBytes: mb('UPLOAD_GUEST_QUOTA_MB', 30),
+  meetingCapBytes: mb('UPLOAD_MEETING_CAP_MB', 150),
+  perMinute: int('UPLOAD_RATE_PER_MIN', 12),
+  perHour: int('UPLOAD_RATE_PER_HOUR', 120),
+  chatInlineBytes: mb('CHAT_INLINE_MAX_MB', 0.6), // legacy data-URL attachments over WS
+};
+
 const BIBLE = {
   apiBase: env('BIBLE_API_BASE', 'https://bible.helloao.org/api').replace(/\/$/, ''),
   fallbackBase: env('BIBLE_FALLBACK_BASE', 'https://bible-api.com').replace(/\/$/, ''),
@@ -149,5 +165,5 @@ module.exports = {
   ACCOUNTS_URL, ACCOUNTS_LOGIN_URL, ACCOUNTS_JWT_SECRET, ACCOUNTS_ACCESS_COOKIE, ACCOUNTS_REFRESH_COOKIE,
   COOKIE_DOMAIN, ALLOW_LOCAL_SIGNUP,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, STORAGE, BIBLE, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

@@ -2,6 +2,8 @@
 import { icon } from './icons.js';
 import { h, api, avatar, timeAgo, fmtDate, fmtNum, toast, toastErr, esc, confirmDlg, frag } from './ui.js';
 import { state, navigate, requireLogin } from './app.js';
+import { pillComposer } from './composer.js';
+import { passageCard } from './passage.js';
 
 export const CAT = {
   talk_show: ['Talk show', 'tv', '#db2777'], presentation: ['Presentation', 'presentation', '#2563eb'], seminar: ['Seminar', 'graduation', '#7c3aed'],
@@ -72,7 +74,8 @@ export function postCard(p, { onDelete } = {}) {
         kind ? h('span', { class: 'muted small', html: icon(kind[1], { size: 14, cls: 'inline' }) + ' ' + kind[0] }) : null,
         h('span', { class: 'faint small' }, '· ' + timeAgo(p.createdAt))),
       p.body && p.kind === 'post' ? h('div', { class: 'text' }, p.body) : p.body && p.kind === 'summary' ? h('div', { class: 'text prose small' }, p.body.slice(0, 600)) : null,
-      (p.media || []).filter((m) => /^image\//.test(m.mime || 'image/')).slice(0, 4).map((m) => h('img', { src: m.url, alt: '', loading: 'lazy', style: { borderRadius: '14px', marginTop: '.6rem', maxHeight: '420px', objectFit: 'cover', width: '100%' } })),
+      (p.media || []).filter((m) => m.type === 'passage').slice(0, 1).map((m) => passageCard(m)),
+      (p.media || []).filter((m) => m.type !== 'passage' && /^image\//.test(m.mime || 'image/')).slice(0, 4).map((m) => h('img', { src: m.url, alt: '', loading: 'lazy', style: { borderRadius: '14px', marginTop: '.6rem', maxHeight: '420px', objectFit: 'cover', width: '100%' } })),
       p.event ? h('div', { style: { marginTop: '.7rem', maxWidth: '420px' } }, eventCard(p.event, { compact: true })) : null,
       h('div', { class: 'acts' }, likeBtn, cBtn, shareBtn,
         mine ? h('button', { class: 'act', 'data-group': 'admin', 'data-tip': 'Delete', html: icon('trash', { size: 16 }), onclick: async () => { if (await confirmDlg('Delete this post?', { ok: 'Delete', danger: true })) { await api(`/api/posts/${p.id}`, { method: 'DELETE' }).catch(toastErr); el.remove(); onDelete && onDelete(); } } }) : null),
@@ -88,23 +91,16 @@ export async function shareLink(url, title = '1venue') {
 export function commentThread(kind, id, { compact = false, isHost = false } = {}) {
   const wrap = h('div', { class: 'col', style: { gap: '.2rem', marginTop: compact ? '.5rem' : 0 } });
   const list = h('div', { class: 'col', style: { gap: '.1rem' } });
-  const ta = h('textarea', { class: 'textarea', placeholder: state.user ? 'Add to the conversation…' : 'Sign in to comment', rows: 1, maxlength: 2000 });
-  const send = h('button', { class: 'icon-btn', 'data-group': 'social', 'data-tip': 'Post', 'aria-label': 'Post comment', html: icon('send') });
   let replyTo = null;
-  const replyChip = h('div', { class: 'tiny muted hidden', style: { padding: '0 .7rem' } });
-  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(160, ta.scrollHeight) + 'px'; });
-  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
-  async function submit() {
-    if (!requireLogin('Sign in to join the conversation')) return;
-    const body = ta.value.trim(); if (!body) return;
-    send.disabled = true;
-    try {
-      const c = await api(`/api/${kind}/${id}/comments`, { method: 'POST', body: { body, parentId: replyTo?.c.id || null } });
-      ta.value = ''; ta.style.height = '';
-      if (replyTo) { replyTo.addReply(c); setReply(null); } else list.prepend(commentEl(c));
-    } catch (e) { toastErr(e); } finally { send.disabled = false; }
-  }
-  send.onclick = submit;
+  const replyChip = h('div', { class: 'tiny muted hidden', style: { padding: '.15rem .9rem 0' } });
+  const pc = pillComposer({ placeholder: state.user ? 'Add to the conversation…' : 'Sign in to comment', voice: false, onSend: async (body) => {
+    if (!requireLogin('Sign in to join the conversation')) return false;
+    if (!body) return false;
+    const c = await api(`/api/${kind}/${id}/comments`, { method: 'POST', body: { body, parentId: replyTo?.c.id || null } });
+    list.querySelector('.no-comments')?.remove();
+    if (replyTo) { replyTo.addReply(c); setReply(null); } else list.prepend(commentEl(c));
+  } });
+  const ta = pc.ta;
   function setReply(r) { replyTo = r; replyChip.classList.toggle('hidden', !r); replyChip.innerHTML = r ? `Replying to <strong>${esc(r.c.authorName)}</strong> · <a href="#" class="cancel">cancel</a>` : ''; if (r) { replyChip.querySelector('.cancel').onclick = (e) => { e.preventDefault(); setReply(null); }; ta.focus(); } }
   function commentEl(c, depth = 0) {
     const replies = h('div', { class: 'replies col', style: { gap: 0 } });
@@ -128,9 +124,9 @@ export function commentThread(kind, id, { compact = false, isHost = false } = {}
         replies));
     return el;
   }
-  wrap.append(h('div', { class: 'layer', style: { borderRadius: '18px' } }, h('div', { class: 'composer' }, state.user ? avatar(state.user.displayName, state.user.avatarUrl, 'sm') : frag(icon('chat')), ta, send), replyChip), list);
+  wrap.append(h('div', { class: 'comment-compose' }, replyChip, pc.el), list);
   api(`/api/${kind}/${id}/comments`).then((r) => {
-    if (!r.comments.length) list.append(h('div', { class: 'faint small', style: { padding: '.8rem .4rem' } }, 'No comments yet — start the conversation.'));
+    if (!r.comments.length) list.append(h('div', { class: 'faint small no-comments', style: { padding: '.8rem .4rem' } }, 'No comments yet — start the conversation.'));
     r.comments.forEach((c) => list.append(commentEl(c)));
   }).catch(() => list.append(h('div', { class: 'faint small' }, 'Comments unavailable.')));
   return wrap;

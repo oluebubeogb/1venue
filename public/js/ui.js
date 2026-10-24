@@ -32,27 +32,39 @@ export async function api(path, { method = 'GET', body, headers = {}, raw = fals
     if (body instanceof Blob || body instanceof ArrayBuffer) opts.body = body;
     else { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
   }
-  const res = await fetch(path, opts);
+  let res;
+  try { res = await fetch(path, opts); } catch (e) { const err = new Error(navigator.onLine === false ? 'You are offline — check your connection and try again' : 'Could not reach 1venue — check your connection and try again'); err.status = 0; err.cause = e; throw err; }
   if (raw) return res;
   let data = null;
   try { data = await res.json(); } catch { /* empty */ }
   if (!res.ok) {
-    const err = new Error((data && (data.error || data.message)) || `Request failed (${res.status})`);
+    const err = new Error(errText(data && (data.error || data.message)) || HTTP_MSG[res.status] || (res.status >= 500 ? 'Something went wrong on our side — please try again' : `Request failed (${res.status})`));
     err.status = res.status; err.data = data; throw err;
   }
   return data;
 }
 
-export function toast(msg, { icon: ic = 'info', group = '', ms = 3200 } = {}) {
+export function toast(msg, { icon: ic = 'info', group = '', ms = 3200, action = null } = {}) {
   let host = $('#toasts');
   if (!host) { host = h('div', { id: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.append(host); }
   const t = h('div', { class: 'toast', 'data-group': group }, I(ic, 18), h('span', { class: 'grow' }, msg));
+  if (action) t.append(h('button', { class: 'btn sm toast-act', type: 'button', onclick: () => { t.remove(); action.run(); } }, action.label));
   host.append(t);
   while (host.children.length > 3) host.firstChild.remove();
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
-export const toastErr = (e) => toast(e?.message || String(e), { icon: 'alert', group: 'admin' });
+const HTTP_MSG = { 401: 'Please sign in to continue', 403: 'You don’t have permission to do that', 404: 'We couldn’t find that', 413: 'That file is too large', 429: 'Slow down a little — try again in a moment' };
+/* Turn anything thrown or returned into a readable sentence (never "[object Object]"). */
+export function errText(e) {
+  if (e == null || e === '') return '';
+  if (typeof e === 'string') return e;
+  if (typeof e === 'number') return HTTP_MSG[e] || `Error ${e}`;
+  if (Array.isArray(e)) return e.map(errText).filter(Boolean).join(', ');
+  if (typeof e === 'object') { const m = e.message ?? e.error ?? e.detail ?? e.msg ?? e.reason; if (m != null && m !== e) return errText(m); try { const j = JSON.stringify(e); return j && j !== '{}' ? j.slice(0, 160) : 'Something went wrong'; } catch { return 'Something went wrong'; } }
+  return String(e);
+}
+export const toastErr = (e) => toast(errText(e) || 'Something went wrong', { icon: 'alert', group: 'admin' });
 
 let sheetStack = [];
 export function sheet({ title = '', icon: ic, group = '', body, wide = false, onClose } = {}) {

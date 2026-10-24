@@ -13,6 +13,7 @@ const groupChat = require('./groupChat');
 const breakout = require('./breakout');
 const whiteboard = require('./whiteboard');
 const venue = require('./venue');
+const sounds = require('./sounds');
 
 function registerBuiltinPlugins() {
   registerPlugin(chat);
@@ -28,6 +29,7 @@ function registerBuiltinPlugins() {
   registerPlugin(groupChat);
   registerPlugin(breakout);
   registerPlugin(whiteboard);
+  registerPlugin(sounds);
   for (const p of Object.values(venue)) registerPlugin(p);
 }
 

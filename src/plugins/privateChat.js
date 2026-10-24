@@ -7,6 +7,8 @@
 
 const db = require('../../db');
 
+const { normalizeAttachment } = require('../lib/attachment');
+
 module.exports = {
   id: 'privateChat',
   register(ctx) {
@@ -19,25 +21,7 @@ module.exports = {
       const text = String(msg.text || '').trim().slice(0, 2000);
       if (!targetId) return;
 
-      let attachment = null;
-      if (msg.attachment && typeof msg.attachment === 'object') {
-        let kind = 'file';
-        if (msg.attachment.kind === 'image') kind = 'image';
-        else if (msg.attachment.kind === 'voice') kind = 'voice';
-        const name = String(msg.attachment.name || (kind === 'voice' ? 'voice.webm' : 'file')).slice(0, 120);
-        const mime = String(msg.attachment.mime || (kind === 'voice' ? 'audio/webm' : 'application/octet-stream')).slice(0, 120);
-        const dataUrl = String(msg.attachment.dataUrl || '');
-        const maxChars = kind === 'image' ? 900_000 : 7_000_000;
-        if (dataUrl.startsWith('data:') && dataUrl.length <= maxChars) {
-          attachment = {
-            kind,
-            name,
-            mime,
-            size: Number(msg.attachment.size) || dataUrl.length,
-            dataUrl,
-          };
-        }
-      }
+      const attachment = normalizeAttachment(msg.attachment);
       if (!text && !attachment) return;
 
       // Target may have left — still allow send & persist
@@ -79,7 +63,7 @@ module.exports = {
             name: attachment.name,
             mime: attachment.mime,
             size: attachment.size,
-            dataUrl: attachment.dataUrl,
+            dataUrl: attachment.dataUrl, url: attachment.url,
           })
         : text;
 

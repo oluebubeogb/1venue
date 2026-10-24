@@ -28,8 +28,17 @@ async function parseBody(req, limit = 1e6) {
   }
 }
 
+// CORS: only origins listed in CORS_ORIGINS (comma separated, default the app domain) get
+// credentialed cross-origin access. Same-origin requests never need CORS headers.
+const CORS_ORIGINS = String(process.env.CORS_ORIGINS || process.env.PUBLIC_URL || 'https://venue.collab.name.ng')
+  .split(',').map((x) => x.trim().replace(/\/$/, '')).filter(Boolean);
+function corsFor(req) {
+  const o = req && req.headers && req.headers.origin;
+  if (!o) return {};
+  if (CORS_ORIGINS.includes('*') || CORS_ORIGINS.includes(o)) return { 'Access-Control-Allow-Origin': o, 'Access-Control-Allow-Credentials': 'true', Vary: 'Origin' };
+  return {};
+}
 const BASE_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Participant-Id, X-File-Name, X-Room-Code, X-Room-Credential',
   'X-Content-Type-Options': 'nosniff',
@@ -38,11 +47,11 @@ const BASE_HEADERS = {
 function sendJSON(res, status, data, extraHeaders = {}) {
   if (res.headersSent) return;
   const body = JSON.stringify(data);
-  const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...BASE_HEADERS, ...extraHeaders };
+  const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...BASE_HEADERS, ...corsFor(res.req), ...extraHeaders };
   const ae = (res.req && res.req.headers['accept-encoding']) || '';
   if (body.length > 2048 && /\bgzip\b/.test(ae)) {
     headers['Content-Encoding'] = 'gzip';
-    headers.Vary = 'Accept-Encoding';
+    headers.Vary = headers.Vary ? headers.Vary + ', Accept-Encoding' : 'Accept-Encoding';
     res.writeHead(status, headers);
     return res.end(zlib.gzipSync(body, { level: 5 }));
   }
@@ -52,7 +61,7 @@ function sendJSON(res, status, data, extraHeaders = {}) {
 
 function sendText(res, status, text, type = 'text/plain; charset=utf-8', extraHeaders = {}) {
   if (res.headersSent) return;
-  res.writeHead(status, { 'Content-Type': type, ...BASE_HEADERS, ...extraHeaders });
+  res.writeHead(status, { 'Content-Type': type, ...BASE_HEADERS, ...corsFor(res.req), ...extraHeaders });
   res.end(text);
 }
 
@@ -90,6 +99,7 @@ function rateLimit(key, perMin) {
 }
 
 module.exports = {
+  corsFor,
   readRaw,
   parseBody,
   sendJSON,

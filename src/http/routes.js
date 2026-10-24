@@ -48,6 +48,20 @@ const { createLiveKitToken, isLiveKitConfigured, grantsFromPermissions } = requi
 const { signWsCredential } = require('../lib/wsCredential');
 const { features } = require('../lib/features');
 
+/* Never leak raw driver/DB errors (e.g. "violates check constraint …") to users. */
+function publicErr(e, fallback) {
+  if (e && e.code && /^[0-9A-Z]{5}$/.test(e.code)) { // Postgres SQLSTATE
+    console.error('[db]', e.code, e.message);
+    if (e.code === '23505') return 'That already exists';
+    if (e.code === '23503') return 'That item no longer exists';
+    if (e.code === '23514' || e.code === '22P02' || e.code === '22001') return 'Some of that input isn’t valid';
+    return fallback;
+  }
+  const m = e && typeof e.message === 'string' ? e.message : '';
+  if (!m || /ECONN|ETIMEDOUT|ENOTFOUND|socket hang up|relation .* does not exist|syntax error|column .* does not exist/i.test(m)) { if (m) console.error('[err]', m); return fallback; }
+  return m.slice(0, 200);
+}
+
 const {
   PORT,
   PUBLIC,
@@ -66,7 +80,7 @@ function createRequestHandler() {
   const urlPath = parsed.pathname;
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, require('../lib/http').BASE_HEADERS);
+    res.writeHead(204, { ...require('../lib/http').BASE_HEADERS, ...require('../lib/http').corsFor(req) });
     return res.end();
   }
 
@@ -116,7 +130,7 @@ function createRequestHandler() {
       ai: ai.status(),
       stt: stt.status(),
       bible: { defaultTranslation: config.BIBLE.defaultTranslation },
-      storage: { driver: config.STORAGE.driver, maxUploadBytes: config.STORAGE.maxUploadBytes },
+      storage: { driver: config.STORAGE.driver, maxUploadBytes: config.STORAGE.maxUploadBytes, limits: require('../venue/uploads').publicLimits() },
       features,
     });
   }
@@ -171,7 +185,7 @@ function createRequestHandler() {
       }, access ? { 'Set-Cookie': localCookie(access) } : {});
     } catch (e) {
       console.error('[accounts/login]', e);
-      return sendJSON(res, 502, { error: e.message || 'Accounts unreachable' });
+      return sendJSON(res, 502, { error: publicErr(e, 'Accounts unreachable') });
     }
   }
 
@@ -213,7 +227,7 @@ function createRequestHandler() {
       }, access ? { 'Set-Cookie': localCookie(access) } : {});
     } catch (e) {
       console.error('[accounts/signup]', e);
-      return sendJSON(res, 502, { error: e.message || 'Accounts unreachable' });
+      return sendJSON(res, 502, { error: publicErr(e, 'Accounts unreachable') });
     }
   }
 
@@ -251,7 +265,7 @@ function createRequestHandler() {
       return sendJSON(res, 201, { token, user: publicUser(user) }, { 'Set-Cookie': localCookie(token) });
     } catch (e) {
       console.error('[signup]', e);
-      return sendJSON(res, 500, { error: e.message || 'Signup failed' });
+      return sendJSON(res, 500, { error: publicErr(e, 'Signup failed') });
     }
   }
 
@@ -311,7 +325,7 @@ function createRequestHandler() {
       return sendJSON(res, 200, { token, user }, { 'Set-Cookie': localCookie(token) });
     } catch (e) {
       console.error('[login]', e);
-      return sendJSON(res, 500, { error: e.message || 'Login failed' });
+      return sendJSON(res, 500, { error: publicErr(e, 'Login failed') });
     }
   }
 
@@ -682,7 +696,7 @@ function createRequestHandler() {
       });
     } catch (e) {
       console.error('[livekit-token]', e.message);
-      return sendJSON(res, 500, { error: e.message || 'Failed to create token' });
+      return sendJSON(res, 500, { error: publicErr(e, 'Failed to create token') });
     }
   }
 
@@ -835,7 +849,7 @@ function createRequestHandler() {
       });
     } catch (e) {
       console.error('[create]', e);
-      return sendJSON(res, 400, { error: e.message || 'Bad request' });
+      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -1055,7 +1069,7 @@ function createRequestHandler() {
       });
     } catch (e) {
       console.error('[join]', e);
-      return sendJSON(res, 400, { error: e.message || 'Bad request' });
+      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -1101,7 +1115,7 @@ function createRequestHandler() {
         inviteLink: `/${code.slice(0, 3)}-${code.slice(3)}?key=${meeting.inviteToken}`,
       });
     } catch (e) {
-      return sendJSON(res, 400, { error: e.message || 'Bad request' });
+      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -1142,7 +1156,7 @@ function createRequestHandler() {
       });
     } catch (e) {
       console.error('[schedule]', e);
-      return sendJSON(res, 400, { error: e.message || 'Bad request' });
+      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -1167,7 +1181,7 @@ function createRequestHandler() {
         })),
       });
     } catch (e) {
-      return sendJSON(res, 500, { error: e.message || 'Failed' });
+      return sendJSON(res, 500, { error: publicErr(e, 'Failed') });
     }
   }
 
@@ -1180,7 +1194,7 @@ function createRequestHandler() {
       await db.deleteScheduled(id, authUser.id);
       return sendJSON(res, 200, { ok: true });
     } catch (e) {
-      return sendJSON(res, 400, { error: e.message || 'Bad request' });
+      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -1200,7 +1214,7 @@ function createRequestHandler() {
         scheduledId: row.id,
       });
     } catch (e) {
-      return sendJSON(res, 400, { error: e.message || 'Bad request' });
+      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -1260,7 +1274,7 @@ function createRequestHandler() {
         })),
       });
     } catch (e) {
-      return sendJSON(res, 500, { error: e.message || 'Failed' });
+      return sendJSON(res, 500, { error: publicErr(e, 'Failed') });
     }
   }
 
@@ -1283,7 +1297,7 @@ function createRequestHandler() {
         })),
       });
     } catch (e) {
-      return sendJSON(res, 500, { error: e.message || 'Failed' });
+      return sendJSON(res, 500, { error: publicErr(e, 'Failed') });
     }
   }
 
@@ -1296,7 +1310,7 @@ function createRequestHandler() {
       const past = code ? await db.getRecordingsForCode(code, 10) : [];
       return sendJSON(res, 200, { recording: active, past });
     } catch (e) {
-      return sendJSON(res, 500, { error: e.message || 'Failed' });
+      return sendJSON(res, 500, { error: publicErr(e, 'Failed') });
     }
   }
 

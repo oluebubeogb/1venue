@@ -14,10 +14,11 @@ module.exports = {
         id: msg.id || 's_' + Date.now(),
         from: participantId,
         fromName: actor.name,
-        points: msg.points || [],
-        color: msg.color || '#111',
-        width: msg.width || 3,
-        erase: !!msg.erase,
+        tool: ['pencil', 'pen', 'brush', 'eraser'].includes(msg.tool) ? msg.tool : (msg.erase ? 'eraser' : 'pen'),
+        points: (Array.isArray(msg.points) ? msg.points : []).slice(0, 4000),
+        color: typeof msg.color === 'string' ? msg.color.slice(0, 32) : 'ink',
+        width: Math.max(0.5, Math.min(120, Number(msg.width) || 3)),
+        erase: msg.tool === 'eraser' || !!msg.erase,
         at: Date.now(),
       };
       meeting.wbStrokes.push(stroke);

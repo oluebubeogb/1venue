@@ -10,7 +10,8 @@
     "migrate": "node scripts/migrate.js",
     "test": "node --test test/",
     "icons": "python3 scripts/build-icons.py",
-    "migrate:sqlite-to-pg": "node scripts/migrate-sqlite-to-pg.js"
+    "migrate:sqlite-to-pg": "node scripts/migrate-sqlite-to-pg.js",
+    "livekit:check": "node scripts/livekit-check.js"
   },
   "license": "MIT",
   "dependencies": {

@@ -1,6 +1,6 @@
 // 1venue SPA shell: session, persisted preferences/theme, router, global commands.
 import { icon, LOGO } from './icons.js';
-import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTopSheet, toastErr } from './ui.js';
+import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTopSheet, toastErr, errText } from './ui.js';
 import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar } from './commands.js';
 import { initPwa, promptInstall } from './pwa.js';
 
@@ -113,8 +113,10 @@ async function route() {
       currentPage = res || mod;
       if (!isRoom) setBarContext(globalBarContext(mod.barPinned));
     } catch (e) {
+      if (e?.status === 404) { view.append(h('div', { class: 'empty' }, frag404())); window.scrollTo(0, 0); return; }
+      if (e?.status === 401) { view.append(h('div', { class: 'empty' }, h('h2', null, 'Sign in to continue'), h('p', { class: 'muted' }, 'This page needs an account.'), h('a', { class: 'btn primary', href: '/login?next=' + encodeURIComponent(location.pathname), style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Sign in'))); return; }
       console.error(e);
-      view.append(h('div', { class: 'empty' }, h('h2', null, 'Something went wrong'), h('p', { class: 'muted' }, e.message || String(e)), h('a', { class: 'btn primary', href: '/', style: { marginTop: '1rem' } }, 'Go home')));
+      view.append(h('div', { class: 'empty' }, h('h2', null, 'Something went wrong'), h('p', { class: 'muted' }, errText(e) || 'Please try again.'), h('div', { class: 'row', style: { gap: '.5rem', justifyContent: 'center', marginTop: '1rem' } }, h('button', { class: 'btn', type: 'button', onclick: () => route() }, 'Try again'), h('a', { class: 'btn primary', href: '/' }, 'Go home'))));
     }
     window.scrollTo(0, 0);
     return;
@@ -239,7 +241,7 @@ function registerGlobal() {
     { id: 'sessions', label: 'Past sessions & transcripts', short: 'Sessions', icon: 'history', group: 'content', keywords: ['history', 'transcripts', 'summaries', 'recordings'], run: go('/sessions') },
     { id: 'bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: ['scripture', 'read', 'verse'], run: go('/bible') },
     { id: 'bible-tr', label: 'Bible translation', icon: 'languages', group: 'faith', keywords: ['kjv', 'web', 'yoruba', 'version'], run: go('/settings#bible') },
-    { id: 'whiteboard', label: 'My whiteboard', short: 'Whiteboard', icon: 'board', group: 'content', keywords: ['draw', 'sketch', 'personal'], run: go('/whiteboard') },
+    { id: 'whiteboard', label: 'My whiteboards', short: 'Whiteboard', icon: 'board', group: 'content', keywords: ['draw', 'sketch', 'personal', 'saved boards'], when: () => !state.inRoom, run: go('/whiteboard') },
     { id: 'qr', label: 'Make a QR code', icon: 'qr', group: 'content', keywords: ['invite', 'poster'], run: () => import('./pages/event.js').then((m) => m.qrMaker()) },
     { id: 'settings', label: 'Settings', icon: 'settings', group: 'settings', run: go('/settings') },
     { id: 'theme', label: 'Toggle dark mode', short: 'Theme', icon: () => (document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon'), group: 'settings', keywords: ['light', 'dark', 'night'], run: toggleTheme },
@@ -251,7 +253,7 @@ function registerGlobal() {
     { id: 'font-down', label: 'Smaller text', icon: 'type', group: 'settings', keywords: ['font size', 'decrease', 'zoom out'], run: () => bumpFont(-0.08) },
     { id: 'font-reset', label: 'Reset text size', icon: 'type', group: 'settings', keywords: ['font size', 'default'], run: () => setPrefs({ fontScale: 1 }) },
     { id: 'motion', label: 'Reduce motion', icon: 'activity', group: 'settings', keywords: ['animations', 'accessibility'], active: () => !!state.prefs.reduceMotion, run: () => setPrefs({ reduceMotion: !state.prefs.reduceMotion }) },
-    { id: 'captions-lang', label: 'Caption language', icon: 'captions', group: 'settings', keywords: ['transcript language', 'yoruba', 'igbo', 'hausa', 'pidgin'], run: go('/settings#captions') },
+    { id: 'captions-lang', label: 'Caption language', icon: 'captions', group: 'settings', keywords: ['transcript language', 'yoruba', 'igbo', 'hausa', 'pidgin'], run: go('/settings#captions'), when: () => !state.inRoom },
     { id: 'install', label: 'Install 1venue app', short: 'Install', icon: 'install', group: 'nav', keywords: ['pwa', 'add to home screen'], run: promptInstall },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard', group: 'nav', keywords: ['hotkeys', 'keys', 'help'], run: showShortcuts },
     { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'collab'], when: () => !state.user, run: go('/login') },

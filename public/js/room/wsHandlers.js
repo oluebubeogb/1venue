@@ -1,5 +1,6 @@
 // Incoming WebSocket messages → room state. Kept separate from room.js for readability.
 import { h, toast, confirmDlg } from '../ui.js';
+import { playSound, soundById } from './sounds.js';
 
 const chime = (f = 660, d = 0.12) => { try { const ac = chime.ac ||= new AudioContext(); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0.06, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d * 3); o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + d * 3); } catch { /* */ } };
 export { chime };
@@ -28,7 +29,7 @@ export function handle(R, m) {
     case 'removed': R.kicked(m); return;
     case 'meeting-ended': R.ended(m); return;
     case 'ring-all': case 'ring-participant': if (m.type === 'ring-all' || m.targetId === R.me.id) R.ring(m.fromName); break;
-    case 'chat': R.data.chat.push(m); if (R.data.chat.length > 400) R.data.chat.shift(); if (m.participantId !== R.me.id) { if (R.panel.tab !== 'chat') { R.unread.chat++; R.peek(m.name, m.text || '📎 attachment'); } if ((m.mentions || []).some((x) => x.id === R.me.id)) { chime(990); toast(`${m.name} mentioned you`, { icon: 'chat', group: 'social' }); } } break;
+    case 'chat': R.data.chat.push(m); if (R.data.chat.length > 400) R.data.chat.shift(); if (m.participantId !== R.me.id) { if (R.panel.tab !== 'chat') { R.unread.chat++; R.peek(m.name, m.text || (m.attachment?.kind === 'passage' ? '📖 ' + m.attachment.reference : '📎 attachment')); } if ((m.mentions || []).some((x) => x.id === R.me.id)) { chime(990); toast(`${m.name} mentioned you`, { icon: 'chat', group: 'social' }); } } break;
     case 'chat-history': R.data.chat = m.messages || []; break;
     case 'private-chat': { const e = m.message; R.data.dms.push(e); const other = e.fromId === R.me.id ? e.toId : e.fromId; R.dmNames[other] = e.fromId === R.me.id ? e.toName : e.fromName; if (e.fromId !== R.me.id) { if (!(R.panel.tab === 'chat' && R.dmWith === e.fromId)) R.peek('🔒 ' + e.fromName, e.text || 'attachment'); else R.dmRead[e.fromId] = R.data.dms.filter((x) => x.fromId === e.fromId).length; } R.recountDm(); break; }
     case 'private-chat-history': R.data.dms = m.messages || []; R.data.dms.forEach((e) => { const other = e.fromId === R.me.id ? e.toId : e.fromId; R.dmNames[other] = e.fromId === R.me.id ? e.toName : e.fromName; if (e.fromId !== R.me.id) R.dmRead[e.fromId] = (R.dmRead[e.fromId] || 0) + 1; }); R.recountDm(); break;
@@ -38,6 +39,8 @@ export function handle(R, m) {
     case 'group-removed': R.data.groups.delete(m.groupId); if (R.groupOpen === m.groupId) R.groupOpen = null; break;
     case 'group-chat-history': { const g = R.data.groups.get(m.groupId); if (g) g.messages = m.messages || []; break; }
     case 'reaction': R.stageR.burst(m.emoji, m.participantId === R.me.id ? '' : m.name); break;
+    case 'sound': { const sd = soundById(m.id); if (!sd) return; playSound(m.id); R.stageR.burst(sd.emoji, m.participantId === R.me.id ? '' : `${m.name} · ${sd.label}`); return; }
+    case 'sound-denied': toast(m.error || 'Sound not sent', { icon: 'volumeX', group: 'engage', ms: 2500 }); return;
     case 'content-state': R.content = m.content; R.stageView = null; break;
     case 'content-update': if (R.content && m.content) { const pg = R.content.page; R.content = { ...R.content, ...m.content }; if (m.content.media && R.applyMediaSync) R.applyMediaSync(m.content.media); if (m.content.page !== pg && R.applyPage) R.applyPage(m.content.page); } R.panel.refresh(); return;
     case 'stage-state': { const was = R.isSpeaker(R.me.id); R.stage = { requests: [], speakers: [], ...m.stage }; if (was && !R.isSpeaker(R.me.id)) R.demoted(); break; }
@@ -63,10 +66,22 @@ export function handle(R, m) {
     case 'scripture-clear': R.scripture = null; break;
     case 'caption': if (m.final !== false) { R.data.captions.push({ participantId: m.participantId, name: m.name, text: m.text, at: m.at || Date.now() }); if (R.data.captions.length > 2000) R.data.captions.shift(); } R.stageR.caption(m); if (R.panel.tab === 'tools' && R.panel.sub.tools === 'captions') R.panel.refresh(); return;
     case 'transcript-state': R.transcribe = !!m.on; if (m.historyId) R.historyId = m.historyId; break;
-    case 'pboard-list': R.boards = m.boards || []; break;
-    case 'pboard-frame': { const cur = R.viewStrokes[m.ownerId] || []; const next = m.append ? [...cur, ...(m.strokes || [])] : (m.strokes || []); R.viewStrokes[m.ownerId] = next; if (R.viewingOwner === m.ownerId && R.viewingBoard) R.viewingBoard.strokes = next; return; }
-    case 'wb-sync': R.teamStrokes = m.strokes || []; if (R.teamBoard) R.teamBoard.strokes = R.teamStrokes.map((s) => ({ ...s, tool: s.erase ? 'eraser' : 'pen' })); return;
-    case 'wb-stroke': (R.teamStrokes ||= []).push(m.stroke); if (R.teamBoard) R.teamBoard.append([{ ...m.stroke, tool: m.stroke.erase ? 'eraser' : 'pen' }]); return;
+    case 'pboard-list': {
+      const before = new Set((R.boards || []).map((b) => b.ownerId)); R.boards = m.boards || [];
+      for (const b of R.boards) if (!before.has(b.ownerId) && b.ownerId !== R.me?.id) toast(`${b.name} is sharing a board`, { icon: 'board', group: 'content', ms: 9000, action: { label: 'View', run: () => R.viewBoard(b.ownerId) } });
+      if (R.stageView && R.stageView.startsWith('pboard:') && !R.boards.some((b) => 'pboard:' + b.ownerId === R.stageView)) { R.stageView = null; R.renderStage(true); toast('They stopped sharing their board', { icon: 'eyeOff', group: 'content' }); }
+      break;
+    }
+    case 'pboard-frame': {
+      const cur = R.viewFrames[m.ownerId];
+      if (m.append && cur && cur.page === m.page) { cur.strokes = [...(cur.strokes || []), ...(m.strokes || [])]; if (R.viewingOwner === m.ownerId && R.viewingBoard) R.viewingBoard.append(m.strokes || []); return; }
+      if (m.append) return; // missed the base frame; the next full frame catches us up
+      R.viewFrames[m.ownerId] = { page: m.page || 0, pages: m.pages || 1, bg: m.bg || 'dots', strokes: m.strokes || [], images: m.images || [], texts: m.texts || [] };
+      if (R.viewingOwner === m.ownerId && R.viewingBoard) R.viewingBoard.show(R.viewFrames[m.ownerId]);
+      return;
+    }
+    case 'wb-sync': R.teamStrokes = m.strokes || []; if (R.teamBoard) R.teamBoard.strokes = R.teamStrokes; return;
+    case 'wb-stroke': (R.teamStrokes ||= []).push(m.stroke); if (R.teamBoard) R.teamBoard.append([m.stroke]); return;
     case 'wb-clear': R.teamStrokes = []; if (R.teamBoard) R.teamBoard.strokes = []; return;
     case 'breakout-state': R.breakouts = m.breakouts; break;
     case 'breakout-assign': toast(`Moving you to ${m.room.name}…`, { icon: 'split', group: 'people' }); R.joinBreakout(m.room); break;

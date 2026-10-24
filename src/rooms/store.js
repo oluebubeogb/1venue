@@ -175,6 +175,8 @@ function getContentState(meeting) {
     type: c.type,
     title: c.title,
     url: c.url || null,
+    videoId: c.videoId || null,
+    pages: c.pages || null,
     ownerId: c.ownerId,
     remoteHolderId: c.remoteHolderId,
     scrollMode: c.scrollMode || 'uniform',
@@ -198,6 +200,7 @@ function getSecurityState(meeting) {
     chat: s.chat !== false,
     reactions: s.reactions !== false,
     raiseHand: s.raiseHand !== false,
+    sounds: s.sounds !== false,
     participantsCanInvite: !!s.participantsCanInvite,
     guestsCanInvite: !!s.guestsCanInvite,
   };
