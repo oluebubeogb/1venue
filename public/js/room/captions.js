@@ -8,6 +8,24 @@ export const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognit
 export class Captioner {
   constructor(R) { this.R = R; this.on = false; this.mode = null; this.rec = null; this.sr = null; this.timer = null; this.failures = 0; }
   get lang() { return this.R.captionLang(); }
+  // Per-user opt-out from auto captions (when the host saves a transcript).
+  get optOut() { try { return localStorage.getItem('venue.captionOptOut') === '1'; } catch { return false; } }
+  set optOut(v) { try { localStorage.setItem('venue.captionOptOut', v ? '1' : '0'); } catch { /* */ } }
+  // Always-on pipeline: runs whenever the room transcribes, independent of any panel being open.
+  autoSync() {
+    const R = this.R; const cfg = R.config.stt || {};
+    const supported = !!((cfg.server && window.MediaRecorder) || SpeechRec);
+    const want = !!R.transcribe && !this.optOut && supported && R.isSpeaker(R.me.id) && !!R.media;
+    if (want && !this.on) { this.auto = true; this.start().catch(() => {}); }
+    else if (!R.transcribe && this.on && this.auto) this.stop();
+  }
+  // User toggled "caption me": manual start clears the opt-out, manual stop during a saved transcript sets it.
+  setMine(on) { if (on) { this.optOut = false; this.auto = false; return this.start(); } if (this.R.transcribe) this.optOut = true; this.stop(); return Promise.resolve(); }
+  // Mic toggled: pause instead of tearing down (STT loop already idles while muted).
+  onMic(on) {
+    if (!this.on || this.mode !== 'webspeech' || !this.sr) return;
+    try { on ? this.sr.start() : this.sr.stop(); } catch { /* already in that state */ }
+  }
   async start() {
     if (this.on) return;
     this.on = true;
@@ -21,8 +39,9 @@ export class Captioner {
     this.on = false; clearTimeout(this.timer);
     try { this.rec && this.rec.state !== 'inactive' && this.rec.stop(); } catch { /* */ }
     try { this.sr && this.sr.stop(); } catch { /* */ }
-    this.rec = null; this.sr = null; this.mode = null;
-    if (this.ac) { this.ac.close().catch(() => {}); this.ac = null; }
+    this.rec = null; this.sr = null; this.mode = null; this.auto = false;
+    if (this.srcNode) { try { this.srcNode.disconnect(); } catch { /* */ } this.srcNode = null; this.srcTrack = null; }
+    if (this.ac) { this.ac.close().catch(() => {}); this.ac = null; this.an = null; }
     this.R.onCaptionMode && this.R.onCaptionMode(null);
   }
   async loopStt() {
@@ -31,8 +50,11 @@ export class Captioner {
     if (!track || track.muted || !this.R.media.mic) { this.timer = setTimeout(() => this.loopStt(), 1500); return; }
     const stream = new MediaStream([track]);
     // simple VAD: skip silent chunks so we don't burn STT on silence
-    if (!this.ac) { this.ac = new AudioContext(); }
-    const src = this.ac.createMediaStreamSource(stream); const an = this.ac.createAnalyser(); an.fftSize = 512; src.connect(an);
+    // one AudioContext + analyser for the whole session; rebuild the source only when the mic track changes
+    if (!this.ac) { this.ac = new AudioContext(); this.an = this.ac.createAnalyser(); this.an.fftSize = 512; }
+    if (this.srcTrack !== track) { if (this.srcNode) { try { this.srcNode.disconnect(); } catch { /* */ } } this.srcNode = this.ac.createMediaStreamSource(stream); this.srcNode.connect(this.an); this.srcTrack = track; }
+    if (this.ac.state === 'suspended') this.ac.resume().catch(() => {});
+    const an = this.an;
     const buf = new Uint8Array(an.fftSize); let peak = 0;
     const meter = setInterval(() => { an.getByteTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v - 128)); }, 120);
     const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
@@ -40,7 +62,7 @@ export class Captioner {
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = async () => {
-      clearInterval(meter); try { src.disconnect(); } catch { /* */ }
+      clearInterval(meter);
       if (this.on && this.mode === 'stt') this.loopStt();
       if (peak < 6 || !chunks.length) return;
       const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
@@ -71,7 +93,7 @@ export class Captioner {
       }
     };
     sr.onerror = (e) => { if (e.error === 'not-allowed') { this.stop(); toast('Microphone permission is needed for captions', { icon: 'alert' }); } };
-    sr.onend = () => { if (this.on && this.mode === 'webspeech') setTimeout(() => { try { sr.start(); } catch { /* */ } }, 300); };
+    sr.onend = () => { if (this.on && this.mode === 'webspeech' && this.R.media.mic) setTimeout(() => { try { sr.start(); } catch { /* */ } }, 300); };
     try { sr.start(); } catch { /* */ }
   }
 }

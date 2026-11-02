@@ -362,3 +362,13 @@ body.in-room .cmdbar { bottom: calc(10px + var(--safe-b)); width: min(1100px, ca
   .cap-bar > .icon-btn { width: 28px; min-width: 28px; }
   .cap-bar .pill.live { font-size: 0; gap: 0; padding: 4px; }
 }
+
+/* Screen-share switcher: each viewer picks which share (or cameras) fills the spotlight */
+.share-switch { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; flex: none; }
+.share-switch[hidden] { display: none; }
+.sw-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--s1); color: inherit; font: inherit; font-size: .78rem; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.sw-chip:hover { background: var(--s2); }
+.sw-chip.on { background: color-mix(in srgb, var(--g-media, #2563eb) 16%, var(--s1)); border-color: color-mix(in srgb, var(--g-media, #2563eb) 45%, transparent); }
+.tb.sharing { border: 0; cursor: pointer; background: #2563eb; font: inherit; font-size: .72rem; font-weight: 700; }
+.present[data-kind="screen"] > .tile.big { background: #05070c; }
+.present[data-kind="screen"] > .tile.big video { object-fit: contain; background: #05070c; }

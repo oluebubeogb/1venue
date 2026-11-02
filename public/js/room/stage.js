@@ -17,7 +17,12 @@ export function createStage(R) {
   const caps = h('div', { class: 'cap-overlay', 'aria-live': 'polite' });
   const fx = h('div', { class: 'fx-layer', 'aria-hidden': 'true' });
   const dock = h('div', { class: 'scr-dock', hidden: true, 'data-group': 'faith' });
-  el.append(present, tilesEl, dock, caps, fx);
+  const switchEl = h('div', { class: 'share-switch', hidden: true, role: 'tablist', 'aria-label': 'Choose what to watch', 'data-group': 'media' });
+  el.append(switchEl, present, tilesEl, dock, caps, fx);
+  // Viewer's own choice of what fills the spotlight while screens are shared:
+  // a sharer's id, 'cameras', or null (auto = keep the current screen, never jump to a newer one).
+  let pick = null, autoScreen = null;
+  function setPick(v) { pick = v; if (v && v !== 'cameras') autoScreen = v; render(true); }
   let dockKey = null;
   // Scripture on screen: 'dock' (compact card over the tiles, default), 'min' (just a pill) or 'full' (presentation area).
   const scrMode = () => { try { return localStorage.getItem('venue.scr.mode') || 'dock'; } catch { return 'dock'; } };
@@ -38,7 +43,7 @@ export function createStage(R) {
     let t = tiles.get(key);
     if (t) return t;
     const video = h('video', { autoplay: true, playsinline: true, muted: true });
-    const tile = h('div', { class: `tile${kind === 'screen' ? ' screen' : ''}`, 'data-id': id, ondblclick: () => R.pin(R.pinned === id ? null : id) },
+    const tile = h('div', { class: `tile${kind === 'screen' ? ' screen' : ''}`, 'data-id': id, ondblclick: () => (kind === 'screen' ? setPick(id) : R.pin(R.pinned === id ? null : id)) },
       h('div', { class: 'tile-av' }), video,
       h('div', { class: 'tile-meta' }, h('span', { class: 'tile-mic' }), h('b', { class: 'tile-name ellipsis' }), h('span', { class: 'tile-q' })),
       h('div', { class: 'tile-badges' }),
@@ -64,6 +69,8 @@ export function createStage(R) {
     const hand = R.hands.findIndex((x) => (x.participantId || x.id) === t.id);
     const b = t.el.querySelector('.tile-badges'); b.innerHTML = '';
     if (hand >= 0) b.append(h('span', { class: 'tb hand' }, '✋ ' + (hand + 1)));
+    const shareT = t.kind === 'camera' && tiles.get(t.id + ':screen');
+    if (shareT && shareT.track) b.append(h('button', { class: 'tb sharing', type: 'button', 'data-tip': 'Watch this screen', onclick: (e) => { e.stopPropagation(); setPick(t.id); }, html: icon('screen', { size: 12 }) + 'Sharing' }));
     if (p.role === 'host') b.append(h('span', { class: 'tb', 'data-role': 'host', html: icon('crown', { size: 12 }) }));
     if (R.stage.enabled && R.isSpeaker(t.id) && p.role !== 'host') b.append(h('span', { class: 'tb', 'data-role': 'speaker', html: icon('mic', { size: 12 }) }));
   }
@@ -82,7 +89,7 @@ export function createStage(R) {
     const t = tiles.get(kind === 'screen' ? id + ':screen' : id); if (!t) return;
     try { t.track && t.track.detach && t.track.detach(t.video); } catch { /* */ }
     t.track = null; t.video.srcObject = null;
-    if (kind === 'screen') { t.el.remove(); tiles.delete(id + ':screen'); }
+    if (kind === 'screen') { t.el.remove(); tiles.delete(id + ':screen'); if (pick === id) pick = null; if (autoScreen === id) autoScreen = null; }
     render();
   }
 
@@ -98,7 +105,12 @@ export function createStage(R) {
     if (R.stageView === 'team-board') return ['team-board'];
     if (R.stageView && R.stageView.startsWith('pboard:')) return [R.stageView];
     if (R.stageView === 'my-board') return ['my-board'];
-    const sc = screens(); if (sc.length) return ['screen:' + sc[0].id];
+    const sc = screens();
+    if (!sc.length && pick === 'cameras') pick = null;
+    if (sc.length && pick !== 'cameras') {
+      const want = (pick && sc.find((t) => t.id === pick)) || (autoScreen && sc.find((t) => t.id === autoScreen)) || sc[0];
+      autoScreen = want.id; return ['screen:' + want.id];
+    }
     if (R.content) return ['content:' + R.content.type + ':' + (R.content.videoId || R.content.url) + ':' + R.content.remoteHolderId];
     if (R.timeline.slideshow || R.timelineView) return R.timeline.items.length ? ['timeline'] : null;
     if (R.scripture && scrMode() === 'full') return ['scripture:' + R.scripture.reference + ':' + R.scripture.at];
@@ -272,6 +284,18 @@ export function createStage(R) {
     presentCleanup = () => { R.viewingBoard = null; R.viewingOwner = null; b.destroy(); };
   }
 
+  function renderSwitch(current) {
+    const sc = screens();
+    switchEl.hidden = !sc.length;
+    if (!sc.length) { switchEl.replaceChildren(); return; }
+    const sig = sc.map((t) => t.id).join(',') + '|' + current + '|' + pick;
+    if (switchEl.dataset.sig === sig) return; switchEl.dataset.sig = sig;
+    const chip = (label, ic, on, run) => h('button', { class: `sw-chip${on ? ' on' : ''}`, type: 'button', role: 'tab', 'aria-selected': on ? 'true' : 'false', onclick: run, html: icon(ic, { size: 13 }) + `<span>${esc(label)}</span>` });
+    switchEl.replaceChildren(
+      ...sc.map((t) => { const p = R.p(t.id) || (t.id === R.me.id ? R.me : { name: 'Guest' }); return chip(t.id === R.me.id ? 'Your screen' : `${p.name}’s screen`, 'screen', current === t.id, () => setPick(t.id)); }),
+      chip('Cameras', 'video', !current && pick === 'cameras', () => setPick('cameras')));
+  }
+
   // ---------- layout ----------
   function render(force) {
     const pk = presentation(); const key = pk && pk[0];
@@ -290,7 +314,7 @@ export function createStage(R) {
     if (!ids.includes(R.me.id) && (!R.stage.enabled || R.isSpeaker(R.me.id))) ids.unshift(R.me.id);
     const list = ids.map((id) => tileFor(id));
     const presentScreenId = key && key.startsWith('screen:') ? key.slice(7) : null;
-    const extraScreens = screens().filter((t) => t.id !== presentScreenId);
+    renderSwitch(presentScreenId);
     let layout = R.layout;
     let main = null;
     if (!key) {
@@ -300,7 +324,7 @@ export function createStage(R) {
       }
     }
     el.dataset.layout = key ? 'present' : layout;
-    const arr = [...extraScreens, ...list];
+    const arr = list; // screens never take a filmstrip tile — they live in the spotlight + switcher chips
     const film = main ? arr.filter((t) => t !== main) : arr;
     tilesEl.replaceChildren();
     if (main) { tilesEl.append(h('div', { class: 'tile-main' }, main.el)); }
@@ -344,5 +368,5 @@ export function createStage(R) {
     fx.append(n); setTimeout(() => n.remove(), 3200);
   }
 
-  return { el, render, setTrack, clearTrack, caption, paintCaps, burst, paintAll: () => { for (const t of tiles.values()) paintTile(t); }, tiles, screens, presentEl: present, get presentKey() { return presentKey; } };
+  return { el, render, setPick, get pick() { return pick; }, setTrack, clearTrack, caption, paintCaps, burst, paintAll: () => { for (const t of tiles.values()) paintTile(t); }, tiles, screens, presentEl: present, get presentKey() { return presentKey; } };
 }

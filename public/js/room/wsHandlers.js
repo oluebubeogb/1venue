@@ -65,7 +65,7 @@ export function handle(R, m) {
     case 'scripture-show': R.scripture = m.scripture; R.stageView = null; break;
     case 'scripture-clear': R.scripture = null; break;
     case 'caption': if (m.final !== false) { R.data.captions.push({ participantId: m.participantId, name: m.name, text: m.text, at: m.at || Date.now() }); if (R.data.captions.length > 2000) R.data.captions.shift(); } R.stageR.caption(m); if (R.panel.tab === 'tools' && R.panel.sub.tools === 'captions') R.panel.refresh(); return;
-    case 'transcript-state': R.transcribe = !!m.on; if (m.historyId) R.historyId = m.historyId; break;
+    case 'transcript-state': R.transcribe = !!m.on; if (m.historyId) R.historyId = m.historyId; R.captioner && R.captioner.autoSync(); break;
     case 'pboard-list': {
       const before = new Set((R.boards || []).map((b) => b.ownerId)); R.boards = m.boards || [];
       for (const b of R.boards) if (!before.has(b.ownerId) && b.ownerId !== R.me?.id) toast(`${b.name} is sharing a board`, { icon: 'board', group: 'content', ms: 9000, action: { label: 'View', run: () => R.viewBoard(b.ownerId) } });

@@ -62,6 +62,7 @@ You'll use the same pair in both the LiveKit service and the 1venue app.
    ```
    LIVEKIT_API_KEY=APIxxxxxxxx
    LIVEKIT_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   NODE_IP=62.169.23.173
    ```
 4. **Domain**: on the `livekit` service, set `https://1v.collab.name.ng:7880`. Coolify's syntax `domain:port` means "proxy this domain to container port 7880". The public URL is still `https://1v.collab.name.ng` on 443.
 5. WebSockets work through Coolify's Traefik by default. On the Caddy proxy they also work by default. If you customised labels, make sure nothing strips the `Upgrade` header.

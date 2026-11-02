@@ -87,7 +87,7 @@ export function buildTools(R) {
       const head = h('div', { class: 'cap-head' },
         h('div', { class: 'cap-bar' },
           chip('captions', 'Show', R.showCaptions, () => { R.setShowCaptions(!R.showCaptions); R.panel.render(); }, 'Overlay captions on the stage'),
-          chip('mic', c.on ? 'Captioning me' : 'Caption me', c.on, () => (c.on ? (c.stop(), R.panel.render()) : c.start().then(() => R.panel.render()).catch(toastErr)), micSub, !canMic && !c.on),
+          chip('mic', c.on ? 'Captioning me' : 'Caption me', c.on, () => c.setMine(!c.on).then(() => R.panel.render()).catch(toastErr), micSub, !canMic && !c.on),
           R.transcribe ? h('span', { class: 'pill sm live', 'data-tip': 'Transcript is being saved' }, 'Saving') : null,
           h('span', { class: 'grow' }),
           ib('copy', 'Copy transcript', () => copy(text(), 'Transcript copied')),
@@ -96,7 +96,7 @@ export function buildTools(R) {
           h('button', { class: `icon-btn sm cap-more${open ? ' on' : ''}`, type: 'button', 'aria-expanded': open ? 'true' : 'false', 'data-tip': open ? 'Hide settings' : 'Settings', 'aria-label': 'Caption settings', onclick: toggleOpen, html: icon('settings', { size: 15 }) })),
         open ? h('div', { class: 'cap-settings' },
           row('languages', 'Spoken language', 'Nigerian English, Pidgin, Yorùbá, Igbo and Hausa', lang),
-          row('mic', 'Caption my voice', micSub, sw(c.on, (v) => v ? c.start().then(() => R.panel.render()).catch(toastErr) : (c.stop(), R.panel.render()), !canMic && !c.on)),
+          row('mic', 'Caption my voice', micSub, sw(c.on, (v) => c.setMine(v).then(() => R.panel.render()).catch(toastErr), !canMic && !c.on)),
           R.isMod() ? row('fileText', 'Save transcript', 'Store captions for summaries after the session', sw(R.transcribe, (v) => R.send('transcript-toggle', { on: v }))) : null) : null);
       const lines = R.data.captions.slice(-200);
       const list = h('div', { class: 'transcript live', 'data-autoscroll': '' }, lines.length ? lines.map((l) => h('div', { class: 'tline' }, h('span', { class: 'ts' }, new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), h('span', null, h('b', null, l.name + ': '), l.text))) : h('div', { class: 'empty sm' }, h('p', null, 'Captions will appear here as people speak.')));

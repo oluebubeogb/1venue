@@ -46,8 +46,8 @@ const MEDIA = {
   videoMaxBitrate: int('VIDEO_MAX_BITRATE', 1_200_000),
   videoMaxFps: int('VIDEO_MAX_FPS', 24),
   videoResolution: env('VIDEO_RESOLUTION', '720p'),
-  screenMaxBitrate: int('SCREEN_MAX_BITRATE', 2_500_000),
-  screenMaxFps: int('SCREEN_MAX_FPS', 15),
+  screenMaxBitrate: int('SCREEN_MAX_BITRATE', 1_200_000),
+  screenMaxFps: int('SCREEN_MAX_FPS', 12),
   audioPreset: env('AUDIO_PRESET', 'speech'), // speech | music | musicHighQuality
   simulcast: bool('SIMULCAST', true),
   dynacast: bool('DYNACAST', true),

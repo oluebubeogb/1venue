@@ -37,11 +37,12 @@ export class Media {
         simulcast: m.simulcast !== false,
         videoSimulcastLayers: [LK.VideoPresets.h180, LK.VideoPresets.h360],
         videoEncoding: { maxBitrate: v.maxBitrate || 1_200_000, maxFramerate: v.maxFramerate || 24 },
-        screenShareEncoding: { maxBitrate: sc.maxBitrate || 2_500_000, maxFramerate: sc.maxFramerate || 15 },
+        screenShareEncoding: { maxBitrate: Math.min(sc.maxBitrate || 1_200_000, 1_500_000), maxFramerate: Math.min(sc.maxFramerate || 12, 15) },
+        screenShareSimulcastLayers: [],
         dtx: true, red: true, audioPreset: LK.AudioPresets ? (LK.AudioPresets[m.audioPreset || 'speech'] || LK.AudioPresets.speech) : undefined,
       },
     });
-    this.room = room;
+    this.room = room; this.screenCap = sc;
     const E = LK.RoomEvent;
     room.on(E.TrackSubscribed, (track, pub, p) => this.onTrack && this.onTrack(p.identity, track, pub.source))
       .on(E.TrackUnsubscribed, (track, pub, p) => this.onTrackGone && this.onTrackGone(p.identity, track, pub.source))
@@ -78,8 +79,15 @@ export class Media {
   async setShare(on, quality = 'auto') {
     if (!this.room) throw new Error('Screen sharing needs the media server (LiveKit) to be configured');
     const LK = this.LK;
-    const res = { high: LK.ScreenSharePresets.h1080fps15, medium: LK.ScreenSharePresets.h720fps15, low: LK.ScreenSharePresets.h720fps5, auto: LK.ScreenSharePresets.h720fps15 }[quality] || LK.ScreenSharePresets.h720fps15;
-    await this.room.localParticipant.setScreenShareEnabled(on, { audio: true, resolution: res.resolution, contentHint: 'detail', selfBrowserSurface: 'include', surfaceSwitching: 'include', systemAudio: 'include' }, { screenShareEncoding: res.encoding, videoCodec: 'vp8' });
+    // Lean screen share for a small VPS SFU: one encoding (no simulcast/extra layers), <=1280x720, 5-12 fps, <=1.2 Mbps.
+    const cap = this.screenCap || {};
+    const maxBitrate = Math.min(cap.maxBitrate || 1_200_000, 1_500_000);
+    const fps = Math.min(cap.maxFramerate || 12, 15);
+    const pick = { high: [1280, 720, fps], medium: [1280, 720, Math.min(fps, 10)], low: [960, 540, 5], auto: [1280, 720, fps] }[quality] || [1280, 720, fps];
+    const [width, height, frameRate] = pick;
+    await this.room.localParticipant.setScreenShareEnabled(on,
+      { audio: true, resolution: { width, height, frameRate }, contentHint: 'detail', selfBrowserSurface: 'include', surfaceSwitching: 'include', systemAudio: 'include' },
+      { videoCodec: 'vp8', simulcast: false, screenShareSimulcastLayers: [], screenShareEncoding: { maxBitrate: quality === 'low' ? Math.min(maxBitrate, 600_000) : maxBitrate, maxFramerate: frameRate }, scalabilityMode: 'L1T1', degradationPreference: 'maintain-resolution' });
     this.syncLocal(); return this.sharing;
   }
   // Local preview stream when LiveKit is not configured (keeps the room usable for chat/stage/scripture etc.)

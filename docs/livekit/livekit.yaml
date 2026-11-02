@@ -8,8 +8,8 @@ rtc:
   tcp_port: 7881                # ICE over TCP fallback (open on the host firewall)
   port_range_start: 50000       # ICE over UDP (open 50000-60000/udp on the host firewall)
   port_range_end: 60000
-  use_external_ip: true         # discover the public IP via STUN; set node_ip instead if that fails
-  # node_ip: 203.0.113.10       # ← uncomment and set your server's public IPv4 if use_external_ip picks the wrong one
+  use_external_ip: false         # STUN self-check fails behind Docker/firewalls; we pin node_ip instead
+  node_ip: 62.169.23.173         # your server public IPv4
   # Lean: no simulcast layers beyond what clients send; congestion control on.
   congestion_control:
     enabled: true

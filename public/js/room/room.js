@@ -288,7 +288,7 @@ Object.assign(Room.prototype, {
   renderStage(force) { this.stageR.render(force); },
   cycleLayout(dir = 1) { const L = ['grid', 'spotlight', 'speaker']; this.setLayout(L[(L.indexOf(this.layout) + dir + 3) % 3]); },
   setLayout(l) { this.layout = l; lsSet('venue.layout', l); this.renderStage(true); this.paintHead(); refreshBar(); toast({ grid: 'Grid view', spotlight: 'Spotlight view', speaker: 'Speaker view' }[l], { icon: l === 'grid' ? 'grid' : l === 'spotlight' ? 'spotlight' : 'speaker', group: 'media', ms: 1200 }); },
-  pin(id) { this.pinned = id; if (id && this.layout === 'grid') this.layout = 'spotlight'; this.renderStage(true); },
+  pin(id) { this.pinned = id; if (id && this.layout === 'grid') this.layout = 'spotlight'; if (id && this.stageR.screens().length) return this.stageR.setPick('cameras'); this.renderStage(true); },
   applyWant() { const w = this.want || {}; if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
   promoted() { this.reconnectMedia(true); },
@@ -305,6 +305,7 @@ Object.assign(Room.prototype, {
       if (lr) lr.on && lr.on('audioPlaybackChanged', () => { if (lr.canPlaybackAudio === false) this.audioBlocked(); });
       // tracks already published by others
       lr && lr.remoteParticipants && lr.remoteParticipants.forEach((rp) => rp.trackPublications.forEach((pub) => pub.track && pub.isSubscribed && this.onTrack(rp.identity, pub.track, pub.source)));
+      this.captioner && this.captioner.autoSync();
     } catch (e) { console.warn('media', e); toast('Couldn’t connect audio/video — retrying from Tools › Diagnostics', { icon: 'wifi', group: 'media' }); await this.media.fallback().catch(() => {}); }
   },
   audioBlocked() {
@@ -333,7 +334,7 @@ Object.assign(Room.prototype, {
     if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience — request to speak first', { icon: 'stage', group: 'engage' }); return; }
     if (on && !this.perm('microphone') && !this.isMod()) { toast('The host has disabled microphones', { icon: 'micOff' }); return; }
     if (on && this.meP()?.mutedByHost && !this.isMod()) this.send('unmute-self', {});
-    try { await this.media.setMic(on); if (this.captioner.on && this.captioner.mode === 'webspeech') { this.captioner.stop(); this.captioner.start(); } } catch (e) { toastErr(e); }
+    try { await this.media.setMic(on); this.captioner.onMic(on); this.captioner.autoSync(); } catch (e) { toastErr(e); }
     this.changed();
   },
   async toggleCam(force) {
