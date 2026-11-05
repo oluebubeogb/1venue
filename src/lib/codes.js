@@ -31,8 +31,6 @@ function customSlug(input, plan, { suffix } = {}) {
   if (base.length === 2 && r < 3) err('2-character links need the slug2 package');
   if (base.length === 3 && r < 2) err('3-character links need the slug3 package');
   if (base.length === 4 && r < 2) err('Premium links need at least 5 characters (4 needs the slug3 package)');
-  if (base.length === 6) err('6-character links look like meeting codes — pick another length');
-  if (base.length === 7 && /\d/.test(base) && /[a-z]/.test(base)) err('That shape is reserved for auto links — add or remove a character');
   return { slug: base, base };
 }
 

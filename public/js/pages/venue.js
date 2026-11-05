@@ -21,7 +21,6 @@ function previewSlug(base, plan) {
   if (base.length === 2 && r < 3) return { slug: base, err: '2-character links need the slug2 package' };
   if (base.length === 3 && r < 2) return { slug: base, err: '3-character links need the slug3 package' };
   if (base.length < 2) return { slug: base, err: 'Too short' };
-  if (base.length === 6) return { slug: base, err: '6 characters look like meeting codes — pick another length' };
   return { slug: base };
 }
 const planNote = (plan) => h('div', { class: 'tiny muted' }, h('span', { class: 'chip tiny', style: { marginRight: '6px' } }, PLAN_LABEL[plan] || 'Free'),
@@ -101,6 +100,8 @@ async function door(view, slug) {
   let v;
   try { v = await api(`/api/venues/${encodeURIComponent(slug)}`); }
   catch (e) { view.append(empty('door', 'Venue not found', 'Check the link and try again.', h('a', { class: 'btn', href: '/', 'data-link': '' }, 'Home'))); return; }
+  // Bare /{slug} only opens auto (7-char) or free *-venue links; premium custom venues live under /v/ only.
+  if (!location.pathname.startsWith('/v/') && v.isCustom && !/-venue$/.test(v.slug)) { view.append(empty('door', 'Venue not found', 'Check the link and try again.', h('a', { class: 'btn', href: '/', 'data-link': '' }, 'Home'))); return; }
   if (location.pathname !== `/v/${v.slug}`) history.replaceState({}, '', `/v/${v.slug}`);
   document.title = `${v.name} · 1venue`;
   const wrap = h('div', { class: 'page narrow col venue-door', style: { gap: '14px' } });
