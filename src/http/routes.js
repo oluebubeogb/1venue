@@ -736,6 +736,9 @@ function createRequestHandler() {
         if (meetings.has(venue.code)) return sendJSON(res, 409, { error: 'This venue is already open', code: venue.code });
         code = venue.code; // forced: client-sent code is ignored for venues
       }
+      const codeSource = venue ? 'venue' : event ? 'event' : 'generated';
+      res.setHeader('X-1venue-Code-Source', codeSource);
+      if (process.env.DEBUG_CREATE === '1') console.log('[create]', JSON.stringify({ codeSource, code, bodyVenue: body.venue || null, bodyCode: body.code || null, eventId: body.eventId || null, user: authUser ? authUser.id : null }));
       const hostId = body.participantId || 'host-' + Date.now();
       const hostName = normalizeParticipantName(
         body.participantName
