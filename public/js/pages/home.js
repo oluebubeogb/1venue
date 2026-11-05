@@ -1,13 +1,12 @@
 import { icon } from '../icons.js';
 import { h, api, esc, frag, fmtNum } from '../ui.js';
-import { state, navigate, CATS, joinPrompt } from '../app.js';
+import { state, navigate, CATS, joinPrompt, parseCode } from '../app.js';
 import { eventCard, skeletonCards, sectionHead, empty, catOf } from '../components.js';
 import { inlineBanner } from '../pwa.js';
 
 export async function mount(view) {
-  const CODE = /^\s*([a-z]{3})[\s-]?(\d{3})\s*$/i;
-  const codeIn = h('input', { class: 'input', placeholder: 'Enter code  e.g. ABC-234', maxlength: 8, 'aria-label': 'Room code', autocapitalize: 'characters' });
-  const joinGo = () => { const m = codeIn.value.match(CODE); if (m) navigate(`/${m[1].toUpperCase()}-${m[2]}`); else joinPrompt(); };
+  const codeIn = h('input', { class: 'input', placeholder: 'Enter code  e.g. y5yi87', maxlength: 8, 'aria-label': 'Room code', autocapitalize: 'none', autocomplete: 'off', spellcheck: 'false' });
+  const joinGo = () => { const c = parseCode(codeIn.value); if (c) navigate(`/${c}`); else joinPrompt(); };
   codeIn.addEventListener('keydown', (e) => e.key === 'Enter' && joinGo());
   const hello = state.user ? `Welcome back, ${state.user.displayName.split(' ')[0]}` : 'Your stage is ready';
   const hero = h('section', { class: 'hero' },

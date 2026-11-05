@@ -266,7 +266,7 @@ p { margin: 0; }
 .hero .btn:not(.primary) { --b: rgba(255,255,255,.14); --bt: #fff; border-color: rgba(255,255,255,.22); }
 .hero .btn.primary { --b: #fff; --bt: #0b1020; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); }
 .join-box { display: flex; gap: .5rem; margin-top: 1.4rem; max-width: 520px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); padding: 6px; border-radius: var(--r-pill); backdrop-filter: blur(10px); }
-.join-box input { flex: 1; min-width: 0; border: 0; background: transparent; color: #fff; padding: 0 1rem; outline: 0; font-size: 1.05rem; letter-spacing: .08em; text-transform: uppercase; }
+.join-box input { flex: 1; min-width: 0; border: 0; background: transparent; color: #fff; padding: 0 1rem; outline: 0; font-size: 1.05rem; letter-spacing: .08em; text-transform: lowercase; }
 .join-box input::placeholder { color: rgba(255,255,255,.65); letter-spacing: 0; text-transform: none; }
 
 .stats { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }

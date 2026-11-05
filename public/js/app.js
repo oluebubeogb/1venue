@@ -85,10 +85,12 @@ const ROUTES = [
   [/^\/whiteboard\/?$/, () => import('./pages/whiteboard.js')],
   [/^\/login\/?$/, () => import('./pages/login.js')],
   [/^\/venues\/?$/, () => import('./pages/venue.js'), { list: true }],
-  [/^\/v\/([A-Za-z0-9]{4,16})\/?$/, () => import('./pages/venue.js'), 'slug'],
+  [/^\/v\/([A-Za-z0-9]{2,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/(?=[A-Za-z]*\d)(?=\d*[A-Za-z])([A-Za-z0-9]{7})\/?$/, () => import('./pages/venue.js'), 'slug'],
+  [/^\/([A-Za-z0-9]{5}-venue)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/new\/?$/, () => import('./room/room.js'), { code: null, instant: true }],
-  [/^\/(?:r\/|j\/)?([A-Za-z]{3}-?\d{3})\/?$/, () => import('./room/room.js'), 'code'],
+  // Meeting rooms: /y5yi87 (also /r/…, /j/…, and legacy /ABC-234 pastes)
+  [/^\/(?:r\/|j\/)?([A-Za-z0-9]{3}-?[A-Za-z0-9]{3})\/?$/, () => import('./room/room.js'), 'code'],
 ];
 let currentPage = null;
 let routeSeq = 0;
@@ -211,15 +213,17 @@ export function bumpFont(d) {
 
 /* ---------- global commands (every page and setting) ---------- */
 const BIBLE_REF = /^\s*([1-3]?\s?[a-z]+\.?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?\s*$/i;
-const CODE_RE = /^\s*([a-z]{3})[\s-]?(\d{3})\s*$/i;
+export const fmtCode = (c) => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+export const CODE_RE = /^\s*([a-z0-9]{3})[\s-]?([a-z0-9]{3})\s*$/i;
+export const parseCode = (v) => { const m = String(v || '').match(CODE_RE); return m ? (m[1] + m[2]).toLowerCase() : null; };
 export function globalBarContext(pinnedOverride) {
   return {
-    placeholders: ['Search events, people, verses…', 'Try “go live”', 'Try “John 3:16”', 'Try “dark mode”', 'Join with a code: ABC-234', 'Try “bigger text”', 'Try “sermons live now”', 'Try “my whiteboard”'],
+    placeholders: ['Search events, people, verses…', 'Try “go live”', 'Try “John 3:16”', 'Try “dark mode”', 'Join with a code: y5yi87', 'Try “bigger text”', 'Try “sermons live now”', 'Try “my whiteboard”'],
     pinned: () => pinnedOverride ? pinnedOverride() : ['create', 'join', 'discover', 'live', 'feed', 'bible', 'dashboard', 'whiteboard', 'theme', 'settings'].map(cmdById),
     dynamic: (q) => {
       const out = [];
-      const c = q.match(CODE_RE);
-      if (c) out.push({ id: 'dyn-join', label: `Join ${c[1].toUpperCase()}-${c[2]}`, icon: 'login', group: 'people', run: () => navigate(`/${c[1].toUpperCase()}-${c[2]}`) });
+      const c = /\d/.test(q) ? parseCode(q) : null;
+      if (c) out.push({ id: 'dyn-join', label: `Join ${c}`, icon: 'login', group: 'people', run: () => navigate(`/${c}`) });
       const b = q.match(BIBLE_REF);
       if (b && b[1].length > 1) out.push({ id: 'dyn-bible', label: `Open ${q.trim()}`, icon: 'bookOpen', group: 'faith', run: () => navigate('/bible?ref=' + encodeURIComponent(q.trim())) });
       out.push({ id: 'dyn-search', label: `Search “${q.trim().slice(0, 24)}”`, short: 'Search all', icon: 'search', group: 'nav', tail: true, run: () => navigate('/search?q=' + encodeURIComponent(q.trim())) });
@@ -275,10 +279,10 @@ function registerGlobal() {
 }
 export function joinPrompt() {
   const s = sheet({ title: 'Join a room', icon: 'login', group: 'people' });
-  const inp = h('input', { class: 'input code-big', placeholder: 'ABC-234', maxlength: 8, autocapitalize: 'characters', style: { textAlign: 'center' } });
-  const go = () => { const m = inp.value.match(CODE_RE); if (!m) return toast('Codes look like ABC-234', { icon: 'info' }); s.close(); navigate(`/${m[1].toUpperCase()}-${m[2]}`); };
+  const inp = h('input', { class: 'input code-big', placeholder: 'y5yi87', maxlength: 8, autocapitalize: 'none', autocomplete: 'off', spellcheck: 'false', style: { textAlign: 'center' } });
+  const go = () => { const c = parseCode(inp.value); if (!c) return toast('Codes look like y5yi87', { icon: 'info' }); s.close(); navigate(`/${c}`); };
   inp.addEventListener('keydown', (e) => e.key === 'Enter' && go());
-  s.body.append(h('p', { class: 'muted small', style: { marginBottom: '.8rem' } }, 'Enter the 6-character room code (3 letters + 3 numbers).'), inp, h('button', { class: 'btn primary block', style: { marginTop: '1rem' }, onclick: go }, 'Continue'));
+  s.body.append(h('p', { class: 'muted small', style: { marginBottom: '.8rem' } }, 'Enter the 6-character room code (letters and numbers, any case).'), inp, h('button', { class: 'btn primary block', style: { marginTop: '1rem' }, onclick: go }, 'Continue'));
 }
 function showShortcuts() {
   const rows = [['/ or Ctrl K', 'Focus the command bar'], ['↑ ↓ ← →', 'Move between suggested actions'], ['Enter', 'Run action / search everything'], ['Esc', 'Close sheet or clear the bar'], ['In a room: M', 'Mute / unmute'], ['In a room: V', 'Camera on / off'], ['In a room: H', 'Raise / lower hand'], ['In a room: C', 'Chat']];

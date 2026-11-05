@@ -1,3 +1,4 @@
+const { normCode, randCode } = require('../lib/codes');
 /**
  * Active meetings (runtime). Extended for Phase 1:
  * roles, waiting room, raised hands, lock, invite tokens, permissions.
@@ -15,16 +16,16 @@ const meetings = new Map();
 const clients = new Map();
 
 function getMeeting(code) {
-  return meetings.get(String(code || '').toUpperCase());
+  return meetings.get(normCode(code));
 }
 
 function setMeeting(code, meeting) {
-  meetings.set(String(code).toUpperCase(), meeting);
+  meetings.set(normCode(code), meeting);
   return meeting;
 }
 
 function deleteMeeting(code) {
-  meetings.delete(String(code || '').toUpperCase());
+  meetings.delete(normCode(code));
 }
 
 function allMeetings() {
@@ -271,16 +272,8 @@ function sendToParticipant(participantId, message) {
 }
 
 function generateCode() {
-  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const digits = '23456789';
   let code;
-  do {
-    let L = '';
-    let N = '';
-    for (let i = 0; i < 3; i++) L += letters[Math.floor(Math.random() * letters.length)];
-    for (let i = 0; i < 3; i++) N += digits[Math.floor(Math.random() * digits.length)];
-    code = L + N;
-  } while (meetings.has(code));
+  do code = randCode(6); while (meetings.has(code));
   return code;
 }
 

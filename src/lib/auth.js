@@ -253,6 +253,7 @@ function publicUser(user) {
     displayName,
     avatarUrl: user.avatarUrl || user.avatar_url || null,
     source: user.source || 'local',
+    plan: user.plan || 'free',
     createdAt: user.created_at,
   };
 }

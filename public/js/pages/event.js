@@ -4,7 +4,7 @@ import { state, navigate, requireLogin } from '../app.js';
 import { catOf, commentThread, shareLink, sectionHead, empty, followBtn } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 
-export const roomPath = (code) => `/${code.slice(0, 3)}-${code.slice(3)}`;
+export const roomPath = (code) => '/' + String(code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /** Colourful, owner-themed QR with the 1venue mark. SVG from the server; PNG rasterised client-side. */
 async function svgToPng(svgUrl, name, scale = 3) {

@@ -1,3 +1,4 @@
+const { normCode } = require('../lib/codes');
 const { WebSocketServer } = require('ws');
 const db = require('../../db');
 const config = require('../config');
@@ -77,7 +78,7 @@ function attachWebSocket(server) {
 
       if (msg.type === 'register') {
         const claimedId = msg.participantId;
-        const claimedCode = (msg.code || '').toUpperCase();
+        const claimedCode = normCode(msg.code);
         const credential = msg.wsCredential || msg.credential || msg.token;
 
         const verified = verifyWsCredential(credential, {

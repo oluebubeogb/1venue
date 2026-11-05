@@ -37,7 +37,7 @@ export async function mount(view, params) {
     render(); return box;
   };
   const dl = (href, label, ic) => h('a', { class: 'btn sm', href, download: '', html: icon(ic, { size: 15 }) + label });
-  view.append(h('div', { class: 'page-head' }, h('div', { class: 'tiny muted', html: icon('history', { size: 14 }) + ` Session · ${s.code.slice(0, 3)}-${s.code.slice(3)}` }), h('h1', null, s.name || 'Session'),
+  view.append(h('div', { class: 'page-head' }, h('div', { class: 'tiny muted', html: icon('history', { size: 14 }) + ` Session · ${String(s.code).toLowerCase()}` }), h('h1', null, s.name || 'Session'),
     h('p', { class: 'muted small' }, `${fmtDate(s.startedAt)}${s.endedAt ? ' · ' + fmtDur((new Date(s.endedAt) - start) / 1000) : ' · in progress'} · ${lines.length} transcript lines`)),
     h('div', { class: 'row wrap', style: { gap: '.5rem', marginBottom: '1rem' } }, dl(`/api/sessions/${s.id}/transcript.txt`, 'Transcript .txt', 'download'), Object.keys(sums).length ? dl(`/api/sessions/${s.id}/summary.md`, 'Summary .md', 'fileText') : null,
       h('button', { class: 'btn sm', html: icon('copy', { size: 15 }) + 'Copy transcript', onclick: () => copy(lines.map((l) => `${l.name}: ${l.text}`).join('\n'), 'Transcript copied') })),
@@ -58,7 +58,7 @@ async function list(view) {
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('history', { size: 28 }) + 'Sessions' }), h('p', { class: 'muted' }, 'Every meeting and event you joined — transcripts, AI summaries and downloads.')),
     r.history.length ? h('div', { class: 'card layer list stagger' }, r.history.map((x) => h('a', { class: 'list-item', href: `/session/${x.id}`, 'data-link': '' },
       h('span', { class: 'ico-tile', 'data-group': x.wasHost ? 'engage' : 'content', html: icon(x.wasHost ? 'radio' : 'fileText', { size: 18 }) }),
-      h('div', { class: 'grow' }, h('div', { style: { fontWeight: 650 } }, x.name || `${x.code.slice(0, 3)}-${x.code.slice(3)}`), h('div', { class: 'tiny faint' }, `${fmtDate(x.createdAt)} · ${x.wasHost ? 'Hosted' : 'Joined'}${x.endedAt ? ' · ' + fmtDur((new Date(x.endedAt) - new Date(x.createdAt)) / 1000) : ' · live'}${x.maxParticipants ? ` · ${x.maxParticipants} people` : ''}`)),
+      h('div', { class: 'grow' }, h('div', { style: { fontWeight: 650 } }, x.name || String(x.code).toLowerCase()), h('div', { class: 'tiny faint' }, `${fmtDate(x.createdAt)} · ${x.wasHost ? 'Hosted' : 'Joined'}${x.endedAt ? ' · ' + fmtDur((new Date(x.endedAt) - new Date(x.createdAt)) / 1000) : ' · live'}${x.maxParticipants ? ` · ${x.maxParticipants} people` : ''}`)),
       h('span', { html: icon('chevronRight', { size: 18 }) }))))
       : empty('history', 'No sessions yet', 'Join or host a meeting and it’ll show up here with its transcript.', h('a', { class: 'btn primary', href: '/create?instant=1', 'data-link': '' }, 'Start a meeting')));
 }

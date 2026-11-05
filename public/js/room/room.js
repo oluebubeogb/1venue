@@ -15,7 +15,7 @@ import { handle, chime } from './wsHandlers.js';
 import { maybeShowBanner } from '../pwa.js';
 
 export const isRoom = true;
-const fmtCode = (c) => c ? `${c.slice(0, 3)}-${c.slice(3)}` : '';
+const fmtCode = (c) => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const roomsStore = () => { try { return JSON.parse(localStorage.getItem('venue.rooms')) || {}; } catch { return {}; } };
 const saveRoom = (code, v) => { const s = roomsStore(); s[code] = { ...v, at: Date.now() }; for (const k of Object.keys(s)) if (Date.now() - s[k].at > 864e5 * 2) delete s[k]; localStorage.setItem('venue.rooms', JSON.stringify(s)); };
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
@@ -32,7 +32,7 @@ export async function mount(view, params) {
 class Room {
   constructor(view, params) {
     this.view = view; this.params = params;
-    this.code = params.code ? params.code.toUpperCase().replace(/[^A-Z0-9]/g, '') : null;
+    this.code = params.code ? fmtCode(params.code) : null;
     this.config = state.config || {};
     this.intent = lsGetSession('venue.intent');
     this.alive = true;

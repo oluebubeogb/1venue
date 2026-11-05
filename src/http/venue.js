@@ -1,3 +1,5 @@
+const codes = require('../lib/codes');
+const { normCode } = codes;
 /**
  * 1venue REST routes: events and discovery, social (feed, follows, comments),
  * prefs, files, STT, transcripts and AI summaries, Bible, QR, whiteboards,
@@ -28,7 +30,7 @@ async function requireUser(req, res) {
 }
 /** In-room callers prove membership with the same HMAC credential the WebSocket uses. */
 function roomParticipant(req, codeHint) {
-  const code = String(req.headers['x-room-code'] || codeHint || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const code = normCode(req.headers['x-room-code'] || codeHint);
   const pid = String(req.headers['x-participant-id'] || '');
   const cred = String(req.headers['x-room-credential'] || '');
   if (!code || !pid || !cred) return null;
@@ -94,28 +96,40 @@ route('GET', '/api/venues', async (ctx) => {
 });
 route('POST', '/api/venues', async (ctx) => {
   const u = await requireUser(ctx.req, ctx.res);
-  return data.createVenue(u.id, venueName((await ctx.body()).name));
+  const b = await ctx.body();
+  const custom = b.customSlug || b.slug || b.custom || null;
+  return data.createVenue(u.id, venueName(b.name), custom, { suffix: b.suffix === true });
 });
 route('GET', '/api/venues/by-code/([A-Za-z0-9-]{4,16})', async (ctx, [code]) => {
-  const v = await data.getVenueByCode(code.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  const v = await data.getVenueByCode(normCode(code));
   if (!v) return { venue: null };
   const u = await getAuthUser(ctx.req, ctx.res);
   return { venue: { slug: v.slug, name: v.name, code: v.code, isOwner: !!(u && u.id === v.ownerUserId), live: venueLive(v) } };
 });
-route('GET', '/api/venues/([A-Za-z0-9]{4,16})', async (ctx, [slug]) => {
+const SLUG = '([A-Za-z0-9]{2,16}(?:-venue)?)';
+route('GET', '/api/venues/plan', async (ctx) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  return { plan: await data.getUserPlan(u.id), plans: codes.PLANS };
+});
+route('GET', `/api/venues/${SLUG}`, async (ctx, [slug]) => {
   const v = await data.getVenueBySlug(slug.toLowerCase());
   if (!v) throw httpError(404, 'Venue not found');
   const u = await getAuthUser(ctx.req, ctx.res);
   const isOwner = !!(u && u.id === v.ownerUserId);
-  return { slug: v.slug, name: v.name, code: v.code, isOwner, live: venueLive(v) };
+  return { slug: v.slug, name: v.name, code: v.code, isOwner, isCustom: v.isCustom, plan: isOwner ? await data.getUserPlan(u.id) : undefined, live: venueLive(v) };
 });
-route('PATCH', '/api/venues/([A-Za-z0-9]{4,16})', async (ctx, [slug]) => {
+route('PATCH', `/api/venues/${SLUG}`, async (ctx, [slug]) => {
   const u = await requireUser(ctx.req, ctx.res);
   const v = await data.getVenueBySlug(slug.toLowerCase());
   if (!v || v.ownerUserId !== u.id) throw httpError(404, 'Venue not found');
-  return data.renameVenue(v.id, u.id, venueName((await ctx.body()).name));
+  const b = await ctx.body();
+  let out = v;
+  if (b.name != null) out = await data.renameVenue(v.id, u.id, venueName(b.name));
+  const custom = b.customSlug || b.slug;
+  if (custom) out = await data.setVenueSlug(v.id, u.id, custom, { suffix: b.suffix === true });
+  return out;
 });
-route('GET', '/api/venues/([A-Za-z0-9]{4,16})/meetings', async (ctx, [slug]) => {
+route('GET', `/api/venues/${SLUG}/meetings`, async (ctx, [slug]) => {
   const u = await requireUser(ctx.req, ctx.res);
   const v = await data.getVenueBySlug(slug.toLowerCase());
   if (!v || v.ownerUserId !== u.id) throw httpError(404, 'Venue not found');
@@ -462,7 +476,7 @@ route('DELETE', '/api/whiteboards/(\\d+)', async (ctx, [id]) => {
 
 // ------------------------------------------------------------ live room helpers (REST mirror for slow clients)
 route('GET', '/api/rooms/([A-Za-z0-9-]+)/stage', async (ctx, [code]) => {
-  const m = store.getMeeting(code.toUpperCase().replace(/-/g, ''));
+  const m = store.getMeeting(normCode(code));
   if (!m) throw httpError(404, 'Room not live');
   return stage.state(m);
 });

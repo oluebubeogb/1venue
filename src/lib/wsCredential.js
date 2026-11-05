@@ -1,3 +1,4 @@
+const { normCode } = require('./codes');
 /**
  * Short-lived signed credential binding a WebSocket session to a
  * (meeting code, participantId) pair issued by the HTTP join/create APIs.
@@ -13,7 +14,7 @@ function signWsCredential({ participantId, code, ttlMs = DEFAULT_TTL_MS }) {
   const payload = Buffer.from(
     JSON.stringify({
       pid: String(participantId),
-      code: String(code || '').toUpperCase(),
+      code: normCode(code),
       exp,
     }),
     'utf8'
@@ -58,13 +59,13 @@ function verifyWsCredential(token, { participantId, code } = {}) {
   if (participantId && String(data.pid) !== String(participantId)) {
     return { ok: false, error: 'Ws credential participant mismatch' };
   }
-  if (code && String(data.code).toUpperCase() !== String(code).toUpperCase()) {
+  if (code && normCode(data.code) !== normCode(code)) {
     return { ok: false, error: 'Ws credential meeting mismatch' };
   }
   return {
     ok: true,
     participantId: String(data.pid),
-    code: String(data.code).toUpperCase(),
+    code: normCode(data.code),
     exp: Number(data.exp),
   };
 }

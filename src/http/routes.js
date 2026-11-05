@@ -1,3 +1,4 @@
+const { normCode, isCode, codeLink } = require('../lib/codes');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
@@ -426,7 +427,7 @@ function createRequestHandler() {
   if (urlPath.startsWith('/api/artifacts/') && req.method === 'GET') {
     const parts = urlPath.split('/').filter(Boolean); // api, artifacts, code, slug
     if (parts.length >= 4) {
-      const code = parts[2].toUpperCase();
+      const code = normCode(parts[2]);
       const slug = parts[3];
       const artifact = await db.getArtifactBySlug(code, slug);
       if (!artifact) return sendJSON(res, 404, { error: 'Artifact not found' });
@@ -507,7 +508,7 @@ function createRequestHandler() {
     const user = await getAuthUser(req, res);
     if (!user) return sendJSON(res, 401, { error: 'Not authenticated' });
     const parts = urlPath.split('/').filter(Boolean);
-    const code = parts[2].toUpperCase();
+    const code = normCode(parts[2]);
     const slug = parts[3];
     const artifact = await db.getArtifactBySlug(code, slug);
     if (!artifact) return sendJSON(res, 404, { error: 'Artifact not found' });
@@ -622,7 +623,7 @@ function createRequestHandler() {
     const user = await getAuthUser(req, res);
     if (!user) return sendJSON(res, 401, { error: 'Not authenticated' });
     const parts = urlPath.split('/').filter(Boolean);
-    const code = parts[2].toUpperCase();
+    const code = normCode(parts[2]);
     const slug = parts[3];
     const artifact = await db.getArtifactBySlug(code, slug);
     if (!artifact) return sendJSON(res, 404, { error: 'Artifact not found' });
@@ -645,7 +646,7 @@ function createRequestHandler() {
   if (urlPath === '/api/livekit-token' && req.method === 'POST') {
     try {
       const body = await parseBody(req);
-      const code = (body.code || '').toUpperCase();
+      const code = normCode(body.code);
       const participantId = body.participantId;
 
       if (!code || !participantId) {
@@ -715,10 +716,10 @@ function createRequestHandler() {
       if (body.eventId && authUser) {
         event = await require('../venue/data').getEventById(body.eventId).catch(() => null);
         if (event && event.host.id !== authUser.id) event = null;
-        if (event && meetings.has(event.code)) {
+        if (event && meetings.has(normCode(event.code))) {
           return sendJSON(res, 409, { error: 'This event is already live', code: event.code });
         }
-        if (event) code = event.code;
+        if (event) code = normCode(event.code);
       }
       // Permanent venue: fixed code, owner only, waiting room always on.
       let venue = null;
@@ -728,13 +729,13 @@ function createRequestHandler() {
         if (!venue) return sendJSON(res, 404, { error: 'Venue not found' });
       } else if (body.code && !event) {
         // A create aimed at a venue-bound code must open that venue, never fork a new code.
-        venue = await vdata.getVenueByCode(String(body.code).toUpperCase().replace(/[^A-Z0-9]/g, '')).catch(() => null);
+        venue = await vdata.getVenueByCode(normCode(body.code)).catch(() => null);
       }
       if (venue) {
         if (!authUser) return sendJSON(res, 401, { error: 'Sign in to open your venue', code: venue.code });
         if (venue.ownerUserId !== authUser.id) return sendJSON(res, 403, { error: 'Only the venue owner can open it', code: venue.code });
-        if (meetings.has(venue.code)) return sendJSON(res, 409, { error: 'This venue is already open', code: venue.code });
-        code = venue.code; // forced: client-sent code is ignored for venues
+        if (meetings.has(normCode(venue.code))) return sendJSON(res, 409, { error: 'This venue is already open', code: venue.code });
+        code = normCode(venue.code); // forced: client-sent code is ignored for venues
       }
       const codeSource = venue ? 'venue' : event ? 'event' : 'generated';
       res.setHeader('X-1venue-Code-Source', codeSource);
@@ -852,8 +853,6 @@ function createRequestHandler() {
       const hostWsCredential = signWsCredential({ participantId: hostId, code });
       return sendJSON(res, 200, {
         code,
-        letters: code.slice(0, 3),
-        numbers: code.slice(3),
         name,
         hostId,
         participantId: hostId,
@@ -864,7 +863,7 @@ function createRequestHandler() {
         raisedHands: [],
         security: getSecurityState(meeting),
         inviteToken,
-        inviteLink: `/${code.slice(0, 3)}-${code.slice(3)}?key=${inviteToken}`,
+        inviteLink: `/${code}?key=${inviteToken}`,
         permissions: resolvePermissions(meeting, host),
         content: null,
         stage: stage.state(meeting),
@@ -880,17 +879,10 @@ function createRequestHandler() {
   if (urlPath === '/api/join' && req.method === 'POST') {
     try {
       const body = await parseBody(req);
-      let letters = (body.letters || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-      let numbers = (body.numbers || '').replace(/\D/g, '').slice(0, 3);
-      if ((!letters || !numbers) && body.code) {
-        const raw = String(body.code).toUpperCase().replace(/[^A-Z0-9]/g, '');
-        letters = raw.slice(0, 3).replace(/[^A-Z]/g, '');
-        numbers = raw.slice(3).replace(/\D/g, '').slice(0, 3);
-      }
-      const code = letters + numbers;
-
-      if (letters.length !== 3 || numbers.length !== 3) {
-        return sendJSON(res, 400, { error: 'Enter 3 letters and 3 numbers' });
+      // Accept code (y5yi87, legacy ABC-234) or legacy letters+numbers split; case-insensitive.
+      const code = normCode(body.code || ((body.letters || '') + (body.numbers || '')));
+      if (!isCode(code)) {
+        return sendJSON(res, 400, { error: 'Enter the 6-character meeting code' });
       }
 
       const meeting = meetings.get(code);
@@ -1031,8 +1023,6 @@ function createRequestHandler() {
         } catch (_) {}
         return sendJSON(res, 200, {
           code,
-          letters: code.slice(0, 3),
-          numbers: code.slice(3),
           name: meeting.name,
           venue: meeting.venue || null,
           participantId: pid,
@@ -1075,8 +1065,6 @@ function createRequestHandler() {
 
       return sendJSON(res, 200, {
         code,
-        letters: code.slice(0, 3),
-        numbers: code.slice(3),
         name: meeting.name,
         venue: meeting.venue || null,
         participantId: pid,
@@ -1100,14 +1088,12 @@ function createRequestHandler() {
   }
 
   if (urlPath.startsWith('/api/meeting/') && req.method === 'GET') {
-    const code = urlPath.split('/').pop().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const code = normCode(urlPath.split('/').pop());
     const meeting = meetings.get(code);
     if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
     meeting.lastActivity = Date.now();
     return sendJSON(res, 200, {
       code,
-      letters: code.slice(0, 3),
-      numbers: code.slice(3),
       name: meeting.name,
       venue: meeting.venue || null,
       participants: getParticipantsList(meeting),
@@ -1128,7 +1114,7 @@ function createRequestHandler() {
   if (urlPath === '/api/invite/regenerate' && req.method === 'POST') {
     try {
       const body = await parseBody(req);
-      const code = (body.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const code = normCode(body.code);
       const participantId = body.participantId;
       const meeting = meetings.get(code);
       if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
@@ -1139,7 +1125,7 @@ function createRequestHandler() {
       meeting.inviteToken = generateInviteToken();
       return sendJSON(res, 200, {
         inviteToken: meeting.inviteToken,
-        inviteLink: `/${code.slice(0, 3)}-${code.slice(3)}?key=${meeting.inviteToken}`,
+        inviteLink: `/${code}?key=${meeting.inviteToken}`,
       });
     } catch (e) {
       return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
@@ -1179,7 +1165,7 @@ function createRequestHandler() {
         scheduledStart: row.scheduled_start,
         scheduledEnd: row.scheduled_end,
         status: row.status,
-        link: `/${row.code.slice(0, 3)}-${row.code.slice(3)}`,
+        link: codeLink(row.code),
       });
     } catch (e) {
       console.error('[schedule]', e);
@@ -1203,8 +1189,8 @@ function createRequestHandler() {
           createdAt: r.created_at,
           startedAt: r.started_at,
           endedAt: r.ended_at,
-          link: `/${r.code.slice(0, 3)}-${r.code.slice(3)}`,
-          isLive: meetings.has(r.code),
+          link: codeLink(r.code),
+          isLive: meetings.has(normCode(r.code)),
         })),
       });
     } catch (e) {
@@ -1248,7 +1234,7 @@ function createRequestHandler() {
   if (urlPath === '/api/leave' && req.method === 'POST') {
     try {
       const body = await parseBody(req);
-      const code = (body.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const code = normCode(body.code);
       const participantId = body.participantId;
       const meeting = meetings.get(code);
       if (meeting && participantId) {
@@ -1308,7 +1294,7 @@ function createRequestHandler() {
   // ----- Phase 2: activity -----
   if (urlPath === '/api/activity' && req.method === 'GET') {
     try {
-      const code = (parsed.searchParams.get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const code = normCode(parsed.searchParams.get('code'));
       if (!code) return sendJSON(res, 400, { error: 'code required' });
       const meeting = meetings.get(code);
       const live = meeting && Array.isArray(meeting.activityLive) ? meeting.activityLive.slice(-50) : [];
@@ -1331,7 +1317,7 @@ function createRequestHandler() {
   // Recording state for a meeting
   if (urlPath === '/api/recording' && req.method === 'GET') {
     try {
-      const code = (parsed.searchParams.get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const code = normCode(parsed.searchParams.get('code'));
       const meeting = meetings.get(code);
       const active = meeting?.recording || null;
       const past = code ? await db.getRecordingsForCode(code, 10) : [];

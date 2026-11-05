@@ -49,7 +49,7 @@ export async function mount(view, params) {
     try {
       const r = editing ? await api(`/api/events/${editing.id}`, { method: 'PATCH', body: body() }) : await api('/api/events', { method: 'POST', body: body() });
       toast(editing ? 'Saved' : 'Event published', { icon: 'check', group: 'engage' });
-      if (goLive) { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: r.id, name: r.title, stage: category !== 'meeting', speakerSeats: seats, code: r.code })); navigate(`/${r.code.slice(0, 3)}-${r.code.slice(3)}`); }
+      if (goLive) { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, eventId: r.id, name: r.title, stage: category !== 'meeting', speakerSeats: seats, code: r.code })); navigate('/' + String(r.code).toLowerCase()); }
       else navigate(`/e/${r.slug}`);
     } catch (e) { toastErr(e); }
   }

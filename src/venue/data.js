@@ -539,14 +539,29 @@ async function dashboard(userId) {
 // ---------------------------------------------------------------- venues (permanent /v/{slug} rooms)
 const SLUG_CH = 'abcdefghjkmnpqrstuvwxyz23456789';
 const randSlug = () => Array.from(crypto.randomBytes(7), (b) => SLUG_CH[b % SLUG_CH.length]).join('');
-const randCode = () => { const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ', D = '23456789'; const r = crypto.randomBytes(6); let s = ''; for (let i = 0; i < 3; i++) s += L[r[i] % L.length]; for (let i = 3; i < 6; i++) s += D[r[i] % D.length]; return s; };
-const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null, openedAt: r.opened_at || null, activeHistoryId: r.active_history_id || null });
-async function createVenue(userId, name) {
+const codes = require('../lib/codes');
+const randCode = () => codes.randCode(6); // same 6-char lowercase format as meeting codes
+const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null, openedAt: r.opened_at || null, activeHistoryId: r.active_history_id || null, isCustom: !!r.is_custom });
+async function getUserPlan(userId) {
+  const r = await one('SELECT plan FROM users WHERE id=$1', [userId]).catch(() => null);
+  return codes.PLANS.includes(r && r.plan) ? r.plan : 'free';
+}
+async function slugTaken(slug, exceptId) {
+  return !!(await one('SELECT 1 FROM venues WHERE lower(slug)=lower($1) AND id IS DISTINCT FROM $2 LIMIT 1', [slug, exceptId || null]));
+}
+/** Validate a requested custom slug for this user's plan; throws 400/409 with a clear message. */
+async function resolveCustomSlug(userId, input, opts = {}, exceptId) {
+  const { slug } = codes.customSlug(input, await getUserPlan(userId), opts);
+  if (await slugTaken(slug, exceptId)) { const e = new Error(`/v/${slug} is taken — try another`); e.status = 409; throw e; }
+  return slug;
+}
+async function createVenue(userId, name, customInput, opts) {
+  const custom = customInput ? await resolveCustomSlug(userId, customInput, opts) : null;
   for (let i = 0; i < 8; i++) {
-    const slug = randSlug(), code = randCode();
-    const clash = await one(`SELECT 1 FROM venues WHERE slug=$1 OR code=$2 UNION ALL SELECT 1 FROM events WHERE code=$2 LIMIT 1`, [slug, code]).catch(() => null);
+    const slug = custom || randSlug(), code = randCode();
+    const clash = await one(`SELECT 1 FROM venues WHERE lower(slug)=$1 OR lower(code)=$2 UNION ALL SELECT 1 FROM events WHERE lower(code)=$2 LIMIT 1`, [slug, code]).catch(() => null);
     if (clash) continue;
-    return venueOut(await one('INSERT INTO venues (slug, code, name, owner_user_id) VALUES ($1,$2,$3,$4) RETURNING *', [slug, code, name, userId]));
+    return venueOut(await one('INSERT INTO venues (slug, code, name, owner_user_id, is_custom) VALUES ($1,$2,$3,$4,$5) RETURNING *', [slug, code, name, userId, !!custom]));
   }
   throw new Error('Could not allocate a venue link');
 }
@@ -556,17 +571,21 @@ async function myVenues(userId) {
     FROM venues v WHERE owner_user_id=$1 ORDER BY created_at DESC`, [userId])).map(venueOut);
 }
 async function getVenueBySlug(slug) { return venueOut(await one('SELECT * FROM venues WHERE slug=lower($1)', [String(slug || '')])); }
-async function getVenueByCode(code) { return venueOut(await one('SELECT * FROM venues WHERE code=upper($1)', [String(code || '')])); }
+async function getVenueByCode(code) { return venueOut(await one('SELECT * FROM venues WHERE lower(code)=lower($1)', [String(code || '')])); }
+async function setVenueSlug(id, userId, input, opts) {
+  const slug = await resolveCustomSlug(userId, input, opts, id);
+  return venueOut(await one('UPDATE venues SET slug=$3, is_custom=true WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, slug]));
+}
 async function renameVenue(id, userId, name) { return venueOut(await one('UPDATE venues SET name=$3 WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, name])); }
 async function deleteVenue(id, userId) { return (await q('DELETE FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId])).rowCount > 0; }
-async function markVenueOpen(code, historyId) { await q('UPDATE venues SET opened_at=now(), active_history_id=$2 WHERE code=upper($1)', [String(code || ''), historyId || null]); }
-async function markVenueClosed(code) { await q('UPDATE venues SET opened_at=NULL, active_history_id=NULL WHERE code=upper($1)', [String(code || '')]); }
+async function markVenueOpen(code, historyId) { await q('UPDATE venues SET opened_at=now(), active_history_id=$2 WHERE lower(code)=lower($1)', [String(code || ''), historyId || null]); }
+async function markVenueClosed(code) { await q('UPDATE venues SET opened_at=NULL, active_history_id=NULL WHERE lower(code)=lower($1)', [String(code || '')]); }
 async function venueMeetings(code, limit = 100) {
   return many(`SELECT id, name, host_display_name, created_at AS started_at, ended_at, max_participants FROM meeting_history WHERE code=$1 ORDER BY created_at DESC LIMIT $2`, [code, limit]);
 }
 
 module.exports = {
-  createVenue, myVenues, getVenueBySlug, getVenueByCode, renameVenue, deleteVenue, venueMeetings, markVenueOpen, markVenueClosed,
+  createVenue, myVenues, getVenueBySlug, getVenueByCode, renameVenue, deleteVenue, venueMeetings, markVenueOpen, markVenueClosed, getUserPlan, setVenueSlug,
   CATEGORIES, getPrefs, setPrefs, getUserProfile, updateProfile, searchUsers,
   createEvent, updateEvent, deleteEvent, getEventById, getEventBySlug, getEventByCode, discover, categoryCounts, myEvents, rsvpedEvents,
   toggleRsvp, markEventLive, markEventEnded, updateViewers, listSpeakers, setSpeakers,
