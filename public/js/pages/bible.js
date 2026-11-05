@@ -10,7 +10,7 @@ export async function bibleMeta() {
   return { translations: TR, books: BOOKS };
 }
 export function translationSelect(value, onChange, { compact = false } = {}) {
-  const sel = h('select', { class: `input${compact ? ' sm' : ''}`, 'aria-label': 'Bible translation' });
+  const sel = h('select', { class: `input tr-select${compact ? ' sm' : ''}`, 'aria-label': 'Bible translation' });
   bibleMeta().then(({ translations }) => {
     const byLang = {};
     translations.forEach((t) => (byLang[t.language] ||= []).push(t));

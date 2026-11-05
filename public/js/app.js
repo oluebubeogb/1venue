@@ -91,6 +91,7 @@ const ROUTES = [
   [/^\/(?:r\/|j\/)?([A-Za-z]{3}-?\d{3})\/?$/, () => import('./room/room.js'), 'code'],
 ];
 let currentPage = null;
+let routeSeq = 0;
 export function navigate(to, { replace = false } = {}) {
   if (to === location.pathname + location.search && !replace) { route(); return; }
   history[replace ? 'replaceState' : 'pushState']({}, '', to);
@@ -105,17 +106,23 @@ async function route() {
     if (typeof extra === 'string') params[extra] = decodeURIComponent(m[1]); else if (extra) Object.assign(params, extra);
     try { currentPage && currentPage.unmount && currentPage.unmount(); } catch { /* ignore */ }
     currentPage = null;
-    const view = $('#view'); view.innerHTML = ''; view.className = 'main page-enter';
+    const seq = ++routeSeq;
+    const view = $('#view'); view.replaceChildren(); view.className = 'main page-enter';
     void view.offsetWidth;
     try {
       const mod = await load();
+      if (seq !== routeSeq) return;
+      view.replaceChildren();
       state.route = { path, params, mod };
       const isRoom = !!mod.isRoom; setRoomMode(isRoom);
       highlightNav(path);
       const res = await mod.mount(view, params);
+      if (seq !== routeSeq) { try { (res || mod).unmount?.(); } catch { /* ignore */ } return; }
       currentPage = res || mod;
       if (!isRoom) setBarContext(globalBarContext(mod.barPinned));
     } catch (e) {
+      if (seq !== routeSeq) return;
+      view.replaceChildren();
       if (e?.status === 404) { view.append(h('div', { class: 'empty' }, frag404())); window.scrollTo(0, 0); return; }
       if (e?.status === 401) { view.append(h('div', { class: 'empty' }, h('h2', null, 'Sign in to continue'), h('p', { class: 'muted' }, 'This page needs an account.'), h('a', { class: 'btn primary', href: '/login?next=' + encodeURIComponent(location.pathname), style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Sign in'))); return; }
       console.error(e);
@@ -124,6 +131,7 @@ async function route() {
     window.scrollTo(0, 0);
     return;
   }
+  ++routeSeq;
   setRoomMode(false);
   $('#view').innerHTML = '';
   $('#view').append(h('div', { class: 'empty' }, frag404()));
@@ -297,5 +305,5 @@ async function boot() {
   initPwa();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
-boot();
+if (!window.__1venueBooted) { window.__1venueBooted = true; boot(); }
 export { focusBar, barVisible, toastErr };

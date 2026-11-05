@@ -457,3 +457,11 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 .filmstrip .tile .tile-share { top: 6px; left: 36px; }
 .tile:not(:has(.tile-mic.off)) .tile-share { left: 8px; }
 .filmstrip .tile:not(:has(.tile-mic.off)) .tile-share { left: 6px; }
+
+/* v6: scripture header controls */
+.sub-head-extras { display: inline-flex; align-items: center; gap: .3rem; margin-left: auto; }
+.tool-view .scr-sub { display: none; }
+
+/* v6: small tiles — same white name on dark bar whether cam on, off, or screen only */
+.filmstrip .tile .tile-meta, .filmstrip .tile.has-video .tile-meta { left: 6px; right: auto; bottom: 6px; max-width: calc(100% - 12px); padding: .18rem .45rem; border-radius: 8px; background: rgba(8,12,22,.6); backdrop-filter: blur(6px); color: #fff; text-shadow: none; }
+.filmstrip .tile .tile-name { color: #fff; }

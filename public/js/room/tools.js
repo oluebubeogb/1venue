@@ -79,8 +79,10 @@ export function buildTools(R) {
         ib('search', 'Preview', preview),
         canShow ? ib('presentation', shared ? 'Show this to everyone' : 'Show to everyone', showNow, 'pri') : null,
         canShow || !shared ? ib('x', shared ? 'Clear for everyone' : 'Clear', clear, 'x') : null));
-      box.append(h('div', { class: 'scr-sub' }, tr,
-        canShow && shared ? ib(onStage ? 'sidebar' : 'maximize', onStage ? 'Move to sidebar' : 'Show on the big screen', () => R.showScripture(shared.reference, { translation: shared.translation, mode: onStage ? 'side' : 'stage' })) : null));
+      // Translation + big-screen toggle live on the Scripture header line (panels.js) to free room for verses.
+      tr.classList.add('tr-select');
+      box.headExtras = [tr,
+        canShow && shared ? ib(onStage ? 'sidebar' : 'maximize', onStage ? 'Move to sidebar' : 'Show on the big screen', () => R.showScripture(shared.reference, { translation: shared.translation, mode: onStage ? 'side' : 'stage' })) : null].filter(Boolean);
       if (shared) {
         // chapter stepping for the sharer (syncs to everyone)
         const nav = canShow ? (d) => { const m = /^(.*?)(\d+)(?::[\d\-,]+)?\s*$/.exec(shared.reference); if (!m) return; const ch = Math.max(1, +m[2] + d); R.showScripture(`${m[1].trim()} ${ch}`, { translation: shared.translation }); } : null;
