@@ -375,8 +375,11 @@ body.in-room .cmdbar { bottom: calc(10px + var(--safe-b)); width: min(1100px, ca
 
 /* ===================== 2026-11 UX pack ===================== */
 /* F — fullscreen keeps the soft site background + full chrome (1v rail → search bar), with breathing room. */
-html.room-fs, html.room-fs body { background: var(--bg); }
-html.room-fs:fullscreen, html.room-fs ::backdrop { background: var(--bg); }
+html { --site-grad: linear-gradient(180deg, #dbe8ff 0%, #eef4ff 40%, #ffffff 100%); }
+html.room-fs, html.room-fs body, html:fullscreen, html:fullscreen body { background: var(--site-grad) fixed !important; min-height: 100vh; }
+html.room-fs .room, html:fullscreen .room, html.room-fs .stage, html:fullscreen .stage { background: transparent !important; }
+:fullscreen, ::backdrop, html.room-fs ::backdrop { background: var(--site-grad) !important; }
+.present:fullscreen, .present:fullscreen .present-body { background: var(--site-grad) !important; }
 html.room-fs .room { padding: calc(var(--safe-t) + 18px) max(28px, var(--safe-r)) calc(var(--cmd-h) + 40px + var(--safe-b)) max(28px, var(--safe-l)); gap: 14px; }
 html.room-fs .room-head { padding: 6px 10px; }
 html.room-fs .room-main { gap: 14px; }
@@ -425,7 +428,11 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 
 /* Scripture sidebar: one control line, roomy reader */
 .scr-tool { display: flex; flex-direction: column; gap: .5rem; min-height: 0; }
-.scr-line { display: flex; align-items: center; gap: 4px; }
+.scr-line { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; }
+.scr-line .scr-ib { flex: 0 0 auto; }
+.scr-line .scr-ib span { display: none; }
+.scr-sub { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.scr-sub select.input.sm { height: 28px; width: 86px; font-size: .75rem; padding: 0 1.2rem 0 .45rem; }
 .scr-line .input.sm { height: 34px; min-width: 0; font-size: .86rem; }
 .scr-line select.input.sm { flex: 0 1 86px; width: 86px; padding: 0 1.2rem 0 .45rem; font-size: .78rem; }
 .scr-ib { flex: none; width: 32px; height: 32px; border-radius: 10px; border: 0; display: grid; place-items: center; cursor: pointer; color: var(--g-faith, var(--accent)); background: color-mix(in srgb, var(--g-faith, var(--accent)) 10%, var(--s1)); transition: background .15s; }
@@ -444,3 +451,9 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 .room h2, .room h3, .panel h2, .panel h3 { font-size: .98rem; font-weight: 600; }
 .room strong, .room b { font-weight: 600; }
 .tile-name, .rh-title { font-weight: 500; }
+
+/* screenshare indicator: icon only, beside the mute badge (top-left) */
+.tile-share { position: absolute; top: 8px; left: 34px; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; cursor: pointer; color: #fff; background: var(--g-media, var(--accent)); font-size: 0; }
+.filmstrip .tile .tile-share { top: 6px; left: 36px; }
+.tile:not(:has(.tile-mic.off)) .tile-share { left: 8px; }
+.filmstrip .tile:not(:has(.tile-mic.off)) .tile-share { left: 6px; }

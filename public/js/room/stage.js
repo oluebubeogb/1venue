@@ -72,7 +72,8 @@ export function createStage(R) {
     const shareT = t.kind === 'camera' && tiles.get(t.id + ':screen');
     const isSharing = !!(shareT && shareT.track); t.el.classList.toggle('sharing', isSharing);
     t.el.classList.toggle('on-stage', isSharing && presentKey === 'screen:' + t.id);
-    if (isSharing) b.append(h('button', { class: 'tb sharing', type: 'button', 'data-tip': presentKey === 'screen:' + t.id ? 'On the big screen' : 'Show this screen on the big screen', 'aria-label': 'Show screen', onclick: (e) => { e.stopPropagation(); setPick(t.id); }, html: icon('screen', { size: 12 }) }));
+    t.el.querySelector(':scope > .tile-share')?.remove();
+    if (isSharing) t.el.append(h('button', { class: 'tile-share', type: 'button', 'data-tip': presentKey === 'screen:' + t.id ? 'On the big screen' : 'Show this screen on the big screen', 'aria-label': 'Show screen', onclick: (e) => { e.stopPropagation(); setPick(t.id); }, html: icon('screen', { size: 12 }) }));
     if (p.role === 'host') b.append(h('span', { class: 'tb', 'data-role': 'host', html: icon('crown', { size: 12 }) }));
     if (R.stage.enabled && R.isSpeaker(t.id) && p.role !== 'host') b.append(h('span', { class: 'tb', 'data-role': 'speaker', html: icon('mic', { size: 12 }) }));
   }
@@ -155,7 +156,7 @@ export function createStage(R) {
       const t = tiles.get(key.slice(7) + ':screen');
       if (t) { present.append(t.el); t.el.classList.add('big'); }
       present.append(h('div', { class: 'present-tools' }, R.isMod() || R.media.sharing ? h('button', { class: 'btn sm glass', 'data-group': 'content', 'data-tip': 'Save this slide to the timeline', onclick: () => R.snapshotToTimeline(), html: icon('camera', { size: 14 }) + '<span>Snapshot</span>' }) : null,
-        h('button', { class: 'btn sm glass', 'data-group': 'media', 'data-tip': 'Fullscreen', onclick: () => (present.requestFullscreen ? present.requestFullscreen() : null), html: icon('maximize', { size: 14 }) })));
+        h('button', { class: 'btn sm glass', 'data-group': 'media', 'data-tip': 'Fullscreen', onclick: () => R.fullscreen(), html: icon('maximize', { size: 14 }) })));
       return;
     }
     if (key.startsWith('content:')) return buildContent();

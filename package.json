@@ -1,6 +1,6 @@
 {
   "name": "1venue",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "1venue: premium virtual events and meetings on the Collab suite, built on Meet with LiveKit and PostgreSQL",
   "main": "server.js",

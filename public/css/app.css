@@ -610,3 +610,8 @@ strong, b { font-weight: 600; }
 .btn { font-weight: 500; }
 .eyebrow { font-weight: 500; letter-spacing: .02em; }
 .venue-door .waiting { min-height: 50vh; }
+
+/* homepage join: # centred vertically with breathing room before the input */
+.join-box { align-items: center; }
+.join-box > svg { flex: 0 0 auto; align-self: center; display: block; margin: 0 0 0 .85rem; color: rgba(255,255,255,.85); }
+.join-box input { align-self: stretch; padding: 0 1rem 0 .5rem; line-height: 1; }

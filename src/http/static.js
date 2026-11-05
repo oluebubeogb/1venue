@@ -21,6 +21,7 @@ function cacheControl(urlPath, ext) {
   if (urlPath.startsWith('/vendor/') || urlPath.startsWith('/icons/') || urlPath.startsWith('/fonts/')) {
     return 'public, max-age=604800, immutable';
   }
+  if (ext === '.js' || ext === '.css') return 'no-cache';
   return 'public, max-age=300, must-revalidate';
 }
 

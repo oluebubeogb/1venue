@@ -57,7 +57,7 @@ export function buildTools(R) {
         else if (shared) { R.scrOwnTr = true; R.setBibleTr(v); R.panel.refresh('tools'); }
         else { R.setBibleTr(v); preview(); }
       }, { compact: true });
-      const ib = (ic, label, run, cls = '') => h('button', { class: `scr-ib ${cls}`, type: 'button', 'data-tip': label, 'aria-label': label, onclick: run, html: icon(ic, { size: 15 }) });
+      const ib = (ic, label, run, cls = '') => h('button', { class: `scr-ib ${cls}`, type: 'button', title: label, 'data-tip': label, 'aria-label': label, onclick: run, html: icon(ic, { size: 15 }) });
       const out = h('div', { class: 'scripture-preview scr-read' });
       const showNow = () => { const q = ref.value.trim() || shared?.reference; if (q) R.showScripture(q, { translation: R.bibleTr(), mode: shared?.mode || 'side' }); };
       async function preview() {
@@ -73,11 +73,14 @@ export function buildTools(R) {
       }
       ref.addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(); });
       const onStage = shared && shared.mode === 'stage';
-      box.append(h('div', { class: 'scr-line' }, ref, tr,
+      // One line: verse | preview | show everyone | clear — icon-only, label on hover.
+      const clear = () => { if (shared && canShow) R.send('scripture-clear', {}); else { ref.value = ''; R.scriptureDraft = ''; out.replaceChildren(); } };
+      box.append(h('div', { class: 'scr-line' }, ref,
         ib('search', 'Preview', preview),
         canShow ? ib('presentation', shared ? 'Show this to everyone' : 'Show to everyone', showNow, 'pri') : null,
-        canShow && shared ? ib(onStage ? 'sidebar' : 'maximize', onStage ? 'Move to sidebar' : 'Show on the big screen', () => R.showScripture(shared.reference, { translation: shared.translation, mode: onStage ? 'side' : 'stage' })) : null,
-        canShow && shared ? ib('x', 'Clear for everyone', () => R.send('scripture-clear', {}), 'x') : null));
+        canShow || !shared ? ib('x', shared ? 'Clear for everyone' : 'Clear', clear, 'x') : null));
+      box.append(h('div', { class: 'scr-sub' }, tr,
+        canShow && shared ? ib(onStage ? 'sidebar' : 'maximize', onStage ? 'Move to sidebar' : 'Show on the big screen', () => R.showScripture(shared.reference, { translation: shared.translation, mode: onStage ? 'side' : 'stage' })) : null));
       if (shared) {
         // chapter stepping for the sharer (syncs to everyone)
         const nav = canShow ? (d) => { const m = /^(.*?)(\d+)(?::[\d\-,]+)?\s*$/.exec(shared.reference); if (!m) return; const ch = Math.max(1, +m[2] + d); R.showScripture(`${m[1].trim()} ${ch}`, { translation: shared.translation }); } : null;
