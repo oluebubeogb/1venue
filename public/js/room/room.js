@@ -114,7 +114,7 @@ class Room {
     if (creating) {
       const it = this.intent;
       try {
-        r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, device: deviceKind() } });
+        r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, venue: it.venue || undefined, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, device: deviceKind() } });
       } catch (e) {
         if (e.status === 409 && (e.data?.code || it.code)) { this.code = e.data?.code || it.code; sessionStorage.removeItem('venue.intent'); return this.join({ name, mic, cam, creating: false }); }
         throw e;
@@ -143,7 +143,7 @@ class Room {
     this.enter(r);
   }
   waitingScreen(r) {
-    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, 'Waiting for the host to let you in'), h('p', { class: 'muted' }, `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
+    this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly — this venue always uses a waiting room.` : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
       h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')), h('button', { class: 'btn ghost', onclick: () => { this.destroy(); navigate('/'); } }, 'Cancel')));
     this.waitingMode = true;
     this.connectWs((m) => {
@@ -238,7 +238,15 @@ Object.assign(Room.prototype, {
     return rp ? { mic: rp.isMicrophoneEnabled, cam: rp.isCameraEnabled } : { mic: false, cam: false };
   },
   bibleTr() { return lsGet('venue.bibleTr', this.config.bible?.defaultTranslation || 'kjv'); },
-  setBibleTr(v) { lsSet('venue.bibleTr', v); if (this.scripture) this.renderStage(true); },
+  setBibleTr(v) { lsSet('venue.bibleTr', v); if (this.scripture && this.canScripture()) this.showScripture(this.scripture.reference, { translation: v }); else if (this.scripture) this.renderStage(true); },
+  canScripture() { return this.isMod() || (this.stage.enabled && this.isSpeaker(this.me.id)); },
+  /** Translation everyone reads a shared passage in: the sharer's, unless this viewer picked their own. */
+  scrTr() { return (this.scripture && !this.scrOwnTr && this.scripture.translation) || this.bibleTr(); },
+  /** Broadcast (or re-broadcast) the shared passage; chapter / translation / placement changes all go through here. */
+  showScripture(reference, { translation, mode } = {}) {
+    if (!reference) return;
+    this.send('scripture-show', { reference, translation: translation || this.bibleTr(), mode: mode || this.scripture?.mode || 'side' });
+  },
   captionLang() { return lsGet('venue.captionLang', 'en'); },
   setCaptionLang(v) { lsSet('venue.captionLang', v); if (this.captioner.on) { this.captioner.stop(); this.captioner.start(); } },
   setShowCaptions(v) { this.showCaptions = v; lsSet('venue.showCaptions', v); this.stageR.paintCaps(); },
@@ -345,6 +353,7 @@ Object.assign(Room.prototype, {
     this.changed();
   },
   async toggleShare(force) {
+    if (typeof force !== 'boolean' && this.media.sharing) return this.confirmStopShare();
     const on = typeof force === 'boolean' ? force : !this.media.sharing;
     if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; }
     if (on && !navigator.mediaDevices?.getDisplayMedia) { toast('Screen sharing isn’t supported on this device', { icon: 'alert' }); return; }
@@ -385,7 +394,7 @@ Object.assign(Room.prototype, {
     this.headEl = h('header', { class: 'room-head' });
     this.peekHost = h('div', { class: 'peeks', 'aria-live': 'polite' });
     this.netEl = h('div', { class: 'net-banner', hidden: true });
-    this.main = h('div', { class: 'room-main' }, this.stageR.el, this.panel.el);
+    this.main = h('div', { class: 'room-main' }, this.stageR.el, this.stageR.sideEl, this.panel.el);
     this.root = h('div', { class: 'room', 'data-layout': this.layout }, h('div', { class: 'room-art', 'aria-hidden': 'true' }), this.headEl, this.netEl, this.main, this.peekHost);
     this.view.replaceChildren(this.root);
     this.paintHead(true); this.renderStage(true);
@@ -402,6 +411,7 @@ Object.assign(Room.prototype, {
       this.headEl.querySelector('.rh-count').textContent = this.peopleMap.size;
       this.headEl.querySelector('.rh-cap').hidden = !this.captioner.on && !this.transcribe;
       this.headEl.querySelector('.rh-lock').hidden = !this.security.locked;
+      const cams = this.headEl.querySelector('.rh-cams'); if (cams) { cams.hidden = !this.stageR.screens().length; cams.classList.toggle('on', this.stageR.pick === 'cameras'); }
       this.headEl.querySelectorAll('[data-lay]').forEach((b) => b.classList.toggle('on', b.dataset.lay === this.layout));
       this.root.dataset.layout = this.layout;
       return;
@@ -415,6 +425,7 @@ Object.assign(Room.prototype, {
       h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) }),
       h('div', { class: 'grow' }),
       h('div', { class: 'seg rh-lay hide-sm' }, lay('grid', 'grid', 'Grid'), lay('spotlight', 'spotlight', 'Spotlight'), lay('speaker', 'speaker', 'Speaker')),
+      h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
       h('button', { class: 'pill rh-people', 'data-group': 'people', 'data-tip': 'People', type: 'button', onclick: () => this.panel.toggle('people'), html: icon('users', { size: 14 }) + '<span class="rh-count"></span>' }),
       ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'hide-xs' }),
       ibtn('pip', 'Picture-in-picture', () => this.pip(), { group: 'media', cls: 'hide-xs' }),
@@ -534,6 +545,8 @@ Object.assign(Room.prototype, {
     this.captioner && this.captioner.stop(); this.media && this.media.disconnect().catch(() => {});
     this.pipWin && this.pipWin.close();
     unregisterCommands('room');
+    if (this.onFsChange) { document.removeEventListener('fullscreenchange', this.onFsChange); document.documentElement.classList.remove('room-fs'); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
+    this.stopShareEl && this.stopShareEl.remove();
   },
   /* keyboard */
   shortcut(e) {
@@ -542,7 +555,25 @@ Object.assign(Room.prototype, {
     const map = { m: () => this.toggleMic(), v: () => this.toggleCam(), s: () => this.toggleShare(), h: () => this.raiseHand(), c: () => this.panel.toggle('chat'), p: () => this.panel.toggle('people'), e: () => this.panel.toggle('engage'), t: () => this.panel.toggle('tools'), g: () => this.cycleLayout(1), f: () => this.fullscreen(), i: () => this.invite() };
     if (map[k]) { e.preventDefault(); map[k](); }
   },
-  fullscreen() { if (document.fullscreenElement) document.exitFullscreen(); else this.root.requestFullscreen && this.root.requestFullscreen().catch(() => {}); },
+  // Fullscreen the whole page (not just .room): keeps the soft site background, the top rail and the
+  // dynamic search / command bar, plus menus & toasts that live on <body>. CSS pads it (html.room-fs).
+  fullscreen() {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    const de = document.documentElement;
+    if (de.requestFullscreen) de.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    if (!this.onFsChange) { this.onFsChange = () => document.documentElement.classList.toggle('room-fs', !!document.fullscreenElement && this.alive); document.addEventListener('fullscreenchange', this.onFsChange); }
+  },
+  /** Ask before ending a screenshare (S / toolbar) so a stray key doesn't cut the presentation. */
+  confirmStopShare() {
+    if (this.stopShareEl) return;
+    const close = (stop) => { document.removeEventListener('keydown', key, true); this.stopShareEl && this.stopShareEl.remove(); this.stopShareEl = null; if (stop) this.toggleShare(false); };
+    const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); } else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(true); } else if (e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); } };
+    const ok = h('button', { class: 'btn danger', type: 'button', onclick: () => close(true), html: icon('screenOff', { size: 16 }) + '<span>End screenshare</span>' });
+    this.stopShareEl = h('div', { class: 'share-confirm', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'End screenshare?', onclick: (e) => { if (e.target === this.stopShareEl) close(false); } },
+      h('div', { class: 'share-confirm-card' }, h('span', { class: 'sc-ic', html: icon('screen', { size: 22 }) }), h('b', null, 'End screenshare?'), h('p', { class: 'muted small' }, 'Everyone will stop seeing your screen.'),
+        h('div', { class: 'row gap-s' }, h('button', { class: 'btn ghost', type: 'button', onclick: () => close(false) }, 'Keep sharing'), ok)));
+    document.body.append(this.stopShareEl); document.addEventListener('keydown', key, true); setTimeout(() => ok.focus(), 30);
+  },
 });
 
 /* ======================================================================= the footer bar = the dock */

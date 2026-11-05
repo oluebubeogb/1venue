@@ -75,6 +75,42 @@ route('PATCH', '/api/profile', async (ctx) => {
   return data.getUserProfile(u.id, u.id);
 });
 
+// ------------------------------------------------------------ permanent venues (/v/{slug})
+const venueName = (v) => { const n = String(v || '').trim().slice(0, 60); if (n.length < 2) throw httpError(400, 'Venue name must be at least 2 characters'); return n; };
+function venueLive(v) {
+  const m = store.getMeeting(v.code);
+  if (!m) return null;
+  const hostIn = [...m.participants.values()].some((p) => p.status === 'ACTIVE' && (p.role === 'host' || p.role === 'cohost'));
+  return { meetingName: m.name, hostIn };
+}
+route('GET', '/api/venues', async (ctx) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  return { venues: (await data.myVenues(u.id)).map((v) => ({ ...v, live: venueLive(v) })) };
+});
+route('POST', '/api/venues', async (ctx) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  return data.createVenue(u.id, venueName((await ctx.body()).name));
+});
+route('GET', '/api/venues/([A-Za-z0-9]{4,16})', async (ctx, [slug]) => {
+  const v = await data.getVenueBySlug(slug.toLowerCase());
+  if (!v) throw httpError(404, 'Venue not found');
+  const u = await getAuthUser(ctx.req, ctx.res);
+  const isOwner = !!(u && u.id === v.ownerUserId);
+  return { slug: v.slug, name: v.name, code: v.code, isOwner, live: venueLive(v) };
+});
+route('PATCH', '/api/venues/([A-Za-z0-9]{4,16})', async (ctx, [slug]) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  const v = await data.getVenueBySlug(slug.toLowerCase());
+  if (!v || v.ownerUserId !== u.id) throw httpError(404, 'Venue not found');
+  return data.renameVenue(v.id, u.id, venueName((await ctx.body()).name));
+});
+route('GET', '/api/venues/([A-Za-z0-9]{4,16})/meetings', async (ctx, [slug]) => {
+  const u = await requireUser(ctx.req, ctx.res);
+  const v = await data.getVenueBySlug(slug.toLowerCase());
+  if (!v || v.ownerUserId !== u.id) throw httpError(404, 'Venue not found');
+  return { meetings: await data.venueMeetings(v.code) };
+});
+
 // ------------------------------------------------------------ events & discovery
 route('GET', '/api/categories', async () => ({ categories: data.CATEGORIES, counts: await data.categoryCounts() }));
 route('GET', '/api/discover', async (ctx) => {

@@ -62,7 +62,15 @@ export function handle(R, m) {
     case 'comment-likes': { const c = R.data.comments.find((x) => x.id === m.id); if (c) c.likeCount = m.likeCount; break; }
     case 'comment-hidden': R.data.comments = R.data.comments.filter((c) => c.id !== m.id); break;
     case 'comment-replies': (m.replies || []).forEach((r) => { if (!R.data.comments.some((c) => c.id === r.id)) R.data.comments.push(r); }); break;
-    case 'scripture-show': R.scripture = m.scripture; R.stageView = null; break;
+    case 'scripture-show': {
+      const first = !R.scripture; R.scripture = m.scripture; R.scrOwnTr = first ? false : R.scrOwnTr;
+      if ((m.scripture.mode || 'side') === 'stage') R.stageView = null;
+      // Default: read it in the sidebar (Tools → Scripture), not over the stage.
+      else if (first || !(R.panel.tab === 'tools' && R.panel.sub.tools === 'scripture')) { if (first) R.panel.open('tools', 'scripture'); }
+      if (R.panel.tab === 'tools' && R.panel.sub.tools === 'scripture') R.panel.refresh('tools');
+      break;
+    }
+    case 'scripture-clear': R.scripture = null; R.scrOwnTr = false; if (R.panel.tab === 'tools' && R.panel.sub.tools === 'scripture') R.panel.refresh('tools'); break;
     case 'scripture-clear': R.scripture = null; break;
     case 'caption': if (m.final !== false) { R.data.captions.push({ participantId: m.participantId, name: m.name, text: m.text, at: m.at || Date.now() }); if (R.data.captions.length > 2000) R.data.captions.shift(); } R.stageR.caption(m); if (R.panel.tab === 'tools' && R.panel.sub.tools === 'captions') R.panel.refresh(); return;
     case 'transcript-state': R.transcribe = !!m.on; if (m.historyId) R.historyId = m.historyId; R.captioner && R.captioner.autoSync(); break;

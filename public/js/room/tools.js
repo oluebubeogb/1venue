@@ -47,15 +47,24 @@ const note = (t) => h('p', { class: 'tiny muted', style: { margin: '.4rem 0' } }
 export function buildTools(R) {
   return {
     scripture() {
-      const box = h('div', { class: 'stack' });
-      const canShow = R.isMod() || R.isSpeaker(R.me.id);
-      const ref = h('input', { class: 'input', placeholder: 'John 3:16, Psalm 23, Rom 8:28-39 … or “verses about hope”', value: R.scriptureDraft || '', oninput: (e) => { R.scriptureDraft = e.target.value; } });
-      const tr = translationSelect(R.bibleTr(), (v) => { R.setBibleTr(v); preview(); });
-      const out = h('div', { class: 'scripture-preview' });
+      // Compact sidebar reader: one control line, then as much room as possible for the verses.
+      const box = h('div', { class: 'scr-tool' });
+      const canShow = R.canScripture();
+      const shared = R.scripture;
+      const ref = h('input', { class: 'input sm grow', placeholder: 'John 3:16, Psalm 23 … or “hope”', value: R.scriptureDraft || '', 'aria-label': 'Verse', oninput: (e) => { R.scriptureDraft = e.target.value; } });
+      const tr = translationSelect(shared ? R.scrTr() : R.bibleTr(), (v) => {
+        if (shared && canShow) R.showScripture(shared.reference, { translation: v }); // live: everyone follows
+        else if (shared) { R.scrOwnTr = true; R.setBibleTr(v); R.panel.refresh('tools'); }
+        else { R.setBibleTr(v); preview(); }
+      }, { compact: true });
+      const ib = (ic, label, run, cls = '') => h('button', { class: `scr-ib ${cls}`, type: 'button', 'data-tip': label, 'aria-label': label, onclick: run, html: icon(ic, { size: 15 }) });
+      const out = h('div', { class: 'scripture-preview scr-read' });
+      const showNow = () => { const q = ref.value.trim() || shared?.reference; if (q) R.showScripture(q, { translation: R.bibleTr(), mode: shared?.mode || 'side' }); };
       async function preview() {
-        const q = ref.value.trim(); if (!q) { out.replaceChildren(); return; }
+        const q = ref.value.trim(); if (!q) return;
+        if (shared && canShow) return showNow(); // while sharing, previewing a new chapter re-broadcasts it
         out.replaceChildren(h('div', { class: 'skel', style: { height: '80px' } }));
-        try { const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${R.bibleTr()}`); out.replaceChildren(h('b', null, `${p.reference} · ${p.translation?.short || ''}`), versesEl(p, { selectable: false })); }
+        try { const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${R.bibleTr()}`); out.replaceChildren(h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`), versesEl(p, { selectable: false })); }
         catch {
           try { const r = await api('/api/ai/scripture', { method: 'POST', headers: R.headers(), body: { query: q, translation: R.bibleTr() } });
             out.replaceChildren(h('div', { class: 'tiny muted' }, 'Suggested passages'), h('div', { class: 'chips' }, (r.refs || []).map((x) => h('button', { class: 'chip', onclick: () => { ref.value = x.reference || x; R.scriptureDraft = ref.value; preview(); } }, x.reference || x))));
@@ -63,12 +72,19 @@ export function buildTools(R) {
         }
       }
       ref.addEventListener('keydown', (e) => { if (e.key === 'Enter') preview(); });
-      box.append(ref, h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, tr), btn('search', 'Preview', preview, { group: 'faith', cls: 'sm' })),
-        canShow ? h('div', { class: 'row gap-s' }, btn('presentation', 'Show to everyone', () => { if (ref.value.trim()) R.send('scripture-show', { reference: ref.value.trim(), translation: R.bibleTr() }); }, { group: 'faith', cls: 'primary grow' }),
-          R.scripture ? btn('x', 'Clear', () => R.send('scripture-clear', {}), { cls: 'ghost' }) : null) : note('Hosts and speakers can put verses on screen. You’ll always read them in your chosen translation.'),
-        out);
-      if (R.scripture) box.prepend(h('div', { class: 'shade', 'data-group': 'faith' }, h('div', { class: 'tiny muted' }, `On screen now · shown by ${R.scripture.by}`), h('b', null, R.scripture.reference)));
-      if (ref.value) preview();
+      const onStage = shared && shared.mode === 'stage';
+      box.append(h('div', { class: 'scr-line' }, ref, tr,
+        ib('search', 'Preview', preview),
+        canShow ? ib('presentation', shared ? 'Show this to everyone' : 'Show to everyone', showNow, 'pri') : null,
+        canShow && shared ? ib(onStage ? 'sidebar' : 'maximize', onStage ? 'Move to sidebar' : 'Show on the big screen', () => R.showScripture(shared.reference, { translation: shared.translation, mode: onStage ? 'side' : 'stage' })) : null,
+        canShow && shared ? ib('x', 'Clear for everyone', () => R.send('scripture-clear', {}), 'x') : null));
+      if (shared) {
+        // chapter stepping for the sharer (syncs to everyone)
+        const nav = canShow ? (d) => { const m = /^(.*?)(\d+)(?::[\d\-,]+)?\s*$/.exec(shared.reference); if (!m) return; const ch = Math.max(1, +m[2] + d); R.showScripture(`${m[1].trim()} ${ch}`, { translation: shared.translation }); } : null;
+        const sel = R.stageR.scriptureBody(out);
+        if (nav) box.append(h('div', { class: 'scr-nav' }, ib('chevronLeft', 'Previous chapter', () => nav(-1)), h('span', { class: 'tiny muted grow center' }, shared.reference), ib('chevronRight', 'Next chapter', () => nav(1))));
+        box.append(out, sel);
+      } else { box.append(out); if (ref.value) preview(); }
       return box;
     },
     captions() {
@@ -213,7 +229,7 @@ export function buildTools(R) {
       const max = h('input', { class: 'input sm', type: 'number', min: 2, max: 1000, value: R.maxParticipants || '', style: { width: '90px' }, onchange: (e) => R.send('set-max-participants', { max: Number(e.target.value) }) });
       return h('div', { class: 'stack' },
         row('lock', 'Lock room', 'No new people can join', sw(s.locked, (v) => R.send(v ? 'lock-meeting' : 'unlock-meeting', {}))),
-        row('door', 'Waiting room', 'You admit everyone who joins', sw(s.waitingRoom, set('waitingRoom'))),
+        R.joinRes?.venue ? row('door', 'Waiting room', 'Always on in a venue', h('span', { class: 'tiny muted' }, 'On')) : row('door', 'Waiting room', 'You admit everyone who joins', sw(s.waitingRoom, set('waitingRoom'))),
         row('user', 'Guest access', 'Allow people without an account', sw(s.guestAccess !== false, set('guestAccess'))),
         h('div', { class: 'sec-sub' }, 'Everyone can…'),
         row('mic', 'Unmute themselves', null, sw(s.participantMicrophone !== false, set('participantMicrophone'))),

@@ -391,6 +391,7 @@ function createRequestHandler() {
         id: meeting.id,
         code: meeting.code,
         name: meeting.name,
+        venue: meeting.venue || null,
         hostDisplayName: meeting.host_display_name,
         createdAt: meeting.created_at,
         endedAt: meeting.ended_at,
@@ -468,6 +469,7 @@ function createRequestHandler() {
               id: meeting.id,
               code: meeting.code,
               name: meeting.name,
+              venue: meeting.venue || null,
               hostDisplayName: meeting.host_display_name,
               createdAt: meeting.created_at,
               endedAt: meeting.ended_at,
@@ -718,6 +720,15 @@ function createRequestHandler() {
         }
         if (event) code = event.code;
       }
+      // Permanent venue: fixed code, owner only, waiting room always on.
+      let venue = null;
+      if (body.venue) {
+        if (!authUser) return sendJSON(res, 401, { error: 'Sign in to open your venue' });
+        venue = await require('../venue/data').getVenueBySlug(String(body.venue).toLowerCase()).catch(() => null);
+        if (!venue || venue.ownerUserId !== authUser.id) return sendJSON(res, 403, { error: 'Only the venue owner can open it' });
+        if (meetings.has(venue.code)) return sendJSON(res, 409, { error: 'This venue is already open', code: venue.code });
+        code = venue.code;
+      }
       const hostId = body.participantId || 'host-' + Date.now();
       const hostName = normalizeParticipantName(
         body.participantName
@@ -744,7 +755,7 @@ function createRequestHandler() {
       });
 
       const settings = createMeetingSettings({
-        waitingRoom: !!body.waitingRoom,
+        waitingRoom: !!body.waitingRoom || !!venue,
         guestAccess: body.guestAccess !== false,
         participantScreenShare: body.participantScreenShare !== false,
         participantMicrophone: body.participantMicrophone !== false,
@@ -783,6 +794,7 @@ function createRequestHandler() {
         content: null,
         chatHistory: [],
         scheduledId: body.scheduledId || null,
+        venue: venue ? { slug: venue.slug, name: venue.name } : null,
         settings,
         inviteToken,
         inviteAccess: body.inviteAccess || 'anyone', // anyone | approval
@@ -846,6 +858,7 @@ function createRequestHandler() {
         content: null,
         stage: stage.state(meeting),
         eventSlug: meeting.eventSlug || null,
+        venue: meeting.venue || null,
       });
     } catch (e) {
       console.error('[create]', e);
@@ -1010,6 +1023,7 @@ function createRequestHandler() {
           letters: code.slice(0, 3),
           numbers: code.slice(3),
           name: meeting.name,
+          venue: meeting.venue || null,
           participantId: pid,
           wsCredential: signWsCredential({ participantId: pid, code }),
           role,
@@ -1053,6 +1067,7 @@ function createRequestHandler() {
         letters: code.slice(0, 3),
         numbers: code.slice(3),
         name: meeting.name,
+        venue: meeting.venue || null,
         participantId: pid,
         wsCredential: signWsCredential({ participantId: pid, code }),
         role: participant.role,
@@ -1083,6 +1098,7 @@ function createRequestHandler() {
       letters: code.slice(0, 3),
       numbers: code.slice(3),
       name: meeting.name,
+      venue: meeting.venue || null,
       participants: getParticipantsList(meeting),
       waiting: getWaitingList(meeting),
       raisedHands: getRaisedHands(meeting),

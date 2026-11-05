@@ -16,7 +16,8 @@ export async function mount(view) {
     h('p', null, 'Talk shows, seminars, sermons and team meetings — with speaker seats, live scripture, Nigerian-language captions and one-click AI summaries.'),
     h('div', { class: 'row wrap', style: { marginTop: '1.2rem', gap: '.7rem' } },
       h('a', { class: 'btn primary lg', href: '/create', 'data-link': '', html: icon('radio', { size: 20 }) + 'Go live' }),
-      h('a', { class: 'btn lg', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', html: icon('zap', { size: 20 }) + 'Instant meeting' })),
+      h('a', { class: 'btn lg', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', html: icon('zap', { size: 20 }) + 'Instant meeting' }),
+      h('a', { class: 'btn lg', href: '/venues', 'data-link': '', 'data-group': 'media', html: icon('door', { size: 20 }) + 'Venue' })),
     h('div', { class: 'join-box' }, frag(icon('hash', { size: 20 })), codeIn, h('button', { class: 'btn primary', onclick: joinGo, html: icon('arrowRight', { size: 18 }) + 'Join' })));
   const liveWrap = h('div', null, skeletonCards(3));
   const upWrap = h('div', null, skeletonCards(3));

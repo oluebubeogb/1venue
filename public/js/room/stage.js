@@ -1,6 +1,6 @@
 // Stage rendering: tiles (grid / spotlight / speaker), presentation area (screen, content, scripture,
 // boards, timeline), captions overlay and floating reactions.
-import { h, esc, api, avatar, toast, download, confirmDlg, uploadFile } from '../ui.js';
+import { h, esc, api, avatar, toast, download, confirmDlg, uploadFile, menu } from '../ui.js';
 import { state } from '../app.js';
 import { icon } from '../icons.js';
 import { translationSelect, versesEl, refLabel } from '../pages/bible.js';
@@ -16,17 +16,14 @@ export function createStage(R) {
   const tilesEl = h('div', { class: 'tiles' });
   const caps = h('div', { class: 'cap-overlay', 'aria-live': 'polite' });
   const fx = h('div', { class: 'fx-layer', 'aria-hidden': 'true' });
-  const dock = h('div', { class: 'scr-dock', hidden: true, 'data-group': 'faith' });
-  const switchEl = h('div', { class: 'share-switch', hidden: true, role: 'tablist', 'aria-label': 'Choose what to watch', 'data-group': 'media' });
-  el.append(switchEl, present, tilesEl, dock, caps, fx);
+  el.append(present, tilesEl, caps, fx);
+  // Cameras the viewer pinned to the sidebar (⋯ → View camera in sidebar). Rendered as a responsive grid.
+  const sideEl = h('div', { class: 'cam-side', hidden: true, 'aria-label': 'Pinned cameras' });
+  const sideCams = new Map(); // id -> {el, video, track}
   // Viewer's own choice of what fills the spotlight while screens are shared:
   // a sharer's id, 'cameras', or null (auto = keep the current screen, never jump to a newer one).
   let pick = null, autoScreen = null;
   function setPick(v) { pick = v; if (v && v !== 'cameras') autoScreen = v; render(true); }
-  let dockKey = null;
-  // Scripture on screen: 'dock' (compact card over the tiles, default), 'min' (just a pill) or 'full' (presentation area).
-  const scrMode = () => { try { return localStorage.getItem('venue.scr.mode') || 'dock'; } catch { return 'dock'; } };
-  const setScrMode = (m) => { try { localStorage.setItem('venue.scr.mode', m); } catch { /* */ } render(true); };
   const tiles = new Map(); // id -> {el, video, screenEl}
   let presentKey = null, presentCleanup = null;
 
@@ -47,7 +44,10 @@ export function createStage(R) {
       h('div', { class: 'tile-av' }), video,
       h('div', { class: 'tile-meta' }, h('span', { class: 'tile-mic' }), h('b', { class: 'tile-name ellipsis' }), h('span', { class: 'tile-q' })),
       h('div', { class: 'tile-badges' }),
+      kind === 'screen' ? null : h('button', { class: 'tile-more', type: 'button', 'aria-label': 'More', 'data-tip': 'More', onclick: (e) => { e.stopPropagation(); tileMenu(e.currentTarget, id); }, html: icon('more', { size: 14 }) }),
       kind === 'screen' ? null : h('button', { class: 'tile-pin icon-btn sm glass', type: 'button', 'data-tip': 'Pin', 'data-group': 'media', onclick: (e) => { e.stopPropagation(); R.pin(R.pinned === id ? null : id); }, html: icon('pin', { size: 14 }) }));
+    // Clicking a sharer's small card puts their screen on the big stage.
+    if (kind !== 'screen') tile.addEventListener('click', (e) => { if (e.target.closest('button')) return; const sc = tiles.get(id + ':screen'); if (sc && sc.track) setPick(id); });
     t = { el: tile, video, kind, id, track: null };
     tiles.set(key, t);
     return t;
@@ -58,7 +58,7 @@ export function createStage(R) {
     const self = t.id === R.me.id;
     t.el.querySelector('.tile-name').textContent = (t.kind === 'screen' ? `${p.name}’s screen` : p.name + (self ? ' (you)' : ''));
     const av = t.el.querySelector('.tile-av');
-    if (av.dataset.n !== p.name) { av.dataset.n = p.name; av.replaceChildren(avatar(p.name, p.avatarUrl, 'xl')); }
+    if (av.dataset.n !== p.name) { av.dataset.n = p.name; av.replaceChildren(avatar(p.name, p.avatarUrl, 'xl')); t.el.style.setProperty('--av-url', p.avatarUrl ? `url("${String(p.avatarUrl).replace(/"/g, '%22')}")` : 'none'); }
     t.el.querySelector('.tile-mic').innerHTML = t.kind === 'screen' ? icon('screen', { size: 14 }) : icon(st.mic ? 'mic' : 'micOff', { size: 14 });
     t.el.querySelector('.tile-mic').classList.toggle('off', !st.mic);
     const q = R.quality[t.id]; t.el.querySelector('.tile-q').innerHTML = q && q !== 'excellent' && q !== 'unknown' ? icon('signal', { size: 13 }) : ''; t.el.querySelector('.tile-q').dataset.q = q || '';
@@ -70,9 +70,39 @@ export function createStage(R) {
     const b = t.el.querySelector('.tile-badges'); b.innerHTML = '';
     if (hand >= 0) b.append(h('span', { class: 'tb hand' }, '✋ ' + (hand + 1)));
     const shareT = t.kind === 'camera' && tiles.get(t.id + ':screen');
-    if (shareT && shareT.track) b.append(h('button', { class: 'tb sharing', type: 'button', 'data-tip': 'Watch this screen', onclick: (e) => { e.stopPropagation(); setPick(t.id); }, html: icon('screen', { size: 12 }) + 'Sharing' }));
+    const isSharing = !!(shareT && shareT.track); t.el.classList.toggle('sharing', isSharing);
+    t.el.classList.toggle('on-stage', isSharing && presentKey === 'screen:' + t.id);
+    if (isSharing) b.append(h('button', { class: 'tb sharing', type: 'button', 'data-tip': presentKey === 'screen:' + t.id ? 'On the big screen' : 'Show this screen on the big screen', 'aria-label': 'Show screen', onclick: (e) => { e.stopPropagation(); setPick(t.id); }, html: icon('screen', { size: 12 }) }));
     if (p.role === 'host') b.append(h('span', { class: 'tb', 'data-role': 'host', html: icon('crown', { size: 12 }) }));
     if (R.stage.enabled && R.isSpeaker(t.id) && p.role !== 'host') b.append(h('span', { class: 'tb', 'data-role': 'speaker', html: icon('mic', { size: 12 }) }));
+  }
+  function tileMenu(anchor, id) {
+    const st = R.mediaState(id); const cam = tiles.get(id); const sc = tiles.get(id + ':screen');
+    const hasCam = !!(cam && cam.track) || st.cam;
+    menu(anchor, [
+      sc && sc.track ? { label: 'Show screen on big screen', icon: 'screen', group: 'media', run: () => setPick(id) } : null,
+      sideCams.has(id) ? { label: 'Remove camera from sidebar', icon: 'sidebar', group: 'media', run: () => toggleSide(id) }
+        : { label: hasCam ? 'View camera in sidebar' : 'View camera in sidebar (camera off)', icon: 'sidebar', group: 'media', hidden: !hasCam, run: () => toggleSide(id) },
+      { label: R.pinned === id ? 'Unpin' : 'Pin', icon: 'pin', group: 'media', run: () => R.pin(R.pinned === id ? null : id) },
+    ].filter(Boolean));
+  }
+  function toggleSide(id) {
+    const s = sideCams.get(id);
+    if (s) { try { s.track && s.track.detach && s.track.detach(s.video); } catch { /* */ } sideCams.delete(id); }
+    else sideCams.set(id, { video: h('video', { autoplay: true, playsinline: true, muted: true }), track: null });
+    renderSide();
+  }
+  function renderSide() {
+    for (const [id, s] of sideCams) {
+      if (!R.p(id)) { try { s.track && s.track.detach && s.track.detach(s.video); } catch { /* */ } sideCams.delete(id); continue; }
+      const tr = tiles.get(id)?.track || null;
+      if (tr !== s.track) { try { s.track && s.track.detach && s.track.detach(s.video); } catch { /* */ } s.track = tr; if (tr && tr.attach) tr.attach(s.video); else s.video.srcObject = null; }
+    }
+    sideEl.hidden = !sideCams.size; sideEl.dataset.n = Math.min(sideCams.size, 4);
+    const sig = [...sideCams.keys()].join(',');
+    if (sideEl.dataset.sig === sig) return; sideEl.dataset.sig = sig;
+    sideEl.replaceChildren(h('div', { class: 'cam-side-head' }, h('span', { html: icon('video', { size: 14 }) }), h('b', { class: 'grow' }, 'Cameras'), h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Close', 'data-tip': 'Close', onclick: () => { [...sideCams.keys()].forEach(toggleSide); }, html: icon('x', { size: 14 }) })),
+      h('div', { class: 'cam-side-grid' }, [...sideCams].map(([id, s]) => { const p = R.p(id) || { name: 'Guest' }; return h('div', { class: 'cam-side-tile' + (id === R.me.id && R.mirror ? ' mirror' : '') }, s.video, h('span', { class: 'cst-name ellipsis' }, p.name), h('button', { class: 'tile-more', type: 'button', 'aria-label': 'Remove', onclick: () => toggleSide(id), html: icon('x', { size: 12 }) })); })));
   }
   function setTrack(id, track, source) {
     const kind = source === 'screen_share' || source === 'screenShare' ? 'screen' : 'camera';
@@ -113,7 +143,7 @@ export function createStage(R) {
     }
     if (R.content) return ['content:' + R.content.type + ':' + (R.content.videoId || R.content.url) + ':' + R.content.remoteHolderId];
     if (R.timeline.slideshow || R.timelineView) return R.timeline.items.length ? ['timeline'] : null;
-    if (R.scripture && scrMode() === 'full') return ['scripture:' + R.scripture.reference + ':' + R.scripture.at];
+    if (R.scripture && R.scripture.mode === 'stage') return ['scripture:' + R.scripture.reference + ':' + R.scripture.at];
     return null;
   }
   const closeBtn = (label, run) => h('button', { class: 'btn sm glass present-close', type: 'button', onclick: run, html: icon('x', { size: 14 }) + `<span>${esc(label)}</span>` });
@@ -190,16 +220,18 @@ export function createStage(R) {
     (!tl.slideshow || R.isMod()) ? h('div', { class: 'present-tools' }, h('button', { class: 'icon-btn glass', onclick: () => go(-1), html: icon('chevronLeft') }), h('button', { class: 'icon-btn glass', onclick: () => go(1), html: icon('chevronRight') })) : null);
   }
   // Verses + a selection bar (share to meeting chat / feed, copy).
+  const pcache = new Map();
   function scriptureBody(box) {
     const s = R.scripture;
     const selBar = h('div', { class: 'scr-sel', hidden: true });
-    box.replaceChildren(h('div', { class: 'skel', style: { height: '90px' } }));
-    api(`/api/bible/passage?ref=${encodeURIComponent(s.reference)}&t=${R.bibleTr()}`).then((p) => {
+    const tr = R.scrTr(); const ck = s.reference + '|' + tr;
+    if (!pcache.has(ck)) { box.replaceChildren(h('div', { class: 'skel', style: { height: '90px' } })); pcache.set(ck, api(`/api/bible/passage?ref=${encodeURIComponent(s.reference)}&t=${encodeURIComponent(tr)}`)); if (pcache.size > 30) pcache.delete(pcache.keys().next().value); }
+    pcache.get(ck).then((p) => { p = { ...p };
       const paint = (vs) => {
         selBar.hidden = !vs.length; if (!vs.length) return;
         const text = p.verses.filter((v) => vs.includes(v.v)).map((v) => String(v.text).replace(/^¶\s*/, '')).join(' ');
         const ref = refLabel(p.bookName || p.reference.replace(/\s+\d.*$/, ''), p.chapter, vs);
-        const passage = { reference: ref, text, translation: p.translation?.id || R.bibleTr(), short: p.translation?.short || '' };
+        const passage = { reference: ref, text, translation: p.translation?.id || tr, short: p.translation?.short || '' };
         selBar.replaceChildren(h('b', { class: 'grow ellipsis' }, ref),
           h('button', { class: 'btn sm primary', 'data-group': 'social', onclick: () => { R.send('chat', { text: '', attachment: { kind: 'passage', ...passage } }); toast(`${ref} shared to chat`, { icon: 'chat', group: 'social', ms: 2000 }); clear(); }, html: icon('chat', { size: 14 }) + '<span>Share to chat</span>' }),
           h('button', { class: 'btn sm', 'data-group': 'social', onclick: () => sharePassageToFeed(passage), html: icon('feed', { size: 14 }) + '<span>Feed</span>' }),
@@ -209,37 +241,18 @@ export function createStage(R) {
       const verses = versesEl(p, { onSelect: paint });
       const clear = () => { verses.querySelectorAll('.verse.sel').forEach((e) => e.classList.remove('sel')); p.selected = []; selBar.hidden = true; };
       box.replaceChildren(h('div', { class: 'scripture-ref' }, p.reference, h('small', null, p.translation?.name || p.translation?.short || '')), verses, h('p', { class: 'tiny faint scr-hint' }, 'Tap verses to share them'));
-    }).catch((e) => box.replaceChildren(h('p', { class: 'muted' }, 'Couldn’t load this passage in that translation. ' + (e.message || ''))));
+    }).catch((e) => { pcache.delete(ck); box.replaceChildren(h('p', { class: 'muted' }, 'Couldn’t load this passage in that translation. ' + (e.message || ''))); });
     return selBar;
   }
-  const canClear = () => R.isMod() || R.isSpeaker(R.me.id);
-  const modeBtn = (ic, tip, m) => h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': tip, 'aria-label': tip, html: icon(ic, { size: 15 }), onclick: (e) => { e.stopPropagation(); setScrMode(m); } });
+  
   function buildScripture() {
     const s = R.scripture;
     const body = h('div', { class: 'scripture-card' });
-    const tsel = translationSelect(R.bibleTr(), (v) => R.setBibleTr(v), { compact: true });
+    const tsel = translationSelect(R.scrTr(), (v) => { if (!R.canScripture()) R.scrOwnTr = true; R.setBibleTr(v); }, { compact: true });
     const selBar = scriptureBody(body);
     present.append(h('div', { class: 'present-head', 'data-group': 'faith' }, I('bookOpen'), h('b', { class: 'grow' }, s.reference), h('span', { class: 'tiny muted' }, 'by ' + s.by), tsel,
-      modeBtn('minimize', 'Dock it small', 'dock'),
-      canClear() ? closeBtn('Clear', () => R.send('scripture-clear', {})) : null), h('div', { class: 'present-body scroll' }, body), selBar);
-  }
-  function renderDock() {
-    const s = R.scripture, mode = scrMode();
-    const k = s && mode !== 'full' ? [s.reference, s.at, mode, R.bibleTr()].join('|') : null;
-    if (k === dockKey) return;
-    dockKey = k; dock.hidden = !k; dock.dataset.mode = mode;
-    if (!k) { dock.replaceChildren(); return; }
-    if (mode === 'min') {
-      dock.replaceChildren(h('button', { class: 'scr-pill', type: 'button', onclick: () => setScrMode('dock'), 'aria-label': `Show ${s.reference}` }, h('span', { html: icon('bookOpen', { size: 15 }) }), h('b', null, s.reference), h('span', { class: 'chev', html: icon('chevronDown', { size: 14 }) })));
-      return;
-    }
-    const body = h('div', { class: 'scr-body' });
-    const selBar = scriptureBody(body);
-    dock.replaceChildren(h('div', { class: 'scr-head' }, h('span', { class: 'scr-ic', html: icon('bookOpen', { size: 15 }) }), h('b', { class: 'grow ellipsis' }, s.reference),
-      translationSelect(R.bibleTr(), (v) => R.setBibleTr(v), { compact: true }),
-      modeBtn('chevronDown', 'Collapse', 'min'), modeBtn('maximize', 'Expand', 'full'),
-      canClear() ? h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Take off screen', 'aria-label': 'Take off screen', html: icon('x', { size: 15 }), onclick: () => R.send('scripture-clear', {}) }) : null),
-    body, selBar);
+      R.canScripture() ? h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': 'Move to sidebar', 'aria-label': 'Move to sidebar', html: icon('sidebar', { size: 15 }), onclick: () => R.showScripture(s.reference, { translation: s.translation, mode: 'side' }) }) : null,
+      R.canScripture() ? closeBtn('Clear', () => R.send('scripture-clear', {})) : null), h('div', { class: 'present-body scroll' }, body), selBar);
   }
   function buildTeamBoard() {
     const toStroke = (s) => ({ ...s, tool: s.tool || (s.erase ? 'eraser' : 'pen') });
@@ -284,18 +297,6 @@ export function createStage(R) {
     presentCleanup = () => { R.viewingBoard = null; R.viewingOwner = null; b.destroy(); };
   }
 
-  function renderSwitch(current) {
-    const sc = screens();
-    switchEl.hidden = !sc.length;
-    if (!sc.length) { switchEl.replaceChildren(); return; }
-    const sig = sc.map((t) => t.id).join(',') + '|' + current + '|' + pick;
-    if (switchEl.dataset.sig === sig) return; switchEl.dataset.sig = sig;
-    const chip = (label, ic, on, run) => h('button', { class: `sw-chip${on ? ' on' : ''}`, type: 'button', role: 'tab', 'aria-selected': on ? 'true' : 'false', onclick: run, html: icon(ic, { size: 13 }) + `<span>${esc(label)}</span>` });
-    switchEl.replaceChildren(
-      ...sc.map((t) => { const p = R.p(t.id) || (t.id === R.me.id ? R.me : { name: 'Guest' }); return chip(t.id === R.me.id ? 'Your screen' : `${p.name}’s screen`, 'screen', current === t.id, () => setPick(t.id)); }),
-      chip('Cameras', 'video', !current && pick === 'cameras', () => setPick('cameras')));
-  }
-
   // ---------- layout ----------
   function render(force) {
     const pk = presentation(); const key = pk && pk[0];
@@ -307,14 +308,12 @@ export function createStage(R) {
     }
     present.hidden = !key;
     el.classList.toggle('presenting', !!key);
-    if (force) dockKey = null;
-    renderDock();
     const people = visiblePeople();
     const ids = people.map((p) => p.id);
     if (!ids.includes(R.me.id) && (!R.stage.enabled || R.isSpeaker(R.me.id))) ids.unshift(R.me.id);
     const list = ids.map((id) => tileFor(id));
     const presentScreenId = key && key.startsWith('screen:') ? key.slice(7) : null;
-    renderSwitch(presentScreenId);
+    void presentScreenId;
     let layout = R.layout;
     let main = null;
     if (!key) {
@@ -345,6 +344,7 @@ export function createStage(R) {
     }
     // drop tiles of people that left
     for (const [k, t] of tiles) if (t.kind === 'camera' && t.id !== R.me.id && !R.p(t.id)) { t.el.remove(); tiles.delete(k); }
+    renderSide();
   }
 
   // ---------- captions overlay ----------
@@ -368,5 +368,5 @@ export function createStage(R) {
     fx.append(n); setTimeout(() => n.remove(), 3200);
   }
 
-  return { el, render, setPick, get pick() { return pick; }, setTrack, clearTrack, caption, paintCaps, burst, paintAll: () => { for (const t of tiles.values()) paintTile(t); }, tiles, screens, presentEl: present, get presentKey() { return presentKey; } };
+  return { el, sideEl, scriptureBody, render, setPick, get pick() { return pick; }, setTrack, clearTrack, caption, paintCaps, burst, paintAll: () => { for (const t of tiles.values()) paintTile(t); }, tiles, screens, presentEl: present, get presentKey() { return presentKey; } };
 }

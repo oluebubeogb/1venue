@@ -84,6 +84,9 @@ const ROUTES = [
   [/^\/session\/(\d+)\/?$/, () => import('./pages/session.js'), 'id'],
   [/^\/whiteboard\/?$/, () => import('./pages/whiteboard.js')],
   [/^\/login\/?$/, () => import('./pages/login.js')],
+  [/^\/venues\/?$/, () => import('./pages/venue.js'), { list: true }],
+  [/^\/v\/([A-Za-z0-9]{4,16})\/?$/, () => import('./pages/venue.js'), 'slug'],
+  [/^\/(?=[A-Za-z]*\d)(?=\d*[A-Za-z])([A-Za-z0-9]{7})\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/new\/?$/, () => import('./room/room.js'), { code: null, instant: true }],
   [/^\/(?:r\/|j\/)?([A-Za-z]{3}-?\d{3})\/?$/, () => import('./room/room.js'), 'code'],
 ];
@@ -226,6 +229,7 @@ function registerGlobal() {
   GLOBAL = [
     { id: 'create', label: 'Create event', short: 'Create', icon: 'plus', group: 'engage', keywords: ['go live', 'host', 'new meeting', 'schedule', 'start'], run: go('/create') },
     { id: 'instant', label: 'Start instant meeting', short: 'Instant', icon: 'zap', group: 'media', keywords: ['meet now', 'quick call', 'new room'], run: go('/create?instant=1') },
+    { id: 'venues', label: 'Venues — permanent links', short: 'Venue', icon: 'door', group: 'media', keywords: ['venue', 'permanent room', 'personal room', 'short link', '/v/'], run: go('/venues') },
     { id: 'join', label: 'Join with code', short: 'Join', icon: 'login', group: 'people', keywords: ['enter code', 'meeting code', 'room'], run: () => joinPrompt() },
     { id: 'discover', label: 'Discover events', short: 'Discover', icon: 'compass', group: 'nav', keywords: ['browse', 'explore'], run: go('/discover') },
     { id: 'live', label: 'Live now', icon: 'radio', group: 'engage', keywords: ['happening', 'streaming', 'on air'], run: go('/discover?status=live') },

@@ -300,6 +300,7 @@ module.exports = {
       for (const k of keys) {
         if (typeof patch[k] === 'boolean') s[k] = patch[k];
       }
+      if (meeting.venue) s.waitingRoom = true; // venues: waiting room is permanent
       const shareAllowed = s.participantScreenShare !== false;
       // Push resolved permissions to every active non-host so UI updates without reload
       for (const [pid, p] of meeting.participants) {

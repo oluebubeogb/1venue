@@ -258,7 +258,7 @@ const scripturePlugin = {
       const bible = require('../venue/bible');
       const ref = bible.parseReference(msg.reference);
       if (!ref) return err(ctx, pid, 'Could not read that reference');
-      meeting.scripture = { reference: String(msg.reference).slice(0, 60), parsed: ref, translation: msg.translation || null, by: p.name, at: Date.now() };
+      meeting.scripture = { reference: String(msg.reference).slice(0, 60), parsed: ref, translation: msg.translation ? String(msg.translation).slice(0, 40) : null, mode: msg.mode === 'stage' ? 'stage' : 'side', by: p.name, byId: pid, at: Date.now() };
       broadcast(meetingCode, { type: 'scripture-show', scripture: meeting.scripture });
     });
     ctx.onWs('scripture-clear', ({ participantId: pid, meeting, meetingCode }) => {

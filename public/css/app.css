@@ -597,3 +597,16 @@ button.list-item:hover { background: var(--s2); }
 .section-h h2 { font-size: 1.02rem; font-weight: 650; }
 .section-h h2 .ic { width: 18px; height: 18px; }
 .empty h2 { font-size: 1.1rem; } .empty h1 { font-size: 1.6rem; }
+
+/* ---------- 2026-11 typography: Grok-like — near-uniform sizes, modest weight, no big headers ---------- */
+body { letter-spacing: 0; }
+h1, h2, h3, h4 { letter-spacing: -.005em; line-height: 1.3; }
+h1, .page-head h1, .ev-hero h1 { font-size: 1.2rem; font-weight: 600; }
+.hero h1 { font-size: 1.45rem; font-weight: 600; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+h3, h4 { font-size: .98rem; font-weight: 600; }
+.brand { font-weight: 600; }
+strong, b { font-weight: 600; }
+.btn { font-weight: 500; }
+.eyebrow { font-weight: 500; letter-spacing: .02em; }
+.venue-door .waiting { min-height: 50vh; }

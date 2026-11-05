@@ -375,7 +375,8 @@ export function createPanel(R) {
     if (t && R.tools[t]) {
       const v = R.tools[t]();
       const meta = TOOLS.find((x) => x[0] === t) || [t, t, 'wand', ''];
-      return h('div', { class: 'tool-view', 'data-group': meta[3] }, h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'All tools', () => { sub.tools = null; render(); }), h('span', { class: 'ico-tile sm', 'data-group': meta[3], html: icon(meta[2], { size: 16 }) }), h('b', { class: 'grow' }, meta[1])), v);
+      return h('div', { class: 'tool-view', 'data-group': meta[3] }, h('div', { class: 'row sub-head' }, ibtn('chevronLeft', 'All tools', () => { sub.tools = null; render(); }), h('span', { class: 'ico-tile sm', 'data-group': meta[3], html: icon(meta[2], { size: 16 }) }), h('b', { class: 'grow' }, meta[1]),
+        t === 'scripture' && R.scripture ? h('span', { class: 'scr-live', 'data-tip': `On screen now · ${R.scripture.reference} · shown by ${R.scripture.by}`, 'aria-label': `On screen now: ${R.scripture.reference}, shown by ${R.scripture.by}` }, h('i', { class: 'rec-dot' })) : null), v);
     }
     return h('div', { class: 'tool-grid stagger' }, TOOLS.filter(([id]) => !(['security', 'breakouts'].includes(id) && !R.isMod())).map(([id, label, ic, g, desc]) =>
       h('button', { class: 'tool-card', 'data-group': g, type: 'button', onclick: () => { sub.tools = id; render(); } }, h('span', { class: 'ico-tile', 'data-group': g, html: icon(ic, { size: 20 }) }), h('b', null, label), h('small', null, desc), R.toolBadge(id) ? h('em', { class: 'dot-live' }) : null)));

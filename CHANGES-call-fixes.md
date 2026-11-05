@@ -35,3 +35,15 @@ ICE was srflx↔host (no TURN), so SFU CPU came from forwarding a VP8 screen sha
 - Service worker cache bumped to v4-2026-11-02.
 
 Retest: `docker stats <livekit>` idle, 2-person camera-only, then with one share and with two shares; in chrome://webrtc-internals the screen outbound-rtp should show one stream (no q/h rids), ~720p, ≤12 fps, ≤1.2 Mbps.
+
+## 2026-11 UX pack
+
+- **F fullscreen**: fullscreens the whole document (`html.room-fs`) so the soft site background, 1v rail, head rail and the search/cmd footer all stay visible with generous padding. No more black.
+- **S stop-share confirm**: pressing S (or the share button) while sharing opens a light-blur "End screenshare?" overlay. Esc/Keep sharing cancels, Enter/End stops.
+- **Multi-screenshare**: the "user's screen / cameras" chip row is gone. Sharers' cards show a screenshare badge; click one to put that screen on the big stage. A Cameras icon on the head rail (next to People) switches to the camera grid.
+- **Bible**: one control line (verse · translation · Preview · Show · placement · Clear), icon-only with hover labels. Show/Clear/placement only for users allowed to share (mods, or speakers when stage is on, matching the server). Chapter prev/next and translation changes by the sharer re-broadcast to everyone; viewers follow the sharer's translation unless they pick their own. Shared verses open in the sidebar by default; the sharer can move them to the big screen and back. "Shown by" moved to a tooltip on the header dot. Passages are cached client-side.
+- **Small cards**: square, site-background (not black) card with blurred avatar backdrop, centred round avatar, mute badge top-left, ⋯ menu (show screen on stage, view camera in sidebar, pin). Several sidebar cameras show as a responsive grid.
+- **Permanent venues**: `/venues` (list/create, unlimited per signed-in user), `/v/{slug}` (7-char lowercase, case-insensitive; also `/{slug}` at root). Each venue owns a fixed room code; the owner opens it with a per-meeting name; waiting room is forced on and cannot be turned off. Guests arriving before the host see "This venue isn't open yet — wait a little" and are auto-forwarded into the waiting room when the host is in. Ending the meeting kicks everyone as usual; when the host reopens, guests wait again. Owners see the list of meetings held at the venue. Home has a Venue button; "Venues" is in the command palette/search.
+  - API: `GET/POST /api/venues`, `GET/PATCH /api/venues/:slug`, `GET /api/venues/:slug/meetings`; `/api/create` accepts `venue: slug`.
+  - Migration: `migrations/004_venues.sql` (applied automatically by `db.migrate`). No new env vars.
+- **Typography**: smaller, near-uniform headings, weight 600 max, in `app.css` and `room.css`.
