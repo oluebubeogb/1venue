@@ -722,12 +722,19 @@ function createRequestHandler() {
       }
       // Permanent venue: fixed code, owner only, waiting room always on.
       let venue = null;
+      const vdata = require('../venue/data');
       if (body.venue) {
-        if (!authUser) return sendJSON(res, 401, { error: 'Sign in to open your venue' });
-        venue = await require('../venue/data').getVenueBySlug(String(body.venue).toLowerCase()).catch(() => null);
-        if (!venue || venue.ownerUserId !== authUser.id) return sendJSON(res, 403, { error: 'Only the venue owner can open it' });
+        venue = await vdata.getVenueBySlug(String(body.venue).toLowerCase()).catch(() => null);
+        if (!venue) return sendJSON(res, 404, { error: 'Venue not found' });
+      } else if (body.code && !event) {
+        // A create aimed at a venue-bound code must open that venue, never fork a new code.
+        venue = await vdata.getVenueByCode(String(body.code).toUpperCase().replace(/[^A-Z0-9]/g, '')).catch(() => null);
+      }
+      if (venue) {
+        if (!authUser) return sendJSON(res, 401, { error: 'Sign in to open your venue', code: venue.code });
+        if (venue.ownerUserId !== authUser.id) return sendJSON(res, 403, { error: 'Only the venue owner can open it', code: venue.code });
         if (meetings.has(venue.code)) return sendJSON(res, 409, { error: 'This venue is already open', code: venue.code });
-        code = venue.code;
+        code = venue.code; // forced: client-sent code is ignored for venues
       }
       const hostId = body.participantId || 'host-' + Date.now();
       const hostName = normalizeParticipantName(
@@ -826,6 +833,7 @@ function createRequestHandler() {
         meeting.event = { id: event.id, slug: event.slug, title: event.title, category: event.category, visibility: event.visibility, theme: event.theme };
         await require('../venue/data').markEventLive(event.id, { code, historyId }).catch((e) => console.warn('[event live]', e.message));
       }
+      if (venue) await vdata.markVenueOpen(code, historyId).catch((e) => console.warn('[venue open]', e.message));
       try {
         await db.upsertMembership({
           code,

@@ -17,7 +17,7 @@ export function unmount() { clearTimeout(timer); }
 
 function open(v, meetingName) {
   sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, venue: v.slug, name: meetingName || v.name, waitingRoom: true, code: v.code }));
-  navigate('/new');
+  navigate('/' + fmtCode(v.code));
 }
 
 async function list(view) {
@@ -56,8 +56,8 @@ async function door(view, slug) {
   if (v.isOwner) return ownerView(wrap, v);
   const poll = async () => {
     try { v = await api(`/api/venues/${encodeURIComponent(slug)}`); } catch { /* keep waiting */ }
-    if (v.live && v.live.hostIn) { navigate('/' + fmtCode(v.code), { replace: true }); return; }
-    timer = setTimeout(poll, 5000);
+    if (v.live && (v.live.open || v.live.hostIn)) { toast('Entering ' + v.name + '…'); navigate('/' + fmtCode(v.code), { replace: true }); return; }
+    timer = setTimeout(poll, 3000);
   };
   wrap.append(h('div', { class: 'waiting' },
     h('span', { class: 'ico-tile lg', 'data-group': 'media', html: icon('door', { size: 28 }) }),
@@ -65,7 +65,7 @@ async function door(view, slug) {
     h('p', { class: 'muted' }, 'This venue isn’t open yet — wait a little. You’ll go in to the waiting room as soon as the host arrives.'),
     h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')),
     h('a', { class: 'btn ghost', href: '/', 'data-link': '' }, 'Leave')));
-  if (v.live && v.live.hostIn) navigate('/' + fmtCode(v.code), { replace: true }); else timer = setTimeout(poll, 5000);
+  if (v.live && (v.live.open || v.live.hostIn)) navigate('/' + fmtCode(v.code), { replace: true }); else timer = setTimeout(poll, 3000);
 }
 
 async function ownerView(wrap, v) {

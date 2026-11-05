@@ -47,3 +47,9 @@ Retest: `docker stats <livekit>` idle, 2-person camera-only, then with one share
   - API: `GET/POST /api/venues`, `GET/PATCH /api/venues/:slug`, `GET /api/venues/:slug/meetings`; `/api/create` accepts `venue: slug`.
   - Migration: `migrations/004_venues.sql` (applied automatically by `db.migrate`). No new env vars.
 - **Typography**: smaller, near-uniform headings, weight 600 max, in `app.css` and `room.css`.
+
+## Permanent venue open/handoff (no forked codes)
+- `venue.js` Open now navigates to `/{venue.code}` with intent (not `/new`); guest door polls every 3s and enters as soon as the venue is open ("Entering …").
+- `room.js` create sends `venue` + `code`; venue owner hitting join 404 on their code falls back to create-with-venue. New `GET /api/venues/by-code/:code`.
+- `/api/create` resolves venue by slug or venue-bound code, requires owner, forces `code = venue.code` (never generateCode for venues); 409 returns venue.code.
+- Migration `005_venue_open.sql`: `venues.opened_at`, `active_history_id`; set on open, cleared in `endMeeting`. `venueLive` = in-memory meeting OR recent DB open flag.

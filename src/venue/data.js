@@ -540,7 +540,7 @@ async function dashboard(userId) {
 const SLUG_CH = 'abcdefghjkmnpqrstuvwxyz23456789';
 const randSlug = () => Array.from(crypto.randomBytes(7), (b) => SLUG_CH[b % SLUG_CH.length]).join('');
 const randCode = () => { const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ', D = '23456789'; const r = crypto.randomBytes(6); let s = ''; for (let i = 0; i < 3; i++) s += L[r[i] % L.length]; for (let i = 3; i < 6; i++) s += D[r[i] % D.length]; return s; };
-const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null });
+const venueOut = (r) => r && ({ id: r.id, slug: r.slug, code: r.code, name: r.name, ownerUserId: r.owner_user_id, createdAt: r.created_at, meetings: r.meetings != null ? Number(r.meetings) : undefined, lastHeld: r.last_held || null, openedAt: r.opened_at || null, activeHistoryId: r.active_history_id || null });
 async function createVenue(userId, name) {
   for (let i = 0; i < 8; i++) {
     const slug = randSlug(), code = randCode();
@@ -559,12 +559,14 @@ async function getVenueBySlug(slug) { return venueOut(await one('SELECT * FROM v
 async function getVenueByCode(code) { return venueOut(await one('SELECT * FROM venues WHERE code=upper($1)', [String(code || '')])); }
 async function renameVenue(id, userId, name) { return venueOut(await one('UPDATE venues SET name=$3 WHERE id=$1 AND owner_user_id=$2 RETURNING *', [id, userId, name])); }
 async function deleteVenue(id, userId) { return (await q('DELETE FROM venues WHERE id=$1 AND owner_user_id=$2', [id, userId])).rowCount > 0; }
+async function markVenueOpen(code, historyId) { await q('UPDATE venues SET opened_at=now(), active_history_id=$2 WHERE code=upper($1)', [String(code || ''), historyId || null]); }
+async function markVenueClosed(code) { await q('UPDATE venues SET opened_at=NULL, active_history_id=NULL WHERE code=upper($1)', [String(code || '')]); }
 async function venueMeetings(code, limit = 100) {
   return many(`SELECT id, name, host_display_name, created_at AS started_at, ended_at, max_participants FROM meeting_history WHERE code=$1 ORDER BY created_at DESC LIMIT $2`, [code, limit]);
 }
 
 module.exports = {
-  createVenue, myVenues, getVenueBySlug, getVenueByCode, renameVenue, deleteVenue, venueMeetings,
+  createVenue, myVenues, getVenueBySlug, getVenueByCode, renameVenue, deleteVenue, venueMeetings, markVenueOpen, markVenueClosed,
   CATEGORIES, getPrefs, setPrefs, getUserProfile, updateProfile, searchUsers,
   createEvent, updateEvent, deleteEvent, getEventById, getEventBySlug, getEventByCode, discover, categoryCounts, myEvents, rsvpedEvents,
   toggleRsvp, markEventLive, markEventEnded, updateViewers, listSpeakers, setSpeakers,

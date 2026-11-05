@@ -77,11 +77,16 @@ route('PATCH', '/api/profile', async (ctx) => {
 
 // ------------------------------------------------------------ permanent venues (/v/{slug})
 const venueName = (v) => { const n = String(v || '').trim().slice(0, 60); if (n.length < 2) throw httpError(400, 'Venue name must be at least 2 characters'); return n; };
+// Live = meeting exists in this process OR DB says the venue was opened recently (other replica / poll race).
 function venueLive(v) {
   const m = store.getMeeting(v.code);
-  if (!m) return null;
-  const hostIn = [...m.participants.values()].some((p) => p.status === 'ACTIVE' && (p.role === 'host' || p.role === 'cohost'));
-  return { meetingName: m.name, hostIn };
+  if (m) {
+    const hostIn = [...m.participants.values()].some((p) => p.status === 'ACTIVE' && (p.role === 'host' || p.role === 'cohost'));
+    return { meetingName: m.name, hostIn, open: true };
+  }
+  const openedMs = v.openedAt ? new Date(v.openedAt).getTime() : 0;
+  if (openedMs && Date.now() - openedMs < require('../config').MEETING_INACTIVITY_MS) return { meetingName: v.name, hostIn: true, open: true, fromDb: true };
+  return null;
 }
 route('GET', '/api/venues', async (ctx) => {
   const u = await requireUser(ctx.req, ctx.res);
@@ -90,6 +95,12 @@ route('GET', '/api/venues', async (ctx) => {
 route('POST', '/api/venues', async (ctx) => {
   const u = await requireUser(ctx.req, ctx.res);
   return data.createVenue(u.id, venueName((await ctx.body()).name));
+});
+route('GET', '/api/venues/by-code/([A-Za-z0-9-]{4,16})', async (ctx, [code]) => {
+  const v = await data.getVenueByCode(code.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  if (!v) return { venue: null };
+  const u = await getAuthUser(ctx.req, ctx.res);
+  return { venue: { slug: v.slug, name: v.name, code: v.code, isOwner: !!(u && u.id === v.ownerUserId), live: venueLive(v) } };
 });
 route('GET', '/api/venues/([A-Za-z0-9]{4,16})', async (ctx, [slug]) => {
   const v = await data.getVenueBySlug(slug.toLowerCase());

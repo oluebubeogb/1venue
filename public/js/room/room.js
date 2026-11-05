@@ -52,6 +52,10 @@ class Room {
     let ev = null;
     if (this.code && !creating) { ev = await api(`/api/events/${this.code}?optional=1`).catch(() => null); }
     this.event = ev;
+    if (this.code && !creating && !ev) {
+      const vr = await api(`/api/venues/by-code/${this.code}`).catch(() => null);
+      if (vr && vr.venue && vr.venue.isOwner) { this.venueOwnerSlug = vr.venue.slug; this.venueName = vr.venue.name; }
+    }
     this.prejoin({ creating, ev });
   }
   prejoin({ creating, ev }) {
@@ -114,7 +118,7 @@ class Room {
     if (creating) {
       const it = this.intent;
       try {
-        r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, venue: it.venue || undefined, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, device: deviceKind() } });
+        r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, venue: it.venue || undefined, code: it.venue ? (it.code || this.code || undefined) : undefined, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, device: deviceKind() } });
       } catch (e) {
         if (e.status === 409 && (e.data?.code || it.code)) { this.code = e.data?.code || it.code; sessionStorage.removeItem('venue.intent'); return this.join({ name, mic, cam, creating: false }); }
         throw e;
@@ -129,6 +133,7 @@ class Room {
         if (e.status === 404 && this.event && this.event.isHost) {
           if (await confirmDlg('This event isn’t live yet. Start it now?', { ok: 'Go live' })) { this.intent = { create: true, eventId: this.event.id, name: this.event.title, stage: this.event.category !== 'meeting', speakerSeats: this.event.speakerSeats, code: this.event.code }; return this.join({ name, mic, cam, creating: true }); }
         }
+        if (e.status === 404 && this.venueOwnerSlug) { this.intent = { create: true, venue: this.venueOwnerSlug, code: this.code, waitingRoom: true, name: this.venueName || 'Meeting' }; return this.join({ name, mic, cam, creating: true }); }
         if (e.status === 404 && this.event) throw new Error('This event hasn’t started yet — we’ll be here when it goes live.');
         throw e;
       }
