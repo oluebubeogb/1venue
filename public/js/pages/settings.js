@@ -1,6 +1,6 @@
 import { icon } from '../icons.js';
 import { h, esc, toast } from '../ui.js';
-import { state, setPrefs, ACCENTS, FONT_SIZES, logout, navigate } from '../app.js';
+import { state, setPrefs, ACCENTS, FONT_SIZES, logout, navigate, loginUrl } from '../app.js';
 import { promptInstall, canInstall } from '../pwa.js';
 import { translationSelect } from './bible.js';
 
@@ -41,7 +41,7 @@ export async function mount(view) {
         row('install', 'nav', 'Install 1venue', canInstall() ? 'Full-screen, faster, works offline' : 'Already installed or not supported in this browser', h('button', { class: 'btn sm', onclick: promptInstall }, 'Install')),
         row('keyboard', 'nav', 'Command bar', 'Press / or Ctrl K anywhere — every feature and setting is searchable', h('span', { class: 'kbd' }, '/'))),
       card('Account', 'user',
-        state.user ? row('user', 'people', state.user.displayName, state.user.email || '', h('a', { class: 'btn sm', href: '/me?edit=1', 'data-link': '' }, 'Edit profile')) : row('login', 'nav', 'Not signed in', 'Sign in with your Collab account', h('a', { class: 'btn sm primary', href: '/login', 'data-link': '' }, 'Sign in')),
+        state.user ? row('user', 'people', state.user.displayName, state.user.email || '', h('a', { class: 'btn sm', href: '/me?edit=1', 'data-link': '' }, 'Edit profile')) : (() => { const href = loginUrl('/'); const a = h('a', { class: 'btn sm primary', href }, 'Sign in'); if (!/^https?:/i.test(href)) a.setAttribute('data-link', ''); return row('login', 'nav', 'Not signed in', 'Sign in with your Collab account', a); })(),
         state.user ? row('logout', 'admin', 'Sign out', 'Signs out of 1venue and Collab Accounts', h('button', { class: 'btn sm danger', onclick: logout }, 'Sign out')) : null)));
   if (location.hash) setTimeout(() => { const el = document.getElementById(location.hash.slice(1)); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); } }, 120);
 }

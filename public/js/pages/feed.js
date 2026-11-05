@@ -1,6 +1,6 @@
 import { icon } from '../icons.js';
 import { h, api, toast, toastErr, avatar, uploadFile } from '../ui.js';
-import { state, requireLogin } from '../app.js';
+import { state, requireLogin, loginUrl } from '../app.js';
 import { postCard, empty, personRow, sectionHead } from '../components.js';
 import { passageCard } from '../passage.js';
 
@@ -32,7 +32,14 @@ export async function mount(view, params) {
   const list = h('div', { class: 'col', style: { gap: '.8rem' } }, h('div', { class: 'skel', style: { height: '140px' } }), h('div', { class: 'skel', style: { height: '140px' } }));
   const prefill = sessionStorage.getItem('venue.compose') || ''; sessionStorage.removeItem('venue.compose');
   let passage = null; try { passage = JSON.parse(sessionStorage.getItem('venue.compose.passage') || 'null'); } catch { /* */ } sessionStorage.removeItem('venue.compose.passage');
-  const comp = state.user ? composer((p) => list.prepend(postCard(p)), { prefill, passage }) : h('div', { class: 'card pad layer row between' }, h('span', { class: 'muted' }, 'Sign in to post, like and comment.'), h('a', { class: 'btn primary sm', href: '/login?next=/feed', 'data-link': '' }, 'Sign in'));
+  let comp;
+  if (state.user) comp = composer((p) => list.prepend(postCard(p)), { prefill, passage });
+  else {
+    const href = loginUrl('/feed');
+    const a = h('a', { class: 'btn primary sm', href }, 'Sign in');
+    if (!/^https?:/i.test(href)) a.setAttribute('data-link', '');
+    comp = h('div', { class: 'card pad layer row between' }, h('span', { class: 'muted' }, 'Sign in to post, like and comment.'), a);
+  }
   const side = h('aside', { class: 'col sticky', style: { gap: '1rem' } });
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('feed', { size: 28 }) + 'Feed' }), h('p', { class: 'muted' }, 'Updates from hosts and friends you follow — plus what’s live.')),
     h('div', { class: 'split' }, h('div', { class: 'col', style: { gap: '1rem' } }, comp, list), side));

@@ -49,14 +49,37 @@ export async function refreshSession() {
   renderUserSlot();
   return state.user;
 }
-export function loginUrl() {
+export function absReturnUrl(path) {
+  const p = path && String(path).startsWith('/') ? path : (location.pathname + location.search);
+  return (state.config?.publicUrl || location.origin) + p;
+}
+/** Collab Accounts login URL when configured; otherwise local `/login`. Optional path becomes `?next=`. */
+export function loginUrl(nextPath) {
+  const path = nextPath && String(nextPath).startsWith('/') ? nextPath : (location.pathname + location.search);
   const base = state.config?.accountsLoginUrl;
-  const next = (state.config?.publicUrl || location.origin) + location.pathname + location.search;
-  return base ? `${base}?next=${encodeURIComponent(next)}` : '/login';
+  if (base) return `${base}?next=${encodeURIComponent(absReturnUrl(path))}`;
+  return `/login?next=${encodeURIComponent(path)}`;
+}
+/** Collab Accounts signup URL derived from accountsLoginUrl; otherwise local `/login?mode=signup`. */
+export function signupUrl(nextPath) {
+  const path = nextPath && String(nextPath).startsWith('/') ? nextPath : (location.pathname + location.search);
+  const login = state.config?.accountsLoginUrl;
+  if (login) {
+    const signup = login.replace(/\/login\/?$/, '/signup');
+    return `${signup}?next=${encodeURIComponent(absReturnUrl(path))}`;
+  }
+  return `/login?mode=signup&next=${encodeURIComponent(path)}`;
+}
+/** Navigate to Accounts (full page) or local `/login`. */
+export function goLogin(nextPath, { signup = false } = {}) {
+  const url = signup ? signupUrl(nextPath) : loginUrl(nextPath);
+  if (/^https?:/i.test(url)) location.href = url;
+  else navigate(url);
 }
 export function requireLogin(msg = 'Sign in to continue') {
   if (state.user) return true;
-  toast(msg, { icon: 'login', group: 'nav' }); navigate('/login?next=' + encodeURIComponent(location.pathname + location.search));
+  toast(msg, { icon: 'login', group: 'nav' });
+  goLogin();
   return false;
 }
 export async function logout() {
@@ -84,6 +107,7 @@ const ROUTES = [
   [/^\/session\/(\d+)\/?$/, () => import('./pages/session.js'), 'id'],
   [/^\/whiteboard\/?$/, () => import('./pages/whiteboard.js')],
   [/^\/login\/?$/, () => import('./pages/login.js')],
+  [/^\/signup\/?$/, () => import('./pages/login.js'), { mode: 'signup' }],
   [/^\/venues\/?$/, () => import('./pages/venue.js'), { list: true }],
   [/^\/v\/([A-Za-z0-9]{2,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/(?=[A-Za-z]*\d)(?=\d*[A-Za-z])([A-Za-z0-9]{7})\/?$/, () => import('./pages/venue.js'), 'slug'],
@@ -126,7 +150,13 @@ async function route() {
       if (seq !== routeSeq) return;
       view.replaceChildren();
       if (e?.status === 404) { view.append(h('div', { class: 'empty' }, frag404())); window.scrollTo(0, 0); return; }
-      if (e?.status === 401) { view.append(h('div', { class: 'empty' }, h('h2', null, 'Sign in to continue'), h('p', { class: 'muted' }, 'This page needs an account.'), h('a', { class: 'btn primary', href: '/login?next=' + encodeURIComponent(location.pathname), style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Sign in'))); return; }
+      if (e?.status === 401) {
+        const href = loginUrl(location.pathname);
+        const a = h('a', { class: 'btn primary', href, style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Sign in');
+        if (!/^https?:/i.test(href)) a.setAttribute('data-link', '');
+        view.append(h('div', { class: 'empty' }, h('h2', null, 'Sign in to continue'), h('p', { class: 'muted' }, 'This page needs an account.'), a));
+        return;
+      }
       console.error(e);
       view.append(h('div', { class: 'empty' }, h('h2', null, 'Something went wrong'), h('p', { class: 'muted' }, errText(e) || 'Please try again.'), h('div', { class: 'row', style: { gap: '.5rem', justifyContent: 'center', marginTop: '1rem' } }, h('button', { class: 'btn', type: 'button', onclick: () => route() }, 'Try again'), h('a', { class: 'btn primary', href: '/' }, 'Go home'))));
     }
@@ -170,7 +200,10 @@ function renderUserSlot() {
     ]);
     slot.append(b);
   } else {
-    slot.append(h('a', { class: 'btn sm primary', href: '/login', 'data-link': '' }, frag(icon('login', { size: 16 })), 'Sign in'));
+    const href = loginUrl('/');
+    const a = h('a', { class: 'btn sm primary', href }, frag(icon('login', { size: 16 })), 'Sign in');
+    if (!/^https?:/i.test(href)) a.setAttribute('data-link', '');
+    slot.append(a);
   }
   const meTab = document.querySelector('.bottomnav [data-nav="/me"] span');
   if (meTab) meTab.textContent = state.user ? 'Me' : 'Sign in';
@@ -272,7 +305,8 @@ function registerGlobal() {
     { id: 'captions-lang', label: 'Caption language', icon: 'captions', group: 'settings', keywords: ['transcript language', 'yoruba', 'igbo', 'hausa', 'pidgin'], run: go('/settings#captions'), when: () => !state.inRoom },
     { id: 'install', label: 'Install 1venue app', short: 'Install', icon: 'install', group: 'nav', keywords: ['pwa', 'add to home screen'], run: promptInstall },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard', group: 'nav', keywords: ['hotkeys', 'keys', 'help'], run: showShortcuts },
-    { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'collab'], when: () => !state.user, run: go('/login') },
+    { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'collab'], when: () => !state.user, run: () => goLogin() },
+    { id: 'signup', label: 'Create account', icon: 'user', group: 'nav', keywords: ['sign up', 'register', 'collab'], when: () => !state.user, run: () => goLogin(undefined, { signup: true }) },
     { id: 'logout', label: 'Sign out', icon: 'logout', group: 'admin', keywords: ['log out'], when: () => !!state.user, run: logout },
   ];
   registerCommands('global', GLOBAL);
