@@ -8,14 +8,16 @@ const fmtCode = (c) => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const vlink = (slug) => `${location.origin}/v/${slug}`;
 let timer = null;
 
-/* Custom venue links. Plans: free → exactly 5 chars + "-venue"; premium → 4–16, no suffix; slug3 → 3+; slug2 → 2+. */
+/* Custom venue links. Plans: free → 5+ chars + "-venue"; premium → 5+, no suffix; slug3 → 3+; slug2 → 2+. */
 const PLAN_LABEL = { free: 'Free', premium: 'Premium', slug3: '3-char package', slug2: '2-char package' };
 const RANK = { free: 0, premium: 1, slug3: 2, slug2: 3 };
 const slugBase = (v) => String(v || '').toLowerCase().replace(/-venue$/, '').replace(/[^a-z0-9]/g, '').slice(0, 16);
 function previewSlug(base, plan) {
   if (!base) return { slug: '', err: '' };
   const r = RANK[plan] || 0;
-  if (r === 0) return base.length === 5 ? { slug: `${base}-venue` } : { slug: `${base.padEnd(5, '•')}-venue`, err: 'Exactly 5 letters/numbers on Free' };
+  if (r === 0) return base.length >= 5 ? { slug: `${base}-venue` } : { slug: `${base.padEnd(5, '•')}-venue`, err: 'At least 5 letters/numbers on Free' };
+  if (base.length < 2) return { slug: base, err: 'Too short' };
+  if (base.length === 4 && r < 2) return { slug: base, err: 'Premium needs at least 5 characters (4 needs the slug3 package)' };
   if (base.length === 2 && r < 3) return { slug: base, err: '2-character links need the slug2 package' };
   if (base.length === 3 && r < 2) return { slug: base, err: '3-character links need the slug3 package' };
   if (base.length < 2) return { slug: base, err: 'Too short' };
@@ -23,8 +25,8 @@ function previewSlug(base, plan) {
   return { slug: base };
 }
 const planNote = (plan) => h('div', { class: 'tiny muted' }, h('span', { class: 'chip tiny', style: { marginRight: '6px' } }, PLAN_LABEL[plan] || 'Free'),
-  (RANK[plan] || 0) === 0 ? 'Free: 5 letters/numbers, we add -venue. Premium drops -venue; 3- and 2-character links are coming as packages.'
-    : (RANK[plan] || 0) < 3 ? 'Shorter 2–3 character links are separate packages (coming soon).' : 'Your plan allows 2-character links.');
+  (RANK[plan] || 0) === 0 ? 'Free: 5+ letters/numbers, we add -venue. Premium: 5+ without -venue. 3- and 2-character minimums are coming as packages.'
+    : (RANK[plan] || 0) < 3 ? 'Shorter links (3+ or 2+ characters) are separate packages (coming soon).' : 'Your plan allows 2-character links.');
 /** Sheet with name (optional) + custom URL field and live preview. Resolves { name, customSlug } or null. */
 function venueDlg({ title, plan, name = '', withName = true, slugRequired = false, ok = 'Save' }) {
   return new Promise((resolve) => {

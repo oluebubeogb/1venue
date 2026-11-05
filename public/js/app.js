@@ -87,7 +87,7 @@ const ROUTES = [
   [/^\/venues\/?$/, () => import('./pages/venue.js'), { list: true }],
   [/^\/v\/([A-Za-z0-9]{2,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/(?=[A-Za-z]*\d)(?=\d*[A-Za-z])([A-Za-z0-9]{7})\/?$/, () => import('./pages/venue.js'), 'slug'],
-  [/^\/([A-Za-z0-9]{5}-venue)\/?$/, () => import('./pages/venue.js'), 'slug'],
+  [/^\/([A-Za-z0-9]{5,16}-venue)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/new\/?$/, () => import('./room/room.js'), { code: null, instant: true }],
   // Meeting rooms: /y5yi87 (also /r/…, /j/…, and legacy /ABC-234 pastes)
   [/^\/(?:r\/|j\/)?([A-Za-z0-9]{3}-?[A-Za-z0-9]{3})\/?$/, () => import('./room/room.js'), 'code'],
