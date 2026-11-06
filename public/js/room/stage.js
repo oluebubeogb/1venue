@@ -159,13 +159,14 @@ export function createStage(R) {
         h('button', { class: 'btn sm glass', 'data-group': 'media', 'data-tip': 'Fullscreen', onclick: () => R.fullscreen(), html: icon('maximize', { size: 14 }) })));
       const currentId = key.slice(7);
       const others = screens().filter(s => s.id !== currentId);
-      if (others.length) {
+      if (others.length && t) {
         const links = others.map(s => {
           const p = R.p(s.id) || { name: 'Someone' };
           return h('button', { type: 'button', class: 'screen-switch-link', onclick: (e) => { e.preventDefault(); e.stopPropagation(); setPick(s.id); } }, p.name);
         });
-        const switcher = h('div', { class: 'screen-switch hover-tools' }, 'Switch to: ', ...links.reduce((acc, l, i) => i ? acc.concat(h('span', { class: 'screen-switch-sep' }, ' | '), l) : [l], []));
-        present.append(switcher);
+        const switcher = h('span', { class: 'screen-switch-inline hover-tools' }, 'Switch to: ', ...links.reduce((acc, l, i) => i ? acc.concat(h('span', { class: 'screen-switch-sep' }, ' | '), l) : [l], []));
+        const meta = t.el.querySelector('.tile-meta');
+        if (meta) meta.append(switcher);
       }
       return;
     }

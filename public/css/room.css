@@ -503,3 +503,10 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 /* soft circle share button */
 .icon-btn.sm { width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--s3) 70%, transparent); display: inline-grid; place-items: center; }
 .icon-btn.sm:hover { background: color-mix(in srgb, var(--accent) 18%, var(--s3)); }
+
+.tile-meta { display: flex; align-items: center; gap: .5rem; }
+.screen-switch-inline { display: inline-flex; align-items: center; gap: .3rem; margin-left: .6rem; padding-left: .6rem; border-left: 1px solid rgba(255,255,255,.25); font-size: inherit; font-weight: 500; }
+.screen-switch-inline .screen-switch-link { font-weight: 650; text-decoration: underline; text-underline-offset: 2px; background: none; border: 0; color: #fff; cursor: pointer; padding: 0 .1rem; }
+.screen-switch-inline .screen-switch-link:hover { color: #a5f3fc; }
+.tile.big .hover-tools { opacity: 0; pointer-events: none; transition: opacity .18s; }
+.tile.big:hover .hover-tools, .present:hover .hover-tools { opacity: 1; pointer-events: auto; }
