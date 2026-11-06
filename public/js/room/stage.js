@@ -157,6 +157,9 @@ export function createStage(R) {
       if (t) { present.append(t.el); t.el.classList.add('big'); }
       present.append(h('div', { class: 'present-tools hover-tools' }, R.isMod() || R.media.sharing ? h('button', { class: 'btn sm glass', 'data-group': 'content', 'data-tip': 'Save this slide to the timeline', onclick: () => R.snapshotToTimeline(), html: icon('camera', { size: 14 }) + '<span>Snapshot</span>' }) : null,
         h('button', { class: 'btn sm glass', 'data-group': 'media', 'data-tip': 'Fullscreen', onclick: () => R.fullscreen(), html: icon('maximize', { size: 14 }) })));
+      // clear any leftover switchers so layout changes don't stack them
+      tilesEl.querySelectorAll('.screen-switch-inline').forEach((el) => el.remove());
+      present.querySelectorAll('.screen-switch-inline').forEach((el) => el.remove());
       const currentId = key.slice(7);
       const others = screens().filter(s => s.id !== currentId);
       if (others.length && t) {
