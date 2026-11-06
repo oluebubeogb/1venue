@@ -15,7 +15,7 @@ let presentBusy = '';
 const startContent = (R, payload) => { R.send('content-start', payload); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); };
 let contentInput = null;
 function pickContentFile(R) {
-  if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true }); document.body.append(contentInput); }
+  if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*', multiple: true, hidden: true }); document.body.append(contentInput); }
   contentInput.onchange = () => { const f = contentInput.files[0]; contentInput.value = ''; if (f) shareContentFile(R, f); };
   contentInput.click();
 }
@@ -36,6 +36,18 @@ export async function shareContentFile(R, f) {
       const r = await uploadFile(f, { purpose: 'content', headers: R.headers() });
       startContent(R, { contentType: 'image', url: r.url, title: name || 'Image', fileMeta: { name: f.name, size: f.size, mime: f.type } });
     } else toast('Pick a PDF or an image', { icon: 'alert' });
+  } catch (e) { toastErr(e); } finally { setBusy(''); }
+}
+async function shareContentImages(R, files) {
+  const setBusy = (t) => { presentBusy = t || ''; R.panel.refresh('tools'); };
+  try {
+    const pages = [];
+    for (let i = 0; i < files.length; i++) {
+      setBusy(`Uploading image ${i + 1} of ${files.length}…`);
+      const r = await uploadFile(files[i], { purpose: 'content', headers: R.headers() });
+      pages.push(r.url);
+    }
+    startContent(R, { contentType: 'slides', pages, title: files.length + ' images', fileMeta: { name: 'images', size: 0, mime: 'image/*' } });
   } catch (e) { toastErr(e); } finally { setBusy(''); }
 }
 const sw = (checked, onchange, disabled) => h('span', { class: 'switch' }, h('input', { type: 'checkbox', checked: !!checked, disabled: !!disabled, onchange: (e) => onchange(e.target.checked) }), h('span'));
@@ -166,13 +178,16 @@ export function buildTools(R) {
       const goYT = () => { const id = ytId(yurl.value); if (!id) { toast('That doesn’t look like a YouTube link', { icon: 'alert' }); return; } startContent(R, { contentType: 'youtube', videoId: id, title: 'YouTube video' }); R.ytDraft = ''; yurl.value = ''; };
       const busy = presentBusy ? h('div', { class: 'tiny muted row gap-s' }, h('span', { class: 'spin sm' }), presentBusy) : null;
       const lkOk = !!R.media.room;
-      box.append(btn('screen', R.media.sharing ? 'Stop sharing screen' : 'Share your screen', () => R.toggleShare(), { group: 'media', cls: 'primary block', disabled: !lkOk }),
+      const items = [
+        btn('screen', R.media.sharing ? 'Stop sharing screen' : 'Share your screen', () => R.toggleShare(), { group: 'media', cls: 'primary block', disabled: !lkOk }),
         lkOk ? null : note('Screen sharing needs the audio/video server, which isn’t connected right now.'),
         h('div', { class: 'sec-sub' }, 'Watch together'),
         h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, yurl), btn('youtube', 'Play', goYT, { group: 'content' })),
         h('div', { class: 'sec-sub' }, 'Slides & images'),
-        h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF or image', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })), busy,
-        note('These work even when audio/video is down. YouTube streams from YouTube on each device and play, pause and seek follow the presenter. PDFs become page images everyone can see on any phone.'));
+        h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
+        busy,
+      ].filter(Boolean);
+      box.append(...items);
       return box;
     },
     sounds() {

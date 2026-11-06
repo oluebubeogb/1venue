@@ -346,7 +346,7 @@ export function createStage(R) {
     const maxTiles = key || main ? 12 : (R.isMobile ? 8 : 25);
     film.slice(0, maxTiles).forEach((t) => strip.append(t.el));
     if (film.length > maxTiles) strip.append(h('button', { class: 'tile more', onclick: () => R.panel.open('people') }, h('b', null, `+${film.length - maxTiles}`), h('small', null, 'more')));
-    if (strip !== tilesEl) { if ((layout === 'speaker' && main && !key) || (layout === 'screenshare' && key && key.startsWith('screen:'))) strip.classList.add('hidden-strip'); tilesEl.append(strip); }
+    if (strip !== tilesEl) { if ((layout === 'speaker' && main && !key) || (layout === 'screenshare' && key)) strip.classList.add('hidden-strip'); tilesEl.append(strip); }
     const n = Math.min(film.length, maxTiles) + (film.length > maxTiles ? 1 : 0);
     tilesEl.style.setProperty('--n', n);
     tilesEl.dataset.count = n > 9 ? 'many' : n;
