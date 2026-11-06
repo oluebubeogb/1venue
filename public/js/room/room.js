@@ -508,14 +508,56 @@ Object.assign(Room.prototype, {
   viewBoard(ownerId) { this.send('pboard-view', { ownerId }); this.stageView = 'pboard:' + ownerId; this.renderStage(true); this.panel.isOpen() && this.isMobile && this.panel.close(); },
   shareBoard(on) { this.boardSharing = on; this.send('pboard-share', { on }); if (on) this.send('pboard-frame', this.boardFrame()); toast(on ? 'Your board is now viewable by others' : 'Board is private again', { icon: on ? 'eye' : 'eyeOff', group: 'content' }); this.panel.refresh(); },
   snapshotToTimeline() {
-    const v = this.stageR.el.querySelector('.tile.screen video') || this.stageR.el.querySelector('.present video') || [...this.stageR.el.querySelectorAll('.tile video')].find((x) => x.srcObject);
+    const root = this.stageR && this.stageR.el;
+    if (!root) return toast('Nothing visual to snapshot yet', { icon: 'camera' });
+    const videos = [...root.querySelectorAll('video')].filter((v) => v.videoWidth > 0 && v.readyState >= 2);
+    const v = videos.find((x) => x.closest('.tile.screen, .present')) || videos[0];
     let canvas;
-    if (v && v.videoWidth) { const sc = Math.min(1, 1280 / v.videoWidth); canvas = h('canvas', { width: Math.round(v.videoWidth * sc), height: Math.round(v.videoHeight * sc) }); canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height); }
-    else { const c = this.stageR.el.querySelector('.present canvas'); if (c) { const sc = Math.min(1, 1280 / c.width); canvas = h('canvas', { width: Math.round(c.width * sc), height: Math.round(c.height * sc) }); const g = canvas.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height); g.drawImage(c, 0, 0, canvas.width, canvas.height); } }
+    if (v) {
+      const sc = Math.min(1, 1280 / v.videoWidth);
+      canvas = h('canvas', { width: Math.round(v.videoWidth * sc), height: Math.round(v.videoHeight * sc) });
+      canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+    } else {
+      const c = root.querySelector('.present canvas, canvas');
+      if (c && c.width) {
+        const sc = Math.min(1, 1280 / c.width);
+        canvas = h('canvas', { width: Math.round(c.width * sc), height: Math.round(c.height * sc) });
+        const g = canvas.getContext('2d');
+        g.fillStyle = '#fff';
+        g.fillRect(0, 0, canvas.width, canvas.height);
+        g.drawImage(c, 0, 0, canvas.width, canvas.height);
+      }
+    }
     if (!canvas) return toast('Nothing visual to snapshot yet — share a screen or open a board', { icon: 'camera' });
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    let dataUrl;
+    try { dataUrl = canvas.toDataURL('image/jpeg', 0.72); } catch (e) { return toast('Could not capture that frame', { icon: 'alert' }); }
+    if (!dataUrl || dataUrl.length < 100) return toast('Capture was empty', { icon: 'alert' });
     this.send('screen-timeline-add', { item: { dataUrl, title: (this.content?.title || 'Snapshot') + ' · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } });
     toast('Added to the timeline', { icon: 'timeline', group: 'content' });
+  },
+  shareCardToTimeline(kind, item) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 960; canvas.height = 540;
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#0f172a'; g.fillRect(0, 0, 960, 540);
+    g.fillStyle = '#38bdf8'; g.font = 'bold 28px system-ui, sans-serif';
+    g.fillText(kind === 'poll' ? 'POLL' : 'Q&A', 48, 70);
+    g.fillStyle = '#f8fafc'; g.font = 'bold 36px system-ui, sans-serif';
+    const title = (kind === 'poll' ? item.question : item.body) || 'Shared item';
+    const wrap = (text, max) => {
+      const words = String(text).split(/\s+/); const lines = []; let line = '';
+      for (const w of words) { const test = line ? line + ' ' + w : w; if (g.measureText(test).width > max) { lines.push(line); line = w; } else line = test; }
+      if (line) lines.push(line); return lines.slice(0, 6);
+    };
+    wrap(title, 860).forEach((ln, i) => g.fillText(ln, 48, 140 + i * 48));
+    if (kind === 'poll' && item.options) {
+      g.font = '24px system-ui, sans-serif'; g.fillStyle = '#cbd5e1';
+      item.options.slice(0, 5).forEach((o, i) => g.fillText('• ' + o, 48, 360 + i * 36));
+    }
+    let dataUrl;
+    try { dataUrl = canvas.toDataURL('image/jpeg', 0.8); } catch { return toast('Could not share', { icon: 'alert' }); }
+    this.send('screen-timeline-add', { item: { dataUrl, title: (kind === 'poll' ? 'Poll: ' : 'Q&A: ') + title.slice(0, 80) } });
+    toast('Shared to the timeline', { icon: 'timeline', group: 'content' });
   },
   async joinBreakout(room) { this.breakoutRoom = room ? (room.livekitRoom || room.id) : null; this.root.dataset.breakout = room ? room.name : ''; await this.reconnectMedia(true); toast(room ? `You’re in ${room.name}` : 'Main room', { icon: 'split', group: 'people' }); },
   /* leaving */

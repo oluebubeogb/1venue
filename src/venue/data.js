@@ -399,7 +399,9 @@ async function listPolls(code, historyId, voterKey) {
 
 // ---------------------------------------------------------------- Q&A
 function questionOut(r, voted) {
-  return { id: Number(r.id), authorKey: r.author_key, authorName: r.author_name, body: r.body, upvotes: r.upvotes, status: r.status, aiAnswer: r.ai_answer, createdAt: r.created_at, voted: !!voted };
+  let hostAnswers = [];
+  try { hostAnswers = Array.isArray(r.host_answers) ? r.host_answers : (typeof r.host_answers === 'string' ? JSON.parse(r.host_answers) : []); } catch { hostAnswers = []; }
+  return { id: Number(r.id), authorKey: r.author_key, authorName: r.author_name, body: r.body, upvotes: r.upvotes, status: r.status, aiAnswer: r.ai_answer, hostAnswers, createdAt: r.created_at, voted: !!voted };
 }
 async function addQuestion({ code, historyId, authorKey, authorName, body }) {
   const t = String(body || '').trim().slice(0, 1000);
@@ -417,6 +419,30 @@ async function upvoteQuestion(id, voterKey) {
 }
 async function setQuestionStatus(id, status, aiAnswer) {
   const r = await one('UPDATE questions SET status=COALESCE($2,status), ai_answer=COALESCE($3, ai_answer) WHERE id=$1 RETURNING *', [id, status || null, aiAnswer || null]);
+  return r ? questionOut(r) : null;
+}
+async function addHostAnswer(id, text, byName) {
+  const t = String(text || '').trim().slice(0, 2000);
+  if (!t) return null;
+  const ans = { id: 'ha-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), text: t, by: String(byName || 'Host').slice(0, 80), at: new Date().toISOString() };
+  const r = await one(`UPDATE questions SET host_answers = host_answers || $2::jsonb WHERE id=$1 RETURNING *`, [id, JSON.stringify([ans])]);
+  return r ? questionOut(r) : null;
+}
+async function editHostAnswer(id, answerId, text) {
+  const t = String(text || '').trim().slice(0, 2000);
+  if (!t) return null;
+  const r = await one(`UPDATE questions SET host_answers = (
+    SELECT COALESCE(jsonb_agg(CASE WHEN (elem->>'id') = $3 THEN jsonb_set(elem, '{text}', to_jsonb($4::text)) ELSE elem END), '[]'::jsonb)
+    FROM jsonb_array_elements(host_answers) elem
+  ) WHERE id=$1 RETURNING *`, [id, null, answerId, t]);
+  return r ? questionOut(r) : null;
+}
+async function deleteHostAnswer(id, answerId) {
+  const r = await one(`UPDATE questions SET host_answers = (
+    SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+    FROM jsonb_array_elements(host_answers) elem
+    WHERE (elem->>'id') <> $2
+  ) WHERE id=$1 RETURNING *`, [id, answerId]);
   return r ? questionOut(r) : null;
 }
 async function listQuestions(code, historyId, voterKey) {
@@ -592,7 +618,7 @@ module.exports = {
   follow, suggestedPeople, createPost, feed, userTimeline, togglePostLike, deletePost,
   listComments, addComment, toggleCommentLike, hideComment, getComment,
   createPoll, votePoll, closePoll, listPolls, pollResults,
-  addQuestion, upvoteQuestion, setQuestionStatus, listQuestions,
+  addQuestion, upvoteQuestion, setQuestionStatus, listQuestions, addHostAnswer, editHostAnswer, deleteHostAnswer,
   addTranscriptSegment, getTranscript, transcriptToText, saveSummary, latestSummaries, getHistory, canAccessHistory, logAiUsage,
   insertFile, fileUsage, getFile, getWhiteboard, saveWhiteboard, listWhiteboards, createWhiteboard, getWhiteboardById, updateWhiteboard, deleteWhiteboard, bibleCacheGet, bibleCachePut, dashboard,
 };

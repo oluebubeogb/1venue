@@ -162,9 +162,9 @@ export function createStage(R) {
       if (others.length) {
         const links = others.map(s => {
           const p = R.p(s.id) || { name: 'Someone' };
-          return h('a', { href: '#', onclick: (e) => { e.preventDefault(); setPick(s.id); }, style: { margin: '0 0.3rem' } }, p.name);
+          return h('button', { type: 'button', class: 'screen-switch-link', onclick: (e) => { e.preventDefault(); e.stopPropagation(); setPick(s.id); } }, p.name);
         });
-        const switcher = h('div', { class: 'screen-switch tiny', style: { textAlign: 'center', padding: '0.4rem', color: 'var(--muted)' } }, 'Switch to: ', ...links.reduce((acc, l, i) => i ? acc.concat(h('span', null, ' | '), l) : [l], []));
+        const switcher = h('div', { class: 'screen-switch' }, 'Switch to: ', ...links.reduce((acc, l, i) => i ? acc.concat(h('span', { class: 'screen-switch-sep' }, ' | '), l) : [l], []));
         present.append(switcher);
       }
       return;

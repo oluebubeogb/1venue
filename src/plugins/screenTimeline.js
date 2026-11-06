@@ -14,7 +14,7 @@ module.exports = {
     function canEdit(meeting, participantId) {
       const p = meeting.participants.get(participantId);
       if (!p) return false;
-      if (p.isHost || p.role === 'host' || p.role === 'cohost' || p.sharing) return true;
+      if (p.status === 'ACTIVE' || p.isHost || p.role === 'host' || p.role === 'cohost' || p.sharing) return true;
       // Per-user override from host/cohost people menu
       if (p.permissionOverrides && p.permissionOverrides.screenTimeline) return true;
       try {

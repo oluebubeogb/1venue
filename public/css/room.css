@@ -480,3 +480,14 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 .icon-sep:hover { color: var(--text); }
 .sep { color: var(--line-2); }
 .host-answer { background: color-mix(in srgb, var(--g-engage) 8%, transparent); padding: .5rem; border-radius: 8px; margin: .4rem 0; }
+
+.qa-thread { margin: .5rem 0 0 1.2rem; border-left: 2px solid color-mix(in srgb, var(--g-engage) 35%, transparent); padding-left: .7rem; display: flex; flex-direction: column; gap: .45rem; }
+.qa-reply { background: color-mix(in srgb, var(--s1) 70%, transparent); border-radius: 8px; padding: .45rem .6rem; }
+.qa-reply p { margin: .2rem 0 0; }
+.qa-reply-acts { margin-left: auto; display: inline-flex; gap: 2px; }
+.qa { padding: .7rem; border-radius: 14px; background: var(--s2); display: flex; gap: .6rem; }
+
+.screen-switch { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: .35rem; padding: .4rem .9rem; border-radius: 999px; background: rgba(0,0,0,.72); color: #fff; font-size: .92rem; font-weight: 650; backdrop-filter: blur(8px); }
+.screen-switch-link { background: none; border: 0; color: #fff; font: inherit; font-weight: 800; cursor: pointer; padding: 0 .15rem; text-decoration: underline; text-underline-offset: 2px; }
+.screen-switch-link:hover { color: #a5f3fc; }
+.screen-switch-sep { opacity: .55; font-weight: 500; }

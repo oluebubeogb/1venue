@@ -287,10 +287,14 @@ export function createPanel(R) {
         h('span', { class: 'grow' }, o), show ? h('b', null, pct + '%') : null);
         return b;
       }));
-      box.append(h('div', { class: 'poll card', 'data-group': 'engage' }, h('div', { class: 'poll-head' }, h('b', { class: 'grow poll-title' }, p.question), h('span', { class: 'status-tag' }, closed ? 'CLOSED' : 'LIVE')),
-        h('div', { class: 'tiny muted' }, `${p.voters} vote${p.voters === 1 ? '' : 's'}${p.multi ? ' · pick any' : ''}${p.anonymous ? ' · anonymous' : ''}`), opts,
+      const shareBtn = h('button', { class: 'icon-btn sm', 'data-tip': 'Share to timeline', type: 'button', onclick: () => R.shareCardToTimeline('poll', p), html: icon('share', { size: 14 }) });
+      box.append(h('div', { class: 'poll card', 'data-group': 'engage' },
+        h('div', { class: 'poll-head' }, h('b', { class: 'grow poll-title' }, p.question), h('span', { class: 'status-tag' }, closed ? 'CLOSED' : 'LIVE'), shareBtn),
+        h('div', { class: 'tiny muted' }, `${p.voters} vote${p.voters === 1 ? '' : 's'}${p.multi ? ' · pick any' : ''}${p.anonymous ? ' · anonymous' : ''}`),
+        opts,
         p.multi && !voted && !closed ? btn('check', 'Submit vote', () => picks.size && R.send('poll-vote', { pollId: p.id, choices: [...picks] }), { cls: 'sm', group: 'engage' }) : null,
-        R.isMod() && !closed ? btn('lock', 'Close poll', () => R.send('poll-close', { pollId: p.id }), { cls: 'sm ghost' }) : null));
+        R.isMod() && !closed ? btn('lock', 'Close poll', () => R.send('poll-close', { pollId: p.id }), { cls: 'sm ghost' }) : null
+      ));
     });
     return box;
   }
@@ -321,34 +325,45 @@ export function createPanel(R) {
     const order = { live: 0, open: 1, answered: 2, dismissed: 3 };
     const qs = [...R.data.questions].filter((q) => q.status !== 'dismissed' || R.isMod()).sort((a, b) => (order[a.status] - order[b.status]) || (b.upvotes - a.upvotes));
     if (!qs.length) box.append(h('div', { class: 'empty sm' }, I('question', 28), h('p', null, 'No questions yet — be the first.')));
-    qs.forEach((q) => box.append(h('div', { class: `qa card s-${q.status}`, 'data-group': 'engage' },
-      h('div', { class: 'qa-votes' }, 
-        h('button', { class: 'vote-btn', type: 'button', 'data-tip': 'Upvote', onclick: () => R.send('qa-upvote', { id: q.id, dir: 'up' }), html: icon('arrowUp', { size: 14 }) + `<b>${q.upvotes || 0}</b>` }),
-        h('button', { class: 'vote-btn', type: 'button', 'data-tip': 'Downvote', onclick: () => R.send('qa-upvote', { id: q.id, dir: 'down' }), html: icon('arrowDown', { size: 14 }) + `<b>${q.downvotes || 0}</b>` })
-      ),
-      h('div', { class: 'grow' }, 
-        h('div', { class: 'qa-head' }, h('b', { class: 'qa-title' }, q.body), h('span', { class: 'status-tag' + (q.status === 'live' ? ' live' : '') }, (q.status || 'open').toUpperCase())),
-        h('div', { class: 'row gap-xs tiny muted' }, h('b', null, q.authorName), '·', timeAgo(q.createdAt)),
-        q.hostAnswer ? h('div', { class: 'host-answer' }, h('div', { class: 'tiny' }, 'Host answer'), h('p', null, q.hostAnswer)) : null,
-        q.aiAnswer ? h('div', { class: 'ai-box sm' }, h('div', { class: 'tiny row gap-xs', html: icon('sparkles', { size: 14 }) + 'AI answer' }), h('div', { class: 'prose', html: md(q.aiAnswer) })) : null,
-        R.isMod() ? h('div', { class: 'qa-actions' }, 
-          h('span', { class: 'icon-sep', html: icon('radio', { size: 14 }), 'data-tip': 'Set live', onclick: () => R.send('qa-status', { id: q.id, status: 'live' }) }),
-          h('span', { class: 'sep' }, '|'),
-          h('span', { class: 'icon-sep', html: icon('check', { size: 14 }), 'data-tip': 'Mark answered', onclick: () => R.send('qa-status', { id: q.id, status: 'answered' }) }),
-          h('span', { class: 'sep' }, '|'),
-          h('span', { class: 'icon-sep', html: icon('sparkles', { size: 14 }), 'data-tip': 'AI answer', onclick: () => { R.send('qa-ai-answer', { id: q.id }); toast('Asking AI…', { icon: 'sparkles' }); } }),
-          h('span', { class: 'sep' }, '|'),
-          h('span', { class: 'icon-sep', html: icon('x', { size: 14 }), 'data-tip': 'Dismiss', onclick: () => R.send('qa-status', { id: q.id, status: 'dismissed' }) }),
-          h('span', { class: 'sep' }, '|'),
-          h('span', { class: 'icon-sep', html: icon('edit', { size: 14 }), 'data-tip': 'Answer with text', onclick: () => { const ans = prompt('Host answer:'); if (ans) R.send('qa-host-answer', { id: q.id, answer: ans }); } })
-        ) : null
-      ))));
+    qs.forEach((q) => {
+      const answers = (q.hostAnswers || []);
+      const thread = answers.map((a) => h('div', { class: 'qa-reply' },
+        h('div', { class: 'row gap-xs tiny' },
+          h('b', null, a.by || 'Host'), '·', timeAgo(a.at),
+          R.isMod() ? h('span', { class: 'qa-reply-acts' },
+            h('button', { class: 'icon-btn xs', 'data-tip': 'Edit', type: 'button', onclick: () => { const t = prompt('Edit answer:', a.text); if (t != null && t.trim()) R.send('qa-host-answer-edit', { id: q.id, answerId: a.id, answer: t.trim() }); }, html: icon('edit', { size: 12 }) }),
+            h('button', { class: 'icon-btn xs', 'data-tip': 'Delete', type: 'button', onclick: () => { if (confirm('Delete this answer?')) R.send('qa-host-answer-delete', { id: q.id, answerId: a.id }); }, html: icon('trash', { size: 12 }) })
+          ) : null
+        ),
+        h('p', null, a.text)
+      ));
+      const shareBtn = h('button', { class: 'icon-btn sm', 'data-tip': 'Share to timeline', type: 'button', onclick: () => R.shareCardToTimeline('qa', q), html: icon('share', { size: 14 }) });
+      box.append(h('div', { class: `qa card s-${q.status}`, 'data-group': 'engage' },
+        h('div', { class: 'grow' },
+          h('div', { class: 'qa-head' }, h('b', { class: 'qa-title' }, q.body), h('span', { class: 'status-tag' + (q.status === 'live' ? ' live' : '') }, (q.status || 'open').toUpperCase()), shareBtn),
+          h('div', { class: 'row gap-xs tiny muted' }, h('b', null, q.authorName), '·', timeAgo(q.createdAt)),
+          answers.length ? h('div', { class: 'qa-thread' }, ...thread) : null,
+          q.aiAnswer ? h('div', { class: 'ai-box sm' }, h('div', { class: 'tiny row gap-xs', html: icon('sparkles', { size: 14 }) + 'AI answer' }), h('div', { class: 'prose', html: md(q.aiAnswer) })) : null,
+          R.isMod() ? h('div', { class: 'qa-actions' },
+            h('span', { class: 'icon-sep', html: icon('radio', { size: 14 }), 'data-tip': 'Set live', onclick: () => R.send('qa-status', { id: q.id, status: 'live' }) }),
+            h('span', { class: 'sep' }, '|'),
+            h('span', { class: 'icon-sep', html: icon('check', { size: 14 }), 'data-tip': 'Mark answered', onclick: () => R.send('qa-status', { id: q.id, status: 'answered' }) }),
+            h('span', { class: 'sep' }, '|'),
+            h('span', { class: 'icon-sep', html: icon('sparkles', { size: 14 }), 'data-tip': 'AI answer', onclick: () => { R.send('qa-ai-answer', { id: q.id }); toast('Asking AI…', { icon: 'sparkles' }); } }),
+            h('span', { class: 'sep' }, '|'),
+            h('span', { class: 'icon-sep', html: icon('x', { size: 14 }), 'data-tip': 'Dismiss', onclick: () => R.send('qa-status', { id: q.id, status: 'dismissed' }) }),
+            h('span', { class: 'sep' }, '|'),
+            h('span', { class: 'icon-sep', html: icon('reply', { size: 14 }), 'data-tip': 'Add answer', onclick: () => { const ans = prompt('Host answer:'); if (ans && ans.trim()) R.send('qa-host-answer', { id: q.id, answer: ans.trim() }); } })
+          ) : null
+        )
+      ));
+    });
     return box;
   }
   function commentsView() {
     const box = h('div', { class: 'stack' });
     const ta = h('textarea', { class: 'textarea', rows: 2, placeholder: 'Share a thought with the community…', maxlength: 1000 });
-    box.append(h('div', { class: 'compose-card' }, ta, h('div', { class: 'row' }, h('span', { class: 'tiny muted grow' }, 'Comments stay on the event page after the session'), btn('send', 'Post', () => { if (ta.value.trim()) { R.send('comment-add', { body: ta.value.trim() }); ta.value = ''; } }, { cls: 'sm primary', group: 'social' }))));
+    box.append(h('div', { class: 'compose-card' }, ta, h('div', { class: 'row' }, btn('send', 'Post', () => { if (ta.value.trim()) { R.send('comment-add', { body: ta.value.trim() }); ta.value = ''; } }, { cls: 'sm primary', group: 'social' }))));
     const top = R.data.comments.filter((c) => !c.parentId);
     if (!top.length) box.append(h('div', { class: 'empty sm' }, I('heart', 28), h('p', null, 'The conversation starts with you.')));
     top.slice().reverse().forEach((c) => box.append(commentEl(c)));

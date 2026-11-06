@@ -180,6 +180,22 @@ const qaPlugin = {
       const question = await data.setQuestionStatus(msg.id, null, null, msg.answer);
       if (question) broadcast(meetingCode, { type: 'qa-update', question });
     });
+    ctx.onWs('qa-host-answer', async ({ msg, participantId: pid, meeting, meetingCode }) => {
+      if (!mod(meeting, pid)) return;
+      const p = meeting.participants.get(pid);
+      const question = await data.addHostAnswer(msg.id, msg.answer, p ? p.name : 'Host');
+      if (question) broadcast(meetingCode, { type: 'qa-update', question });
+    });
+    ctx.onWs('qa-host-answer-edit', async ({ msg, participantId: pid, meeting, meetingCode }) => {
+      if (!mod(meeting, pid)) return;
+      const question = await data.editHostAnswer(msg.id, msg.answerId, msg.answer);
+      if (question) broadcast(meetingCode, { type: 'qa-update', question });
+    });
+    ctx.onWs('qa-host-answer-delete', async ({ msg, participantId: pid, meeting, meetingCode }) => {
+      if (!mod(meeting, pid)) return;
+      const question = await data.deleteHostAnswer(msg.id, msg.answerId);
+      if (question) broadcast(meetingCode, { type: 'qa-update', question });
+    });
     ctx.onWs('qa-ai-answer', async ({ msg, participantId: pid, meeting, meetingCode }) => {
       if (!mod(meeting, pid)) return;
       const qs = await data.listQuestions(meetingCode, meeting.historyId);
