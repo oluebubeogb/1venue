@@ -510,3 +510,7 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 .screen-switch-inline .screen-switch-link:hover { color: #a5f3fc; }
 .tile.big .hover-tools { opacity: 0; pointer-events: none; transition: opacity .18s; }
 .tile.big:hover .hover-tools, .present:hover .hover-tools { opacity: 1; pointer-events: auto; }
+
+/* hide the whole name chip on the big screen until hover */
+.tile.big .tile-meta { opacity: 0; pointer-events: none; transition: opacity .18s; }
+.tile.big:hover .tile-meta, .present:hover .tile.big .tile-meta { opacity: 1; pointer-events: auto; }
