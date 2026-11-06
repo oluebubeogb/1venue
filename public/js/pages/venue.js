@@ -112,6 +112,44 @@ async function door(view, slug) {
     if (v.live && (v.live.open || v.live.hostIn)) { toast('Entering ' + v.name + '…'); navigate('/' + fmtCode(v.code), { replace: true }); return; }
     timer = setTimeout(poll, 3000);
   };
+  const adminsBox = h('div', { class: 'col', style: { gap: '.5rem' } });
+  const auditBox = h('div', { class: 'col', style: { gap: '.4rem' } });
+  const adminInput = h('input', { class: 'input', placeholder: 'usernames, comma separated', style: { flex: 1 } });
+  const loadAdmins = async () => {
+    try {
+      const { admins } = await api('/api/venues/admins?slug=' + encodeURIComponent(v.slug));
+      adminsBox.replaceChildren(
+        h('div', { class: 'row gap-s' }, adminInput, h('button', { class: 'btn sm', onclick: async () => {
+          const names = adminInput.value.trim();
+          if (!names) return;
+          try {
+            const r = await api('/api/venues/admins', { method: 'POST', body: { slug: v.slug, usernames: names } });
+            toast(r.added.length ? 'Added ' + r.added.length : 'No valid usernames');
+            adminInput.value = '';
+            loadAdmins();
+          } catch (e) { toastErr(e); }
+        } }, 'Add')),
+        ...(admins.length ? admins.map(a => h('div', { class: 'row between', style: { padding: '.4rem 0', borderBottom: '1px solid var(--line)' } },
+          h('a', { href: '/u/' + a.username, 'data-link': '' }, h('b', null, a.name), h('span', { class: 'tiny muted' }, ' @' + a.username)),
+          h('button', { class: 'btn sm ghost', onclick: async () => {
+            if (!confirm('Remove ' + a.name + '?')) return;
+            await api('/api/venues/admins', { method: 'DELETE', body: { slug: v.slug, userId: a.id } });
+            loadAdmins();
+          } }, 'Remove')
+        )) : [h('div', { class: 'tiny muted' }, 'No admins yet.')])
+      );
+    } catch (e) { adminsBox.replaceChildren(h('div', { class: 'tiny muted' }, e.message)); }
+  };
+  const loadAudit = async () => {
+    try {
+      const { audit } = await api('/api/venues/audit?slug=' + encodeURIComponent(v.slug));
+      auditBox.replaceChildren(...(audit.length ? audit.map(a => h('div', { class: 'tiny', style: { padding: '.3rem 0', borderBottom: '1px solid var(--line)' } },
+        h('b', null, a.actorName), ' ', a.action, a.detail ? ' · ' + a.detail : '', h('span', { class: 'muted' }, ' · ' + timeAgo(a.at))
+      )) : [h('div', { class: 'tiny muted' }, 'No activity yet.')]));
+    } catch (e) { auditBox.replaceChildren(h('div', { class: 'tiny muted' }, e.message)); }
+  };
+  loadAdmins();
+  loadAudit();
   wrap.append(h('div', { class: 'waiting' },
     h('span', { class: 'ico-tile lg', 'data-group': 'media', html: icon('door', { size: 28 }) }),
     h('h2', null, v.name),
@@ -124,6 +162,44 @@ async function door(view, slug) {
 async function ownerView(wrap, v) {
   const name = h('input', { class: 'input', placeholder: 'Meeting name', maxlength: 60, value: `${v.name} · ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` });
   const hist = h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'tiny muted' }, 'Loading meetings…'));
+  const adminsBox = h('div', { class: 'col', style: { gap: '.5rem' } });
+  const auditBox = h('div', { class: 'col', style: { gap: '.4rem' } });
+  const adminInput = h('input', { class: 'input', placeholder: 'usernames, comma separated', style: { flex: 1 } });
+  const loadAdmins = async () => {
+    try {
+      const { admins } = await api('/api/venues/admins?slug=' + encodeURIComponent(v.slug));
+      adminsBox.replaceChildren(
+        h('div', { class: 'row gap-s' }, adminInput, h('button', { class: 'btn sm', onclick: async () => {
+          const names = adminInput.value.trim();
+          if (!names) return;
+          try {
+            const r = await api('/api/venues/admins', { method: 'POST', body: { slug: v.slug, usernames: names } });
+            toast(r.added.length ? 'Added ' + r.added.length : 'No valid usernames');
+            adminInput.value = '';
+            loadAdmins();
+          } catch (e) { toastErr(e); }
+        } }, 'Add')),
+        ...(admins.length ? admins.map(a => h('div', { class: 'row between', style: { padding: '.4rem 0', borderBottom: '1px solid var(--line)' } },
+          h('a', { href: '/u/' + a.username, 'data-link': '' }, h('b', null, a.name), h('span', { class: 'tiny muted' }, ' @' + a.username)),
+          h('button', { class: 'btn sm ghost', onclick: async () => {
+            if (!confirm('Remove ' + a.name + '?')) return;
+            await api('/api/venues/admins', { method: 'DELETE', body: { slug: v.slug, userId: a.id } });
+            loadAdmins();
+          } }, 'Remove')
+        )) : [h('div', { class: 'tiny muted' }, 'No admins yet.')])
+      );
+    } catch (e) { adminsBox.replaceChildren(h('div', { class: 'tiny muted' }, e.message)); }
+  };
+  const loadAudit = async () => {
+    try {
+      const { audit } = await api('/api/venues/audit?slug=' + encodeURIComponent(v.slug));
+      auditBox.replaceChildren(...(audit.length ? audit.map(a => h('div', { class: 'tiny', style: { padding: '.3rem 0', borderBottom: '1px solid var(--line)' } },
+        h('b', null, a.actorName), ' ', a.action, a.detail ? ' · ' + a.detail : '', h('span', { class: 'muted' }, ' · ' + timeAgo(a.at))
+      )) : [h('div', { class: 'tiny muted' }, 'No activity yet.')]));
+    } catch (e) { auditBox.replaceChildren(h('div', { class: 'tiny muted' }, e.message)); }
+  };
+  loadAdmins();
+  loadAudit();
   wrap.append(
     h('div', { class: 'row between wrap', style: { gap: '10px' } },
       h('div', null, h('h1', null, v.name), h('p', { class: 'muted small' }, `${location.host}/v/${v.slug} · waiting room always on`)),
@@ -143,7 +219,11 @@ async function ownerView(wrap, v) {
     v.live
       ? h('div', { class: 'card pad row wrap', style: { gap: '10px' } }, h('div', { class: 'grow' }, h('strong', null, 'Open now: '), v.live.meetingName), h('button', { class: 'btn primary', onclick: () => navigate('/' + fmtCode(v.code)) }, 'Rejoin'))
       : h('div', { class: 'card pad col', style: { gap: '10px' } }, h('div', { class: 'small muted' }, 'Meeting name (separate from the venue name)'), h('div', { class: 'row', style: { gap: '8px' } }, name, h('button', { class: 'btn primary', html: icon('video', { size: 16 }) + 'Open venue', onclick: () => open(v, name.value.trim()) }))),
-    h('h3', null, 'Meetings held here'), hist);
+    h('h3', null, 'Meetings held here'), hist,
+    h('h3', { style: { marginTop: '1.2rem' } }, 'Admins'),
+    adminsBox,
+    h('h3', { style: { marginTop: '1.2rem' } }, 'Audit'),
+    auditBox);
   try {
     const { meetings } = await api(`/api/venues/${v.slug}/meetings`);
     hist.replaceChildren(...(meetings.length ? meetings.map((m) => h(m.id ? 'a' : 'div', { class: 'card pad row', href: `/session/${m.id}`, 'data-link': '', style: { gap: '10px' } },

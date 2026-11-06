@@ -31,7 +31,7 @@ export async function mount(view, params) {
 
   const nameLink = (a) => {
     if (!a.userId) return esc(a.name);
-    return h('a', { href: `/u/${a.userId}`, 'data-link': '' }, esc(a.name));
+    return h('a', { href: `/u/${a.username || a.userId}`, 'data-link': '' }, esc(a.name));
   };
 
   const row = (a, role) => h('tr', null,

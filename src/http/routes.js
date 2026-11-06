@@ -733,9 +733,12 @@ function createRequestHandler() {
       }
       if (venue) {
         if (!authUser) return sendJSON(res, 401, { error: 'Sign in to open your venue', code: venue.code });
-        if (venue.ownerUserId !== authUser.id) return sendJSON(res, 403, { error: 'Only the venue owner can open it', code: venue.code });
+        const isOwner = venue.ownerUserId === authUser.id;
+        const isAdmin = !isOwner && await vdata.isVenueAdmin(venue.id, authUser.id);
+        if (!isOwner && !isAdmin) return sendJSON(res, 403, { error: 'Only the venue owner or an admin can open it', code: venue.code });
         if (meetings.has(normCode(venue.code))) return sendJSON(res, 409, { error: 'This venue is already open', code: venue.code });
         code = normCode(venue.code); // forced: client-sent code is ignored for venues
+        await vdata.logVenueAudit(venue.id, authUser.id, authUser.displayName || authUser.username, 'open', isAdmin ? 'opened by admin' : 'opened by owner');
       }
       const codeSource = venue ? 'venue' : event ? 'event' : 'generated';
       res.setHeader('X-1venue-Code-Source', codeSource);
@@ -953,6 +956,16 @@ function createRequestHandler() {
 
       let role = isGuest ? 'guest' : 'participant';
       let status = 'ACTIVE';
+
+      // Venue admins join as cohosts and skip the waiting room
+      if (authUser && meeting.venue) {
+        try {
+          const v = await require('../venue/data').getVenueByCode(meeting.code);
+          if (v && await require('../venue/data').isVenueAdmin(v.id, authUser.id)) {
+            role = 'cohost';
+          }
+        } catch (_) {}
+      }
 
       if (rejoinCandidate) {
         if (rejoinCandidate.status === 'BLOCKED' || rejoinCandidate.status === 'REMOVED') {
@@ -1505,6 +1518,45 @@ function createRequestHandler() {
       try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
     }
     return;
+  }
+
+
+  if (urlPath === '/api/venues/admins' && req.method === 'POST') {
+    const user = await getAuthUser(req, res);
+    if (!user) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const body = await parseBody(req);
+    const venue = await require('../venue/data').getVenueBySlug(body.slug);
+    if (!venue || venue.ownerUserId !== user.id) return sendJSON(res, 403, { error: 'Only the owner can manage admins' });
+    const result = await require('../venue/data').addVenueAdmins(venue.id, user.id, body.usernames || '');
+    return sendJSON(res, 200, result);
+  }
+  if (urlPath === '/api/venues/admins' && req.method === 'DELETE') {
+    const user = await getAuthUser(req, res);
+    if (!user) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const body = await parseBody(req);
+    const venue = await require('../venue/data').getVenueBySlug(body.slug);
+    if (!venue || venue.ownerUserId !== user.id) return sendJSON(res, 403, { error: 'Only the owner can manage admins' });
+    await require('../venue/data').removeVenueAdmin(venue.id, user.id, body.userId);
+    return sendJSON(res, 200, { ok: true });
+  }
+  if (urlPath === '/api/venues/admins' && req.method === 'GET') {
+    const user = await getAuthUser(req, res);
+    if (!user) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const slug = url.searchParams.get('slug');
+    const venue = await require('../venue/data').getVenueBySlug(slug);
+    if (!venue) return sendJSON(res, 404, { error: 'Venue not found' });
+    const isOwner = venue.ownerUserId === user.id;
+    const isAdmin = !isOwner && await require('../venue/data').isVenueAdmin(venue.id, user.id);
+    if (!isOwner && !isAdmin) return sendJSON(res, 403, { error: 'Forbidden' });
+    return sendJSON(res, 200, { admins: await require('../venue/data').listVenueAdmins(venue.id) });
+  }
+  if (urlPath === '/api/venues/audit' && req.method === 'GET') {
+    const user = await getAuthUser(req, res);
+    if (!user) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const slug = url.searchParams.get('slug');
+    const venue = await require('../venue/data').getVenueBySlug(slug);
+    if (!venue || venue.ownerUserId !== user.id) return sendJSON(res, 403, { error: 'Only the owner can view the audit' });
+    return sendJSON(res, 200, { audit: await require('../venue/data').getVenueAudit(venue.id) });
   }
 
   return serveStatic(req, res, urlPath);

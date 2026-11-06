@@ -262,16 +262,22 @@ route('GET', '/api/people/suggested', async (ctx) => {
   return { people: await data.suggestedPeople(u && u.id) };
 });
 route('GET', '/api/users/search', async (ctx) => ({ users: await data.searchUsers(ctx.url.searchParams.get('q') || '', 10) }));
-route('GET', '/api/users/(\\d+)', async (ctx, [id]) => {
+route('GET', '/api/users/([\\w.-]+)', async (ctx, [idOrName]) => {
   const u = await getAuthUser(ctx.req, ctx.res);
-  const p = await data.getUserProfile(int(id), u && u.id);
+  let uid = /^\d+$/.test(idOrName) ? int(idOrName) : null;
+  if (!uid) {
+    const byName = await require('../../db').getUserByUsername(idOrName);
+    if (byName) uid = byName.id;
+  }
+  const p = await data.getUserProfile(uid, u && u.id);
   if (!p) throw httpError(404, 'User not found');
   const events = (await data.myEvents(p.id)).filter((e) => e.visibility === 'public' && e.status !== 'draft');
   return { ...p, isMe: !!(u && u.id === p.id), events: events.slice(0, 12).map((e) => ({ ...e, live: liveInfo(e) })) };
 });
-route('GET', '/api/users/(\\d+)/timeline', async (ctx, [id]) => {
+route('GET', '/api/users/([\\w.-]+)/timeline', async (ctx, [idOrName]) => {
+  const uid = /^\\d+$/.test(idOrName) ? int(idOrName) : (await require('../../db').getUserByUsername(idOrName))?.id;
   const u = await getAuthUser(ctx.req, ctx.res);
-  return { posts: await data.userTimeline(int(id), u && u.id, { before: ctx.url.searchParams.get('before') }) };
+  return { posts: await data.userTimeline(uid, u && u.id, { before: ctx.url.searchParams.get('before') }) };
 });
 route('POST', '/api/users/(\\d+)/follow', async (ctx, [id]) => {
   const u = await requireUser(ctx.req, ctx.res);

@@ -200,6 +200,14 @@ module.exports = {
       if (!target || target.status !== 'WAITING') return;
       target.status = 'ACTIVE';
       target.approvedAt = Date.now();
+      if (meeting.venue) {
+        try {
+          const v = require('../venue/data');
+          v.getVenueByCode(meeting.code).then(venue => {
+            if (venue) v.logVenueAudit(venue.id, actor.userId, actor.name, 'admit', target.name);
+          }).catch(() => {});
+        } catch {}
+      }
       sendToParticipant(targetId, {
         type: 'admitted',
         meeting: {

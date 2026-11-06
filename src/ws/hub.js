@@ -220,8 +220,19 @@ function attachWebSocket(server) {
 
       if (msg.type === 'end-meeting') {
         const p = meeting.participants.get(participantId);
-        if (p && p.isHost) {
+        if (!p) return;
+        const isOwner = p.isHost || p.role === 'host';
+        const isAdmin = p.role === 'cohost';
+        if (isOwner) {
           Promise.resolve(endMeeting(meetingCode, 'host-ended')).catch(() => {});
+        } else if (isAdmin && meeting.venue) {
+          // Admin cannot close if the owner is currently in the venue
+          const ownerPresent = [...meeting.participants.values()].some((x) => x.isHost || x.role === 'host');
+          if (ownerPresent) {
+            try { sendToParticipant(participantId, { type: 'error', error: 'Cannot close the venue while the owner is present' }); } catch {}
+          } else {
+            Promise.resolve(endMeeting(meetingCode, 'admin-ended')).catch(() => {});
+          }
         }
         return;
       }

@@ -610,8 +610,48 @@ async function venueMeetings(code, limit = 100) {
   return many(`SELECT id, name, host_display_name, created_at AS started_at, ended_at, max_participants FROM meeting_history WHERE code=$1 ORDER BY created_at DESC LIMIT $2`, [code, limit]);
 }
 
+
+// ---------------------------------------------------------------- venue admins & audit
+async function addVenueAdmins(venueId, ownerId, usernames) {
+  const names = [...new Set(String(usernames || '').split(/[,\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean))];
+  const added = [];
+  const skipped = [];
+  for (const uname of names) {
+    const u = await one('SELECT id, username, display_name FROM users WHERE lower(username)=lower($1)', [uname]);
+    if (!u) { skipped.push(uname); continue; }
+    if (u.id === ownerId) { skipped.push(uname + ' (owner)'); continue; }
+    await q('INSERT INTO venue_admins (venue_id, user_id, added_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [venueId, u.id, ownerId]);
+    added.push({ id: u.id, username: u.username, name: u.display_name || u.username });
+    await logVenueAudit(venueId, ownerId, null, 'admin-add', u.username);
+  }
+  return { added, skipped };
+}
+async function removeVenueAdmin(venueId, ownerId, userId) {
+  const r = await q('DELETE FROM venue_admins WHERE venue_id=$1 AND user_id=$2', [venueId, userId]);
+  if (r.rowCount) await logVenueAudit(venueId, ownerId, null, 'admin-remove', String(userId));
+  return r.rowCount > 0;
+}
+async function listVenueAdmins(venueId) {
+  return (await many(`SELECT u.id, u.username, u.display_name, va.added_at
+    FROM venue_admins va JOIN users u ON u.id=va.user_id WHERE va.venue_id=$1 ORDER BY va.added_at`, [venueId]))
+    .map(r => ({ id: r.id, username: r.username, name: r.display_name || r.username, addedAt: r.added_at }));
+}
+async function isVenueAdmin(venueId, userId) {
+  const r = await one('SELECT 1 FROM venue_admins WHERE venue_id=$1 AND user_id=$2', [venueId, userId]);
+  return !!r;
+}
+async function logVenueAudit(venueId, actorId, actorName, action, detail) {
+  await q('INSERT INTO venue_audit (venue_id, actor_user_id, actor_name, action, detail) VALUES ($1,$2,$3,$4,$5)',
+    [venueId, actorId || null, actorName || null, action, detail || null]);
+}
+async function getVenueAudit(venueId, limit = 100) {
+  return (await many(`SELECT a.*, u.username, u.display_name FROM venue_audit a
+    LEFT JOIN users u ON u.id=a.actor_user_id WHERE a.venue_id=$1 ORDER BY a.created_at DESC LIMIT $2`, [venueId, limit]))
+    .map(r => ({ id: r.id, actorId: r.actor_user_id, actorName: r.display_name || r.actor_name || r.username || 'Unknown', action: r.action, detail: r.detail, at: r.created_at }));
+}
+
 module.exports = {
-  createVenue, myVenues, getVenueBySlug, getVenueByCode, renameVenue, deleteVenue, venueMeetings, markVenueOpen, markVenueClosed, getUserPlan, setVenueSlug,
+  createVenue, myVenues, getVenueBySlug, getVenueByCode, addVenueAdmins, removeVenueAdmin, listVenueAdmins, isVenueAdmin, logVenueAudit, getVenueAudit, renameVenue, deleteVenue, venueMeetings, markVenueOpen, markVenueClosed, getUserPlan, setVenueSlug,
   CATEGORIES, getPrefs, setPrefs, getUserProfile, updateProfile, searchUsers,
   createEvent, updateEvent, deleteEvent, getEventById, getEventBySlug, getEventByCode, discover, categoryCounts, myEvents, rsvpedEvents,
   toggleRsvp, markEventLive, markEventEnded, updateViewers, listSpeakers, setSpeakers,
