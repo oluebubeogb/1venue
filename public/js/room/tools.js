@@ -12,7 +12,7 @@ const btn = (ic, label, run, { group = '', cls = '', disabled } = {}) => h('butt
 
 // Content sharing helpers live at module level: the panel re-renders often, so the file input and progress must survive it.
 let presentBusy = '';
-const startContent = (R, payload) => { R.send('content-start', payload); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); };
+const startContent = (R, payload) => { R.send('content-start', payload); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); setTimeout(() => R.panel && R.panel.refresh('tools'), 300); };
 let contentInput = null;
 function pickContentFile(R) {
   if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation', multiple: true, hidden: true }); document.body.append(contentInput); }
@@ -38,7 +38,7 @@ export async function shareContentFile(R, f) {
     } else if (/\.pptx$/i.test(f.name) || f.type.includes('presentationml')) {
       setBusy('Converting PPTX…');
       const res = await fetch('/api/convert/pptx', { method: 'POST', body: f, credentials: 'include', headers: { 'Content-Type': f.type || 'application/octet-stream', ...R.headers() } });
-      if (!res.ok) throw new Error('PPTX conversion failed');
+      if (!res.ok) { const t = await res.text().catch(()=>''); throw new Error('PPTX conversion failed: ' + (t || res.status)); }
       const pdfBlob = await res.blob();
       const pdfFile = new File([pdfBlob], (name || 'slides') + '.pdf', { type: 'application/pdf' });
       setBusy('Preparing slides…');

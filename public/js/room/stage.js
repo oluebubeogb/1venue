@@ -212,14 +212,14 @@ export function createStage(R) {
       const show = (p) => { pg = p; img.src = c.pages[p - 1]; img.alt = `${c.title || 'Slide'} — page ${p}`; count.textContent = `${p} / ${n}`; preload(p + 1); };
       const go = (d) => { const p = Math.min(n, Math.max(1, pg + d)); if (p === pg) return; show(p); R.send('content-update', { page: p }); };
       body.append(img); show(pg);
+      present.append(h('div', { class: 'present-tools' }, h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Previous page', onclick: () => go(-1), html: icon('chevronLeft') }), count, h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Next page', onclick: () => go(1), html: icon('chevronRight') })));
       if (holder) {
-        present.append(h('div', { class: 'present-tools' }, h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Previous page', onclick: () => go(-1), html: icon('chevronLeft') }), count, h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Next page', onclick: () => go(1), html: icon('chevronRight') })));
         const key = (e) => { if (e.target.closest('input,textarea,[contenteditable]')) return; if (e.key === 'ArrowRight' || e.key === 'PageDown') go(1); else if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(-1); };
         document.addEventListener('keydown', key);
         let sx = null; body.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
         body.addEventListener('touchend', (e) => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); }, { passive: true });
         presentCleanup = () => document.removeEventListener('keydown', key);
-      } else present.append(h('div', { class: 'present-tools' }, count));
+      }
       R.applyPage = (p) => show(Math.min(n, Math.max(1, p || 1)));
       return;
     }

@@ -1474,7 +1474,7 @@ function createRequestHandler() {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const buf = Buffer.concat(chunks);
-    if (!buf.length || buf.length > 50 * 1024 * 1024) return sendJSON(res, 413, { error: 'File too large' });
+    if (!buf.length || buf.length > 50 * 1024 * 1024) return sendJSON(res, 413, { error: 'File too large or empty' });
     const os = require('os');
     const crypto = require('crypto');
     const tmp = path.join(os.tmpdir(), 'pptx-' + crypto.randomBytes(8).toString('hex'));
@@ -1483,14 +1483,24 @@ function createRequestHandler() {
     fs.writeFileSync(inPath, buf);
     try {
       const { execFileSync } = require('child_process');
-      execFileSync('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', tmp, inPath], { timeout: 60000, stdio: 'ignore' });
+      const profile = path.join(tmp, 'profile');
+      fs.mkdirSync(profile, { recursive: true });
+      execFileSync('libreoffice', [
+        '--headless', '--norestore', '--nolockcheck',
+        '-env:UserInstallation=file://' + profile,
+        '--convert-to', 'pdf', '--outdir', tmp, inPath
+      ], { timeout: 90000, stdio: 'pipe' });
       const pdfPath = path.join(tmp, 'in.pdf');
-      if (!fs.existsSync(pdfPath)) return sendJSON(res, 500, { error: 'Conversion failed' });
+      if (!fs.existsSync(pdfPath)) {
+        console.error('[pptx] no pdf produced');
+        return sendJSON(res, 500, { error: 'Conversion produced no PDF' });
+      }
       const pdf = fs.readFileSync(pdfPath);
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': pdf.length });
       res.end(pdf);
     } catch (e) {
-      return sendJSON(res, 500, { error: 'Could not convert PPTX' });
+      console.error('[pptx] convert error', e && e.message);
+      return sendJSON(res, 500, { error: 'Could not convert PPTX: ' + (e && e.message || 'unknown') });
     } finally {
       try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
     }
