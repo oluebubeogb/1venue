@@ -10,8 +10,21 @@ function accountsDest(cfg, { signup = false, next = '/dashboard' } = {}) {
   return `${base}?next=${encodeURIComponent(abs)}`;
 }
 
+function safeNext(raw) {
+  if (!raw) return '/dashboard';
+  const s = String(raw);
+  if (s.startsWith('/') && !s.startsWith('//')) return s;
+  try {
+    const u = new URL(s, location.origin);
+    if (u.origin === location.origin) return u.pathname + u.search;
+  } catch {}
+  return '/dashboard';
+}
+
 export async function mount(view, params) {
-  const next = params.next && String(params.next).startsWith('/') ? params.next : '/dashboard';
+  const next = safeNext(params.next);
+  // Re-check session in case the accounts cookie was just set on redirect back.
+  if (!state.user) { try { await refreshSession(); } catch {} }
   if (state.user) { navigate(next, { replace: true }); return; }
   const cfg = state.config || {};
   const wantSignup = params.mode === 'signup' || location.pathname.startsWith('/signup');
