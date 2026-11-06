@@ -15,7 +15,7 @@ let presentBusy = '';
 const startContent = (R, payload) => { R.send('content-start', payload); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); };
 let contentInput = null;
 function pickContentFile(R) {
-  if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*', multiple: true, hidden: true }); document.body.append(contentInput); }
+  if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation', multiple: true, hidden: true }); document.body.append(contentInput); }
   contentInput.onchange = () => { const f = contentInput.files[0]; contentInput.value = ''; if (f) shareContentFile(R, f); };
   contentInput.click();
 }
@@ -35,7 +35,20 @@ export async function shareContentFile(R, f) {
       setBusy('Uploading…');
       const r = await uploadFile(f, { purpose: 'content', headers: R.headers() });
       startContent(R, { contentType: 'image', url: r.url, title: name || 'Image', fileMeta: { name: f.name, size: f.size, mime: f.type } });
-    } else toast('Pick a PDF or an image', { icon: 'alert' });
+    } else if (/\.pptx$/i.test(f.name) || f.type.includes('presentationml')) {
+      setBusy('Converting PPTX…');
+      const res = await fetch('/api/convert/pptx', { method: 'POST', body: f, credentials: 'include', headers: { 'Content-Type': f.type || 'application/octet-stream', ...R.headers() } });
+      if (!res.ok) throw new Error('PPTX conversion failed');
+      const pdfBlob = await res.blob();
+      const pdfFile = new File([pdfBlob], (name || 'slides') + '.pdf', { type: 'application/pdf' });
+      setBusy('Preparing slides…');
+      const { pdfToImages } = await import('./pdfslides.js');
+      const { files, total, truncated } = await pdfToImages(pdfFile, { onProgress: (i, n) => setBusy(`Rendering page ${i} of ${n}…`) });
+      const pages = [];
+      for (let i = 0; i < files.length; i++) { setBusy(`Uploading page ${i + 1} of ${files.length}…`); pages.push((await uploadFile(files[i], { purpose: 'content', headers: R.headers() })).url); }
+      startContent(R, { contentType: 'slides', pages, title: name || 'Slides', fileMeta: { name: f.name, size: f.size, mime: f.type } });
+      if (truncated) toast(`Only the first ${files.length} of ${total} pages were shared`, { icon: 'alert' });
+    } else toast('Pick a PDF, PPTX, or images', { icon: 'alert' });
   } catch (e) { toastErr(e); } finally { setBusy(''); }
 }
 async function shareContentImages(R, files) {
@@ -184,6 +197,21 @@ export function buildTools(R) {
             h('div', { class: 'row gap-xs' }, stopBtn, handBtn)
           )
         ));
+        if (c.type === 'slides' && Array.isArray(c.pages) && c.pages.length > 1) {
+          const thumbs = h('div', { class: 'slide-thumbs' });
+          c.pages.forEach((url, i) => {
+            const t = h('button', { class: 'slide-thumb' + ((c.page || 1) === i + 1 ? ' on' : ''), type: 'button', onclick: () => R.send('content-update', { page: i + 1 }) },
+              h('img', { src: url, alt: 'Page ' + (i + 1) }),
+              h('span', { class: 'tiny' }, String(i + 1))
+            );
+            thumbs.append(t);
+          });
+          const ss = h('label', { class: 'row gap-xs tiny', style: { marginTop: '.5rem' } },
+            h('input', { type: 'checkbox', checked: !!R.slideshowOn, onchange: (e) => { R.slideshowOn = e.target.checked; R.toggleSlideshow && R.toggleSlideshow(e.target.checked); } }),
+            'Slideshow'
+          );
+          box.append(h('div', { class: 'slide-nav', style: { marginTop: '.6rem' } }, thumbs, ss));
+        }
       }
       const canPresent = R.perm('screenShare') || R.isMod();
       if (!canPresent) { box.append(note('The host controls who can present.')); return box; }
@@ -197,7 +225,7 @@ export function buildTools(R) {
         h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Watch together'),
         h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, yurl), btn('youtube', 'Play', goYT, { group: 'content' })),
         h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Slides & images'),
-        h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
+        h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF, PPTX or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
         busy,
       ].filter(Boolean);
       box.append(...items);

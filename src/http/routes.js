@@ -1467,6 +1467,36 @@ function createRequestHandler() {
     return sendJSON(res, 200, { ok: true, postId: post.id, url });
   }
 
+
+  if (urlPath === '/api/convert/pptx' && req.method === 'POST') {
+    const user = await getAuthUser(req, res);
+    if (!user) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const buf = Buffer.concat(chunks);
+    if (!buf.length || buf.length > 50 * 1024 * 1024) return sendJSON(res, 413, { error: 'File too large' });
+    const os = require('os');
+    const crypto = require('crypto');
+    const tmp = path.join(os.tmpdir(), 'pptx-' + crypto.randomBytes(8).toString('hex'));
+    fs.mkdirSync(tmp, { recursive: true });
+    const inPath = path.join(tmp, 'in.pptx');
+    fs.writeFileSync(inPath, buf);
+    try {
+      const { execFileSync } = require('child_process');
+      execFileSync('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', tmp, inPath], { timeout: 60000, stdio: 'ignore' });
+      const pdfPath = path.join(tmp, 'in.pdf');
+      if (!fs.existsSync(pdfPath)) return sendJSON(res, 500, { error: 'Conversion failed' });
+      const pdf = fs.readFileSync(pdfPath);
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': pdf.length });
+      res.end(pdf);
+    } catch (e) {
+      return sendJSON(res, 500, { error: 'Could not convert PPTX' });
+    } finally {
+      try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
+    }
+    return;
+  }
+
   return serveStatic(req, res, urlPath);
   };
 }
