@@ -1,10 +1,14 @@
-import { h, api, esc, avatar, fmtDur, timeAgo } from '../ui.js';
+import { h, api, esc, avatar, fmtDur } from '../ui.js';
 import { icon } from '../icons.js';
 import { state, navigate } from '../app.js';
 
-function fmtTime(iso) {
+function fmtTimeOnly(iso) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return iso; }
+  try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return iso; }
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); } catch { return ''; }
 }
 
 export async function mount(view, params) {
@@ -22,34 +26,35 @@ export async function mount(view, params) {
 
   const m = data.meeting;
   const isOwner = state.user && state.user.id === m.hostUserId;
-
-  const hostAtt = data.attendees.find(a => a.isHost) || { name: m.hostName, userId: m.hostUserId };
+  const hostAtt = data.attendees.find(a => a.isHost) || { name: m.hostName, userId: m.hostUserId, signIns: [], signOut: null, durationSec: 0, interruptions: false };
   const others = data.attendees.filter(a => !a.isHost);
 
   const nameLink = (a) => {
     if (!a.userId) return esc(a.name);
-    // Profile linking only for logged-in users (attendees who have accounts)
     return h('a', { href: `/u/${a.userId}`, 'data-link': '' }, esc(a.name));
   };
 
   const row = (a, role) => h('tr', null,
     h('td', null, h('div', { class: 'row gap-s' }, avatar(a.name, null, 'sm'), h('div', null, nameLink(a), role ? h('div', { class: 'tiny muted' }, role) : null))),
-    h('td', null, a.signIns.map(fmtTime).join(', ')),
-    h('td', null, a.signOut ? fmtTime(a.signOut) : 'Still in / —'),
-    h('td', null, fmtDur(a.durationSec)),
-    h('td', null, a.interruptions ? h('span', { class: 'pill' }, 'Yes') : '—')
+    h('td', null, (a.signIns || []).map(fmtTimeOnly).join(', ') || '—'),
+    h('td', null, a.signOut ? fmtTimeOnly(a.signOut) : '—'),
+    h('td', null, fmtDur(a.durationSec || 0)),
+    h('td', null, a.interruptions ? 'Yes' : '—')
   );
 
   const table = h('table', { class: 'att-table' },
-    h('thead', null, h('tr', null, h('th', null, 'Person'), h('th', null, 'Sign-in(s)'), h('th', null, 'Sign-out'), h('th', null, 'Duration'), h('th', null, 'Interruptions'))),
-    h('tbody', null,
-      row(hostAtt, 'Host'),
-      ...others.map(a => row(a, a.isCohost ? 'Co-host' : 'Participant'))
-    )
+    h('thead', null, h('tr', null,
+      h('th', null, 'Person'),
+      h('th', null, 'Sign-in'),
+      h('th', null, 'Sign-out'),
+      h('th', null, 'Duration'),
+      h('th', null, 'Interruptions')
+    )),
+    h('tbody', null, row(hostAtt, 'Host'), ...others.map(a => row(a, a.isCohost ? 'Co-host' : 'Participant')))
   );
 
-  const actions = h('div', { class: 'row gap-s no-print', style: { marginTop: '1.5rem' } },
-    h('button', { class: 'btn primary', onclick: () => window.print() }, icon('download', { size: 16 }) + ' Export PDF'),
+  const actions = h('div', { class: 'row gap-s no-print', style: { marginTop: '1.5rem', flexWrap: 'wrap' } },
+    h('button', { class: 'btn primary', onclick: () => window.print(), html: icon('download', { size: 16 }) + ' Export PDF' }),
     isOwner ? h('button', { class: 'btn', onclick: async () => {
       try {
         await api('/api/attendance/toggle', { method: 'POST', body: { token, public: !data.isPublic } });
@@ -65,12 +70,14 @@ export async function mount(view, params) {
     h('a', { class: 'btn ghost', href: '/dashboard', 'data-link': '' }, 'Dashboard')
   );
 
+  const dateLine = fmtDate(m.createdAt) + (m.endedAt && fmtDate(m.endedAt) !== fmtDate(m.createdAt) ? ' – ' + fmtDate(m.endedAt) : '');
+
   view.append(
     h('div', { class: 'att-page' },
       h('div', { class: 'att-hero' },
-        h('div', { class: 'att-brand' }, icon('stage', { size: 28 }), h('span', null, '1venue')),
+        h('div', { class: 'att-brand', html: icon('stage', { size: 28 }) + '<span>1venue</span>' }),
         h('h1', null, esc(m.name)),
-        h('div', { class: 'muted' }, `Attendance · ${fmtTime(m.createdAt)}${m.endedAt ? ' – ' + fmtTime(m.endedAt) : ''}`),
+        h('div', { class: 'muted' }, `Attendance · ${dateLine}`),
         h('div', { class: 'host-card' },
           avatar(hostAtt.name, null, 'lg ring'),
           h('div', null, h('div', { class: 'tiny muted' }, 'Host'), nameLink(hostAtt))

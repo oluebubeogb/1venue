@@ -45,14 +45,28 @@ export async function mount(view) {
     if (att.lists && att.lists.length) {
       const attCard = h('div', { class: 'card pad layer', style: { marginTop: '1rem' } },
         h('div', { class: 'row between' }, h('strong', { html: icon('users', { size: 18 }) + ' Attendance lists' }), h('span', { class: 'tiny faint' }, 'Public by default')),
-        h('div', { class: 'stack', style: { marginTop: '.6rem', gap: '.4rem' } },
-          ...att.lists.map(l => h('div', { class: 'row between' },
-            h('div', { class: 'grow' }, h('div', { style: { fontWeight: 600 } }, l.name || l.code), h('div', { class: 'tiny muted' }, l.isPublic ? 'Public' : 'Private · host only')),
-            h('div', { class: 'row gap-xs' },
-              h('a', { class: 'btn sm', href: l.url, 'data-link': '' }, 'View'),
-              l.isPublic ? h('button', { class: 'btn sm ghost', onclick: async () => { try { await api('/api/attendance/share-timeline', { method: 'POST', body: { token: l.token } }); alert('Shared to timeline'); } catch(e){ alert(e.message); } } }, 'Share') : null
-            )
-          ))
+        h('div', { class: 'stack', style: { marginTop: '.8rem', gap: '.6rem' } },
+          ...att.lists.map(l => {
+            const toggle = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
+              try {
+                await api('/api/attendance/toggle', { method: 'POST', body: { token: l.token, public: !l.isPublic } });
+                location.reload();
+              } catch (e) { alert(e.message); }
+            } }, l.isPublic ? 'Make private' : 'Make public');
+            const share = l.isPublic ? h('button', { class: 'btn sm ghost', type: 'button', onclick: async () => {
+              try { await api('/api/attendance/share-timeline', { method: 'POST', body: { token: l.token } }); alert('Shared to timeline'); } catch (e) { alert(e.message); }
+            } }, 'Share') : null;
+            const pdf = h('a', { class: 'btn sm', href: l.url, 'data-link': '', target: '_blank' }, 'PDF');
+            return h('div', { class: 'row between wrap', style: { gap: '.5rem', alignItems: 'center' } },
+              h('div', { class: 'grow' }, h('div', { style: { fontWeight: 600 } }, l.name || l.code), h('div', { class: 'tiny muted' }, l.isPublic ? 'Public' : 'Private · host & co-host')),
+              h('div', { class: 'row gap-xs wrap' },
+                h('a', { class: 'btn sm', href: l.url, 'data-link': '' }, 'View'),
+                pdf,
+                toggle,
+                share
+              )
+            );
+          })
         )
       );
       view.append(attCard);
