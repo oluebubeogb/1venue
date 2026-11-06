@@ -360,7 +360,7 @@ Object.assign(Room.prototype, {
   async toggleShare(force) {
     if (typeof force !== 'boolean' && this.media.sharing) return this.confirmStopShare();
     const on = typeof force === 'boolean' ? force : !this.media.sharing;
-    if (on if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; }if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; } !this.perm('screenShare') if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; }if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; } !this.isMod()) { this.send('request-permission', { action: 'screenShare', detail: 'share screen' }); toast('Request sent to host', { icon: 'screen' }); return; }
+    if (on && !this.perm('screenShare') && !this.isMod()) { this.send('request-permission', { action: 'screenShare', detail: 'share screen' }); toast('Request sent to host', { icon: 'screen' }); return; }
     if (on && !navigator.mediaDevices?.getDisplayMedia) { toast('Screen sharing isn’t supported on this device', { icon: 'alert' }); return; }
     try {
       await this.media.setShare(on, lsGet('venue.shareQuality', 'auto'));
