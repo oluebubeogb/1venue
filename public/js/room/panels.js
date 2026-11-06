@@ -42,14 +42,14 @@ export function createPanel(R) {
     tab = id; el.dataset.tab = id; el.classList.add('open'); R.root.classList.add('panel-open');
     Object.entries(tabBtns).forEach(([k, b]) => b.classList.toggle('on', k === id));
     if (id === 'chat') R.unread.chat = 0;
-    render(); badges(); R.refreshBar();
+    render(); badges(); R.refreshBar(); R.updateBell && R.updateBell();
   }
   function close() { tab = null; el.classList.remove('open'); R.root.classList.remove('panel-open'); R.refreshBar(); }
   function toggle(id, s) { if (tab === id && !s) close(); else open(id, s); }
   function badges() {
     const n = { chat: R.unread.chat + R.unread.dm, people: (R.isMod() ? R.waiting.length + (R.stage.requests || []).length : 0) + R.hands.length, engage: R.unread.engage + (R.unread.comments || 0) };
     for (const [k, b] of Object.entries(tabBtns)) { const e = b.querySelector('.badge'); const v = n[k] || 0; e.hidden = !v || tab === k; e.textContent = v > 99 ? '99+' : v; }
-    R.refreshBar();
+    R.refreshBar(); R.updateBell && R.updateBell();
   }
   let rq = 0;
   function render() { cancelAnimationFrame(rq); rq = requestAnimationFrame(doRender); }

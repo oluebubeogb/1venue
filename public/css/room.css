@@ -520,3 +520,6 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 .rh-bell-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; border-radius: 999px; background: var(--danger, #ef4444); color: #fff; font-size: .65rem; font-weight: 700; display: grid; place-items: center; padding: 0 4px; }
 .icon-btn.sm.danger { color: var(--danger, #ef4444); }
 .present .shade { margin-bottom: .6rem; }
+
+.rh-bell-badge { display: none; }
+.rh-bell-badge.on { display: grid; }

@@ -434,7 +434,7 @@ Object.assign(Room.prototype, {
       h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
       h('button', { class: 'pill rh-people', 'data-group': 'people', 'data-tip': 'People', type: 'button', onclick: () => this.panel.toggle('people'), html: icon('users', { size: 14 }) + '<span class="rh-count"></span>' }),
       ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'hide-xs' }),
-      this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity(), html: icon('bell', { size: 16 }) + '<em class="badge rh-bell-badge" hidden></em>' }),
+      this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity(), html: icon('bell', { size: 16 }) + '<em class="badge rh-bell-badge"></em>' }),
       ibtn('pip', 'Picture-in-picture', () => this.pip(), { group: 'media', cls: 'hide-xs' }),
       ibtn('phoneOff', 'Leave', () => this.leaveMenu(), { group: 'danger', cls: 'danger' }));
     this.paintHead(); this.updateBell && this.updateBell();
@@ -637,7 +637,7 @@ Object.assign(Room.prototype, {
     if (!this.bellBtn) return;
     const n = (this.unread.chat || 0) + (this.unread.dm || 0) + (this.unread.engage || 0) + (this.unread.comments || 0) + (this.isMod() ? (this.waiting || []).length : 0);
     const b = this.bellBtn.querySelector('.rh-bell-badge');
-    if (b) { b.hidden = !n; b.textContent = n > 99 ? '99+' : n; }
+    if (b) { b.classList.toggle('on', n > 0); b.textContent = n > 99 ? '99+' : String(n); }
   },
   confirmStopShare() {
     if (this.stopShareEl) return;
