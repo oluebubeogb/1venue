@@ -260,9 +260,11 @@ const scripturePlugin = {
       if (!p) return;
       const st = stage.ensure(meeting);
       if (!(mod(meeting, pid) || st.speakers.has(pid))) {
-        ctx.sendToParticipant if (!(mod(meeting, pid) || st.speakers.has(pid))) return err(ctx, pid, 'Only hosts and speakers can put scripture on screen');if (!(mod(meeting, pid) || st.speakers.has(pid))) return err(ctx, pid, 'Only hosts and speakers can put scripture on screen'); ctx.sendToParticipant(pid, { type: 'error', error: 'Request sent to host' });
+        try { ctx.sendToParticipant(pid, { type: 'error', error: 'Request sent to host' }); } catch (_) {}
         const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
-        hosts.forEach(h => ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: pid, fromName: p.name, action: 'scripture', detail: `share ${msg.reference}`, at: Date.now() }));
+        hosts.forEach(h => {
+          try { ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: pid, fromName: p.name, action: 'scripture', detail: `share ${msg.reference}`, at: Date.now() }); } catch (_) {}
+        });
         return;
       }
       const bible = require('../venue/bible');

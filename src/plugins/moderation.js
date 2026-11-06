@@ -566,7 +566,6 @@ module.exports = {
       }
     });
 
-  },
     ctx.onWs('request-permission', ({ msg, participantId, meeting, meetingCode }) => {
       const p = meeting.participants.get(participantId);
       if (!p) return;
@@ -577,6 +576,7 @@ module.exports = {
         ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: participantId, fromName: p.name, action, detail, at: Date.now() });
       });
     });
+
     ctx.onWs('grant-permission', ({ msg, participantId, meeting }) => {
       const actor = meeting.participants.get(participantId);
       if (!actor || (actor.role !== 'host' && actor.role !== 'cohost' && !actor.isHost)) return;
@@ -588,4 +588,6 @@ module.exports = {
       ctx.sendToParticipant(msg.targetId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, target) });
       ctx.sendToParticipant(participantId, { type: 'toast', text: `Granted ${msg.action} to ${target.name}` });
     });
+
+  },
 };
