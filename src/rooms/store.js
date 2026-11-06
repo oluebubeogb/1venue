@@ -183,6 +183,7 @@ function getContentState(meeting) {
     scrollMode: c.scrollMode || 'uniform',
     scroll: c.scroll || null,
     page: c.page || null,
+    slideshow: !!c.slideshow,
     media: c.media || null,
     fileMeta: c.fileMeta || null,
   };

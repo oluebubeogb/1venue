@@ -12,6 +12,7 @@ const {
 async function endMeeting(code, reason = 'ended') {
   const meeting = getMeeting(code);
   if (!meeting) return;
+  clearInterval(meeting.content?.slideshowTimer);
   if (meeting.historyId) {
     try {
       await db.endMeetingHistory(meeting.historyId);

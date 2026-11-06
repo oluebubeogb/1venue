@@ -121,6 +121,8 @@ const UPLOADS = {
   guestQuotaBytes: mb('UPLOAD_GUEST_QUOTA_MB', 30),
   meetingCapBytes: mb('UPLOAD_MEETING_CAP_MB', 150),
   perMinute: int('UPLOAD_RATE_PER_MIN', 12),
+  contentPerMinute: int('UPLOAD_CONTENT_RATE_PER_MIN', 240),
+  contentPerHour: int('UPLOAD_CONTENT_RATE_PER_HOUR', 480),
   perHour: int('UPLOAD_RATE_PER_HOUR', 120),
   chatInlineBytes: mb('CHAT_INLINE_MAX_MB', 0.6), // legacy data-URL attachments over WS
 };

@@ -24,22 +24,24 @@ function limitFor(mime) { return Math.min(U[LIMIT[kindOf(mime)]], config.STORAGE
 const err = (status, message) => Object.assign(new Error(message), { status, expose: true });
 
 const hours = new Map();
-function hourly(key) {
+function hourly(key, limit = U.perHour) {
   const h = Math.floor(Date.now() / 3600e3), k = key + ':' + h;
   const n = (hours.get(k) || 0) + 1; hours.set(k, n);
   if (hours.size > 5000) for (const kk of hours.keys()) if (!kk.endsWith(':' + h)) hours.delete(kk);
-  return n <= U.perHour;
+  return n <= limit;
 }
 
 /** Cheap pre-checks before the body is read. */
-function precheck({ mime, declaredSize, rateKey }) {
+function precheck({ mime, declaredSize, rateKey, contentBatch = false }) {
   const kind = kindOf(mime);
   const max = limitFor(mime);
   if (/html|javascript|svg|x-msdownload|x-sh\b/i.test(mime)) throw err(415, 'That file type is not allowed');
   if (!max) throw err(415, kind === 'video' ? 'Video uploads are turned off — share a YouTube link instead.' : `${LABEL[kind]} can’t be uploaded here`);
   if (declaredSize && declaredSize > max) throw err(413, `${LABEL[kind]} can be up to ${fmtMB(max)} (this one is ${fmtMB(declaredSize)})`);
-  if (!rateLimit(`up:m:${rateKey}`, U.perMinute)) throw err(429, 'Too many uploads — wait a minute and try again');
-  if (!hourly(rateKey)) throw err(429, 'Hourly upload limit reached — try again later');
+  const batch = contentBatch && kind === 'image';
+  const key = batch ? `content:${rateKey}` : rateKey;
+  if (!rateLimit(`up:m:${key}`, batch ? U.contentPerMinute : U.perMinute)) throw err(429, 'Too many uploads — wait a minute and try again');
+  if (!hourly(key, batch ? U.contentPerHour : U.perHour)) throw err(429, 'Hourly upload limit reached — try again later');
   return max;
 }
 

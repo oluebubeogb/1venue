@@ -32,7 +32,7 @@ export function createStage(R) {
   el.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') return; sx = e.clientX; sy = e.clientY; });
   el.addEventListener('pointerup', (e) => {
     if (sx == null) return; const dx = e.clientX - sx, dy = e.clientY - sy; sx = null;
-    if (Math.abs(dx) > 70 && Math.abs(dy) < 50 && !e.target.closest('.present .board-wrap, iframe, input, .wb')) R.cycleLayout(dx < 0 ? 1 : -1);
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 50 && !e.target.closest('.present .board-wrap, iframe, input, .wb, .slides-body, .slide-controls')) R.cycleLayout(dx < 0 ? 1 : -1);
   });
 
   function tileFor(id, kind = 'camera') {
@@ -189,7 +189,7 @@ export function createStage(R) {
       canStop ? closeBtn('Stop', () => R.confirmStopContent()) : null);
     const body = h('div', { class: 'present-body' });
     present.append(head, body);
-    R.applyMediaSync = null; R.applyPage = null;
+    R.applyMediaSync = null; R.applyPage = null; R.applySlideshow = null;
     if (c.type === 'youtube' && c.videoId) {
       body.classList.add('yt-wrap');
       const tap = h('button', { class: 'btn sm glass yt-tap', type: 'button', hidden: true, html: icon('volume', { size: 14 }) + '<span>Tap for sound</span>' });
@@ -205,22 +205,43 @@ export function createStage(R) {
       return;
     }
     if (c.type === 'slides' && Array.isArray(c.pages) && c.pages.length) {
+      const canControl = R.canControlContent();
       const n = c.pages.length; let pg = Math.min(Math.max(1, c.page || 1), n);
+      body.classList.add('slides-body');
       const img = h('img', { class: 'present-img', alt: '', decoding: 'async' });
-      const count = h('span', { class: 'tiny muted slide-count' });
+      const count = h('span', { class: 'tiny muted slide-count', 'aria-live': 'polite' });
+      const prev = h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Previous page', onclick: () => go(-1), html: icon('chevronLeft') });
+      const next = h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Next page', onclick: () => go(1), html: icon('chevronRight') });
+      const grid = h('div', { class: 'slide-thumbs stage-thumbs', hidden: true, 'aria-label': 'Choose a slide' });
+      if (canControl) c.pages.forEach((url, i) => grid.append(h('button', {
+        class: 'slide-thumb', type: 'button', 'aria-label': 'Show page ' + (i + 1),
+        onclick: () => { R.setContentPage(i + 1); grid.hidden = true; gridBtn.setAttribute('aria-expanded', 'false'); }
+      }, h('img', { src: url, alt: 'Page ' + (i + 1), loading: 'lazy' }), h('span', { class: 'tiny' }, String(i + 1)))));
+      const gridBtn = h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Thumbnail grid', 'aria-expanded': 'false', onclick: () => { grid.hidden = !grid.hidden; gridBtn.setAttribute('aria-expanded', String(!grid.hidden)); }, html: icon('grid') });
+      const slideshow = h('input', { type: 'checkbox', checked: !!c.slideshow, onchange: (e) => R.toggleSlideshow(e.target.checked) });
       const preload = (i) => { if (c.pages[i - 1]) { const im = new Image(); im.src = c.pages[i - 1]; } };
-      const show = (p) => { pg = p; img.src = c.pages[p - 1]; img.alt = `${c.title || 'Slide'} — page ${p}`; count.textContent = `${p} / ${n}`; preload(p + 1); };
-      const go = (d) => { const p = Math.min(n, Math.max(1, pg + d)); if (p === pg) return; show(p); R.send('content-update', { page: p }); };
-      body.append(img); show(pg);
-      present.append(h('div', { class: 'present-tools' }, h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Previous page', onclick: () => go(-1), html: icon('chevronLeft') }), count, h('button', { class: 'icon-btn glass', type: 'button', 'aria-label': 'Next page', onclick: () => go(1), html: icon('chevronRight') })));
-      if (holder) {
-        const key = (e) => { if (e.target.closest('input,textarea,[contenteditable]')) return; if (e.key === 'ArrowRight' || e.key === 'PageDown') go(1); else if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(-1); };
+      const show = (p) => {
+        pg = Math.min(n, Math.max(1, p || 1)); img.src = c.pages[pg - 1]; img.alt = `${c.title || 'Slide'} — page ${pg}`;
+        count.textContent = `${pg} / ${n}`; prev.disabled = pg <= 1; next.disabled = pg >= n;
+        [...grid.children].forEach((el, i) => { el.classList.toggle('on', i + 1 === pg); el.setAttribute('aria-pressed', String(i + 1 === pg)); });
+        preload(pg + 1);
+      };
+      const go = (d) => { if (canControl) R.setContentPage(pg + d); };
+      body.append(img); if (canControl) body.append(grid); show(pg);
+      present.append(h('div', { class: 'present-tools slide-controls' }, canControl ? prev : null, count, canControl ? next : null,
+        canControl ? gridBtn : null,
+        canControl && n > 1 ? h('label', { class: 'slide-auto' }, slideshow, 'Slideshow') : null));
+      let unbind = () => {};
+      if (canControl) {
+        const key = (e) => { if (e.target.closest('input,textarea,select,[contenteditable]')) return; if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(1); } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(-1); } };
         document.addEventListener('keydown', key);
-        let sx = null; body.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
+        let sx = null; body.addEventListener('touchstart', (e) => { if (!e.target.closest('.stage-thumbs')) sx = e.touches[0].clientX; }, { passive: true });
         body.addEventListener('touchend', (e) => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); }, { passive: true });
-        presentCleanup = () => document.removeEventListener('keydown', key);
+        unbind = () => document.removeEventListener('keydown', key);
       }
-      R.applyPage = (p) => show(Math.min(n, Math.max(1, p || 1)));
+      R.applyPage = show;
+      R.applySlideshow = (on) => { slideshow.checked = on; };
+      presentCleanup = () => { unbind(); R.applyPage = null; R.applySlideshow = null; };
       return;
     }
     if (c.type === 'image' && c.url) { body.append(h('img', { src: c.url, alt: c.title || '', class: 'present-img' })); return; }
@@ -323,6 +344,7 @@ export function createStage(R) {
     }
     present.hidden = !key;
     el.classList.toggle('presenting', !!key);
+    el.classList.toggle('content-only', R.layout === 'screenshare' && !!key);
     const people = visiblePeople();
     const ids = people.map((p) => p.id);
     if (!ids.includes(R.me.id) && (!R.stage.enabled || R.isSpeaker(R.me.id))) ids.unshift(R.me.id);
@@ -350,10 +372,10 @@ export function createStage(R) {
     const n = Math.min(film.length, maxTiles) + (film.length > maxTiles ? 1 : 0);
     tilesEl.style.setProperty('--n', n);
     tilesEl.dataset.count = n > 9 ? 'many' : n;
-    if (R.stage.enabled && !ids.length) tilesEl.append(h('div', { class: 'empty sm stage-empty' }, I('stage', 28), h('p', null, 'The stage is open — speakers will appear here.')));
+    if (R.stage.enabled && !ids.length && !(R.layout === 'screenshare' && key)) tilesEl.append(h('div', { class: 'empty sm stage-empty' }, I('stage', 28), h('p', null, 'The stage is open — speakers will appear here.')));
     for (const t of tiles.values()) paintTile(t);
     // audience strip for stage events
-    if (R.stage.enabled) {
+    if (R.stage.enabled && R.layout !== 'screenshare') {
       const aud = R.people().filter((p) => !R.isSpeaker(p.id));
       if (aud.length) tilesEl.append(h('div', { class: 'audience', onclick: () => R.panel.open('people') }, ...aud.slice(0, 7).map((p) => avatar(p.name, p.avatarUrl, 'xs')), h('span', { class: 'tiny' }, `${aud.length} in the audience`)));
     }

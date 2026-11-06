@@ -7,6 +7,7 @@
  * Generic web pages (most sites refuse to be framed) and self-hosted video (would stream from this server)
  * are intentionally not supported.
  */
+const { can } = require('../lib/permissions');
 const YT_ID = /^[\w-]{11}$/;
 const FILE_URL = /^\/files\/[\w-]{1,64}\/[\w.%~()'!*-]{1,240}$/;
 const okFile = (u) => typeof u === 'string' && FILE_URL.test(u);
@@ -43,9 +44,10 @@ module.exports = {
 
     ctx.onWs('content-start', ({ msg, participantId, meeting, meetingCode }) => {
       const p = meeting.participants.get(participantId);
-      if (!p) return;
+      if (!p || !can(meeting, p, 'screenShare')) return;
       const c = sanitizeContent(msg);
       if (!c) return;
+      clearInterval(meeting.content?.slideshowTimer);
       meeting.content = {
         ...c,
         ownerId: participantId,
@@ -53,6 +55,7 @@ module.exports = {
         scrollMode: 'uniform',
         scroll: null,
         page: 1,
+        slideshow: false,
         media: c.type === 'youtube' ? { paused: true, t: 0, at: Date.now() } : null,
       };
       broadcast(meetingCode, { type: 'content-state', content: getContentState(meeting) });
@@ -63,6 +66,7 @@ module.exports = {
       const isOwner = meeting.content.ownerId === participantId;
       const isHost = meeting.participants.get(participantId)?.isHost;
       if (!isOwner && !isHost) return;
+      clearInterval(meeting.content.slideshowTimer);
       meeting.content = null;
       broadcast(meetingCode, { type: 'content-state', content: null });
     });
@@ -78,6 +82,21 @@ module.exports = {
         const max = meeting.content.pages ? meeting.content.pages.length : 1;
         meeting.content.page = Math.max(1, Math.min(max, Math.round(Number(msg.page)) || 1));
       }
+      if (msg.slideshow != null && meeting.content.type === 'slides') {
+        const c = meeting.content;
+        clearInterval(c.slideshowTimer); c.slideshowTimer = null;
+        c.slideshow = !!msg.slideshow && c.pages.length > 1;
+        if (c.slideshow) {
+          c.slideshowTimer = setInterval(() => {
+            if (meeting.content !== c || (ctx.getMeeting && ctx.getMeeting(meetingCode) !== meeting)) {
+              clearInterval(c.slideshowTimer); return;
+            }
+            c.page = (c.page % c.pages.length) + 1;
+            broadcast(meetingCode, { type: 'content-update', content: getContentState(meeting) });
+          }, 4000);
+          c.slideshowTimer.unref?.();
+        }
+      }
       if (msg.media && typeof msg.media === 'object') {
         const m = msg.media;
         meeting.content.media = {
@@ -92,7 +111,7 @@ module.exports = {
       broadcast(
         meetingCode,
         { type: 'content-update', content: getContentState(meeting), from: participantId },
-        participantId
+        meeting.content.type === 'slides' ? undefined : participantId
       );
     });
 

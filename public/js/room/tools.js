@@ -16,7 +16,15 @@ const startContent = (R, payload) => { R.send('content-start', payload); toast('
 let contentInput = null;
 function pickContentFile(R) {
   if (!contentInput) { contentInput = h('input', { type: 'file', accept: 'application/pdf,image/*,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation', multiple: true, hidden: true }); document.body.append(contentInput); }
-  contentInput.onchange = () => { const f = contentInput.files[0]; contentInput.value = ''; if (f) shareContentFile(R, f); };
+  contentInput.onchange = () => {
+    const files = Array.from(contentInput.files); contentInput.value = '';
+    if (!files.length) return;
+    if (files.length > 1) {
+      if (!files.every((f) => f.type.startsWith('image/'))) return toast('Select multiple images, or one PDF/PPTX at a time', { icon: 'alert' });
+      if (files.length > 200) return toast('Select up to 200 images', { icon: 'alert' });
+      return shareContentImages(R, files);
+    } else return shareContentFile(R, files[0]);
+  };
   contentInput.click();
 }
 export async function shareContentFile(R, f) {
@@ -37,8 +45,9 @@ export async function shareContentFile(R, f) {
       startContent(R, { contentType: 'image', url: r.url, title: name || 'Image', fileMeta: { name: f.name, size: f.size, mime: f.type } });
     } else if (/\.pptx$/i.test(f.name) || f.type.includes('presentationml')) {
       setBusy('Converting PPTX…');
-      const res = await fetch('/api/convert/pptx', { method: 'POST', body: f, credentials: 'include', headers: { 'Content-Type': f.type || 'application/octet-stream', ...R.headers() } });
-      if (!res.ok) { const t = await res.text().catch(()=>''); throw new Error('PPTX conversion failed: ' + (t || res.status)); }
+      const res = await fetch('/api/convert/pptx', { method: 'POST', body: f, credentials: 'include', headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ...R.headers() } });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `PPTX conversion failed (${res.status})`); }
+      if (!res.headers.get('content-type')?.includes('application/pdf')) throw new Error('The server did not return a PDF');
       const pdfBlob = await res.blob();
       const pdfFile = new File([pdfBlob], (name || 'slides') + '.pdf', { type: 'application/pdf' });
       setBusy('Preparing slides…');
@@ -182,6 +191,7 @@ export function buildTools(R) {
       const box = h('div', { class: 'stack' });
       const c = R.content;
       if (c) {
+        const canControl = c.ownerId === R.me.id || c.remoteHolderId === R.me.id;
         const canStop = c.ownerId === R.me.id || R.isMod();
         const canHand = c.ownerId === R.me.id || c.remoteHolderId === R.me.id || R.isMod();
         const stopBtn = canStop ? h('button', { class: 'icon-btn sm danger', 'data-tip': 'Stop presenting', type: 'button', onclick: () => R.confirmStopContent(), html: icon('stop', { size: 16 }) }) : null;
@@ -200,17 +210,21 @@ export function buildTools(R) {
         if (c.type === 'slides' && Array.isArray(c.pages) && c.pages.length > 1) {
           const thumbs = h('div', { class: 'slide-thumbs' });
           c.pages.forEach((url, i) => {
-            const t = h('button', { class: 'slide-thumb' + ((c.page || 1) === i + 1 ? ' on' : ''), type: 'button', onclick: () => R.send('content-update', { page: i + 1 }) },
+            const t = h('button', { class: 'slide-thumb' + ((c.page || 1) === i + 1 ? ' on' : ''), type: 'button', disabled: !canControl, 'aria-label': 'Show page ' + (i + 1), onclick: () => R.setContentPage(i + 1) },
               h('img', { src: url, alt: 'Page ' + (i + 1) }),
               h('span', { class: 'tiny' }, String(i + 1))
             );
             thumbs.append(t);
           });
           const ss = h('label', { class: 'row gap-xs tiny', style: { marginTop: '.5rem' } },
-            h('input', { type: 'checkbox', checked: !!R.slideshowOn, onchange: (e) => { R.slideshowOn = e.target.checked; R.toggleSlideshow && R.toggleSlideshow(e.target.checked); } }),
+            h('input', { type: 'checkbox', checked: !!c.slideshow, disabled: !canControl, onchange: (e) => R.toggleSlideshow(e.target.checked) }),
             'Slideshow'
           );
-          box.append(h('div', { class: 'slide-nav', style: { marginTop: '.6rem' } }, thumbs, ss));
+          box.append(h('div', { class: 'slide-nav', style: { marginTop: '.6rem' } },
+            h('div', { class: 'row gap-s' },
+              btn('chevronLeft', 'Previous', () => R.setContentPage((R.content.page || 1) - 1), { disabled: !canControl || c.page <= 1 }),
+              h('span', { class: 'tiny grow center' }, `${c.page || 1} / ${c.pages.length}`),
+              btn('chevronRight', 'Next', () => R.setContentPage((R.content.page || 1) + 1), { disabled: !canControl || c.page >= c.pages.length })), thumbs, ss));
         }
       }
       const canPresent = R.perm('screenShare') || R.isMod();

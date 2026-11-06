@@ -9,7 +9,7 @@ const { normCode } = codes;
 const { parseBody, readRaw, sendJSON, sendText, clientIp, rateLimit } = require('../lib/http');
 const { getAuthUser, publicUser } = require('../lib/auth');
 const { verifyWsCredential } = require('../lib/wsCredential');
-const { isModerator } = require('../lib/permissions');
+const { isModerator, can } = require('../lib/permissions');
 const store = require('../rooms/store');
 const config = require('../config');
 const data = require('../venue/data');
@@ -64,6 +64,23 @@ async function historyAccess(req, res, historyId) {
 
 const routes = [];
 const route = (method, pattern, handler) => routes.push({ method, re: new RegExp(`^${pattern}$`), handler });
+
+// Convert office decks without blocking room signalling. Room credentials also support guest presenters.
+route('POST', '/api/convert/pptx', async (ctx) => {
+  const rp = roomParticipant(ctx.req);
+  const u = rp ? null : await getAuthUser(ctx.req, ctx.res);
+  if (!rp && !u) throw httpError(401, 'Sign in or join a meeting to present');
+  if (rp && !can(rp.meeting, rp.participant, 'screenShare')) throw httpError(403, 'The host controls who can present');
+  const key = rp ? `room:${rp.code}:${rp.participant.id}` : `user:${u.id}`;
+  if (!rateLimit('pptx:' + key, 4)) throw httpError(429, 'Please wait before converting another deck');
+  const converter = require('../venue/pptx');
+  const mime = String(ctx.req.headers['content-type'] || '').split(';')[0].toLowerCase();
+  if (!converter.MIMES.has(mime)) throw httpError(415, 'Choose a PPTX presentation');
+  if (Number(ctx.req.headers['content-length']) > converter.MAX_BYTES) throw httpError(413, 'PPTX must be 50 MB or smaller');
+  const buf = await readRaw(ctx.req, converter.MAX_BYTES);
+  const pdf = await converter.convertPptx(buf);
+  return { raw: pdf, type: 'application/pdf', headers: { 'Cache-Control': 'no-store' } };
+});
 
 // ------------------------------------------------------------ prefs & profile
 route('GET', '/api/prefs', async (ctx) => {
@@ -311,14 +328,16 @@ route('POST', '/api/files', async (ctx) => {
   if (!u && !rp) throw httpError(401, 'Sign in or join a room to upload');
   const mime = String(ctx.req.headers['content-type'] || 'application/octet-stream').split(';')[0].trim().toLowerCase();
   const ownerKey = !u && rp ? `p:${rp.participant.id}` : null;
-  const max = uploads.precheck({ mime, declaredSize: Number(ctx.req.headers['content-length']) || 0, rateKey: u ? `u:${u.id}` : `ip:${clientIp(ctx.req)}` });
+  const purpose = uploads.normalizePurpose(ctx.url.searchParams.get('purpose'));
+  const contentBatch = !!(rp && purpose === 'content' && can(rp.meeting, rp.participant, 'screenShare'));
+  const max = uploads.precheck({ contentBatch, mime, declaredSize: Number(ctx.req.headers['content-length']) || 0, rateKey: u ? `u:${u.id}` : `ip:${clientIp(ctx.req)}` });
   let buf;
   try { buf = await readRaw(ctx.req, max); } catch (e) { if (e.status === 413) throw httpError(413, `That file is too big (max ${uploads.fmtMB(max)})`); throw e; }
   if (!buf.length) throw httpError(400, 'The file is empty');
   const roomCode = rp ? rp.code : null;
   await uploads.quota(data, { size: buf.length, userId: u && u.id, ownerKey, roomCode });
   const filename = decodeURIComponent(String(ctx.req.headers['x-file-name'] || 'upload'));
-  const rec = await storage().save(buf, { filename, mime, ownerUserId: u && u.id, ownerKey, roomCode, purpose: uploads.normalizePurpose(ctx.url.searchParams.get('purpose')) });
+  const rec = await storage().save(buf, { filename, mime, ownerUserId: u && u.id, ownerKey, roomCode, purpose });
   return { id: rec.id, url: rec.url, filename: rec.filename, mime: rec.mime, size: rec.size };
 });
 

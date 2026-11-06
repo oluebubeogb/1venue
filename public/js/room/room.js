@@ -193,7 +193,7 @@ Object.assign(Room.prototype, {
     this.inRoom = true;
     this.roomName = r.name || fmtCode(this.code);
     this.data = { chat: [], dms: [], groups: new Map(), polls: [], questions: [], comments: [], captions: [], activity: [] };
-    this.unread = { chat: 0, dm: 0, engage: 0, comments: 0 }; this.slideshowOn = false; this.slideshowTimer = null;
+    this.unread = { chat: 0, dm: 0, engage: 0, comments: 0 };
     Object.assign(this, { dmNames: {}, dmRead: {}, drafts: {}, replyOpen: new Set(), speaking: new Set(), quality: {}, viewFrames: {}, boards: [], groupOpen: null, dmWith: null });
     this.security = r.security || {}; this.maxParticipants = this.security.maxParticipants || this.config.maxParticipants;
     this.waiting = r.waiting || []; this.hands = r.raisedHands || [];
@@ -613,16 +613,15 @@ Object.assign(Room.prototype, {
     if (!this.onFsChange) { this.onFsChange = () => document.documentElement.classList.toggle('room-fs', !!document.fullscreenElement && this.alive); document.addEventListener('fullscreenchange', this.onFsChange); }
   },
   /** Ask before ending a screenshare (S / toolbar) so a stray key doesn't cut the presentation. */
+  canControlContent() { const c = this.content; return !!c && (c.ownerId === this.me.id || c.remoteHolderId === this.me.id); },
+  setContentPage(page) {
+    const c = this.content;
+    if (!this.canControlContent() || c.type !== 'slides') return;
+    page = Math.max(1, Math.min(c.pages.length, Math.round(Number(page)) || 1));
+    this.send('content-update', { page });
+  },
   toggleSlideshow(on) {
-    clearInterval(this.slideshowTimer);
-    this.slideshowTimer = null;
-    if (!on || !this.content || this.content.type !== 'slides') return;
-    this.slideshowTimer = setInterval(() => {
-      if (!this.content || this.content.type !== 'slides') return this.toggleSlideshow(false);
-      const n = this.content.pages.length;
-      const next = ((this.content.page || 1) % n) + 1;
-      this.send('content-update', { page: next });
-    }, 4000);
+    if (this.canControlContent() && this.content.type === 'slides') this.send('content-update', { slideshow: !!on });
   },
   confirmStopContent() {
     if (this.stopContentEl) return;
