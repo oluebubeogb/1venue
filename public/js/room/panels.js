@@ -47,7 +47,7 @@ export function createPanel(R) {
   function close() { tab = null; el.classList.remove('open'); R.root.classList.remove('panel-open'); R.refreshBar(); }
   function toggle(id, s) { if (tab === id && !s) close(); else open(id, s); }
   function badges() {
-    const n = { chat: R.unread.chat + R.unread.dm, people: (R.isMod() ? R.waiting.length + (R.stage.requests || []).length : 0) + R.hands.length, engage: R.unread.engage };
+    const n = { chat: R.unread.chat + R.unread.dm, people: (R.isMod() ? R.waiting.length + (R.stage.requests || []).length : 0) + R.hands.length, engage: R.unread.engage + (R.unread.comments || 0) };
     for (const [k, b] of Object.entries(tabBtns)) { const e = b.querySelector('.badge'); const v = n[k] || 0; e.hidden = !v || tab === k; e.textContent = v > 99 ? '99+' : v; }
     R.refreshBar();
   }
@@ -265,7 +265,7 @@ export function createPanel(R) {
     R.unread.engage = 0;
     const openPolls = R.data.polls.filter((p) => p.status !== 'closed').length;
     const openQs = R.data.questions.filter((q) => q.status === 'open' || q.status === 'live').length;
-    const wrap = h('div', { class: 'engage-view' }, seg([['polls', 'Polls', openPolls], ['qa', 'Q&A', openQs], ['comments', 'Comments', R.data.comments.length]], mode, (v) => { sub.engage = v; render(); }));
+    const wrap = h('div', { class: 'engage-view' }, seg([['polls', 'Polls', openPolls], ['qa', 'Q&A', openQs], ['comments', 'Comments', R.unread.comments || 0]], mode, (v) => { sub.engage = v; render(); }));
     if (mode === 'polls') wrap.append(pollsView());
     else if (mode === 'qa') wrap.append(qaView());
     else { R.unread.comments = 0; wrap.append(commentsView()); }

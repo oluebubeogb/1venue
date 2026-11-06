@@ -5,6 +5,12 @@ import { state, navigate, requireLogin } from './app.js';
 import { pillComposer } from './composer.js';
 import { passageCard } from './passage.js';
 
+function linkify(s) {
+  return String(s || '')
+    .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
+    .replace(/(https?:\/\/[^\s<]+|\/a\/[a-f0-9]{32,})/g, (m) => `<a href="${m}" data-link>${m}</a>`);
+}
+
 export const CAT = {
   talk_show: ['Talk show', 'tv', '#db2777'], presentation: ['Presentation', 'presentation', '#2563eb'], seminar: ['Seminar', 'graduation', '#7c3aed'],
   sermon: ['Sermon', 'church', '#b7791f'], webinar: ['Webinar', 'globe', '#0891b2'], workshop: ['Workshop', 'wrench', '#ea580c'],
@@ -73,7 +79,7 @@ export function postCard(p, { onDelete } = {}) {
       h('div', { class: 'head' }, h('a', { class: 'name', href: `/u/${p.author.id}`, 'data-link': '' }, p.author.name),
         kind ? h('span', { class: 'muted small', html: icon(kind[1], { size: 14, cls: 'inline' }) + ' ' + kind[0] }) : null,
         h('span', { class: 'faint small' }, '· ' + timeAgo(p.createdAt))),
-      p.body && p.kind === 'post' ? h('div', { class: 'text' }, p.body) : p.body && p.kind === 'summary' ? h('div', { class: 'text prose small' }, p.body.slice(0, 600)) : null,
+      p.body && p.kind === 'post' ? h('div', { class: 'text', html: linkify(p.body) }) : p.body && p.kind === 'summary' ? h('div', { class: 'text prose small' }, p.body.slice(0, 600)) : null,
       (p.media || []).filter((m) => m.type === 'passage').slice(0, 1).map((m) => passageCard(m)),
       (p.media || []).filter((m) => m.type !== 'passage' && /^image\//.test(m.mime || 'image/')).slice(0, 4).map((m) => h('img', { src: m.url, alt: '', loading: 'lazy', style: { borderRadius: '14px', marginTop: '.6rem', maxHeight: '420px', objectFit: 'cover', width: '100%' } })),
       p.event ? h('div', { style: { marginTop: '.7rem', maxWidth: '420px' } }, eventCard(p.event, { compact: true })) : null,

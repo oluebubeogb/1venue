@@ -45,7 +45,7 @@ export async function mount(view, params) {
           const r = await api('/api/attendance/generate', { method: 'POST', body: { historyId: s.id, public: true } });
           navigate(r.url);
         } catch (e) { alert(e.message || 'Could not generate'); }
-      } }, icon('users', { size: 15 }) + ' Attendance list'),
+      } , html: icon('users', { size: 15 }) + ' Attendance list' }),
       h('button', { class: 'btn sm', html: icon('copy', { size: 15 }) + 'Copy transcript', onclick: () => copy(lines.map((l) => `${l.name}: ${l.text}`).join('\n'), 'Transcript copied') })),
     h('div', { class: 'split' }, h('section', { class: 'card pad layer' }, h('div', { class: 'row between', style: { marginBottom: '.6rem' } }, h('strong', { html: icon('captions', { size: 18 }) + ' Transcript' }), filter), tx),
       h('aside', { class: 'col sticky', style: { gap: '1rem' } }, sumBox('summary', 'Summary', 'sparkles'), sumBox('action_items', 'Action items', 'listChecks'))));

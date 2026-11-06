@@ -491,3 +491,15 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 .screen-switch-link { background: none; border: 0; color: #fff; font: inherit; font-weight: 800; cursor: pointer; padding: 0 .15rem; text-decoration: underline; text-underline-offset: 2px; }
 .screen-switch-link:hover { color: #a5f3fc; }
 .screen-switch-sep { opacity: .55; font-weight: 500; }
+
+/* hover-only stage tools */
+.present .hover-tools { opacity: 0; pointer-events: none; transition: opacity .18s; }
+.present:hover .hover-tools { opacity: 1; pointer-events: auto; }
+.screen-switch { position: absolute; left: 8px; bottom: 46px; z-index: 4; display: flex; align-items: center; gap: .35rem; padding: .25rem .55rem .25rem .35rem; border-radius: 10px; background: rgba(8,12,22,.55); color: #fff; font-size: .78rem; font-weight: 500; backdrop-filter: blur(8px); }
+.screen-switch-link { background: none; border: 0; color: #fff; font: inherit; font-weight: 650; cursor: pointer; padding: 0 .15rem; text-decoration: underline; text-underline-offset: 2px; }
+.screen-switch-link:hover { color: #a5f3fc; }
+.screen-switch-sep { opacity: .55; font-weight: 500; }
+
+/* soft circle share button */
+.icon-btn.sm { width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--s3) 70%, transparent); display: inline-grid; place-items: center; }
+.icon-btn.sm:hover { background: color-mix(in srgb, var(--accent) 18%, var(--s3)); }

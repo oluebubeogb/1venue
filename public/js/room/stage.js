@@ -155,7 +155,7 @@ export function createStage(R) {
     if (key.startsWith('screen:')) {
       const t = tiles.get(key.slice(7) + ':screen');
       if (t) { present.append(t.el); t.el.classList.add('big'); }
-      present.append(h('div', { class: 'present-tools' }, R.isMod() || R.media.sharing ? h('button', { class: 'btn sm glass', 'data-group': 'content', 'data-tip': 'Save this slide to the timeline', onclick: () => R.snapshotToTimeline(), html: icon('camera', { size: 14 }) + '<span>Snapshot</span>' }) : null,
+      present.append(h('div', { class: 'present-tools hover-tools' }, R.isMod() || R.media.sharing ? h('button', { class: 'btn sm glass', 'data-group': 'content', 'data-tip': 'Save this slide to the timeline', onclick: () => R.snapshotToTimeline(), html: icon('camera', { size: 14 }) + '<span>Snapshot</span>' }) : null,
         h('button', { class: 'btn sm glass', 'data-group': 'media', 'data-tip': 'Fullscreen', onclick: () => R.fullscreen(), html: icon('maximize', { size: 14 }) })));
       const currentId = key.slice(7);
       const others = screens().filter(s => s.id !== currentId);
@@ -164,7 +164,7 @@ export function createStage(R) {
           const p = R.p(s.id) || { name: 'Someone' };
           return h('button', { type: 'button', class: 'screen-switch-link', onclick: (e) => { e.preventDefault(); e.stopPropagation(); setPick(s.id); } }, p.name);
         });
-        const switcher = h('div', { class: 'screen-switch' }, 'Switch to: ', ...links.reduce((acc, l, i) => i ? acc.concat(h('span', { class: 'screen-switch-sep' }, ' | '), l) : [l], []));
+        const switcher = h('div', { class: 'screen-switch hover-tools' }, 'Switch to: ', ...links.reduce((acc, l, i) => i ? acc.concat(h('span', { class: 'screen-switch-sep' }, ' | '), l) : [l], []));
         present.append(switcher);
       }
       return;
