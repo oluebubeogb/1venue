@@ -126,6 +126,14 @@ const SYNTH = {
 
 /** Play a sound locally. Returns false when muted/unknown. */
 export function playSound(id, { force = false } = {}) {
+  if (id === 'applause' || id === 'laugh') {
+    try {
+      const a = new Audio(`/sounds/${id}.mp3`);
+      a.volume = 0.7;
+      a.play().catch(() => {});
+      return true;
+    } catch {}
+  }
   if ((!force && soundsMuted()) || !SYNTH[id]) return false;
   try { const c = ctx(); SYNTH[id](c.currentTime + 0.03); return true; } catch { return false; }
 }

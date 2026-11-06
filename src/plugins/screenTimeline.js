@@ -14,7 +14,7 @@ module.exports = {
     function canEdit(meeting, participantId) {
       const p = meeting.participants.get(participantId);
       if (!p) return false;
-      if (p.isHost || p.role === 'host' || p.role === 'cohost') return true;
+      if (p.isHost || p.role === 'host' || p.role === 'cohost' || p.sharing) return true;
       // Per-user override from host/cohost people menu
       if (p.permissionOverrides && p.permissionOverrides.screenTimeline) return true;
       try {
@@ -48,6 +48,7 @@ module.exports = {
         dataUrl: String(msg.item.dataUrl).slice(0, 2_500_000),
         ownerId: participantId,
         ownerName: String(msg.item.ownerName || meeting.participants.get(participantId)?.name || 'Host').slice(0, 64),
+        title: String(msg.item.title || 'Snapshot').slice(0, 120),
       };
       st.items.push(item);
       // Keep current selection; only default to 0 on the first image

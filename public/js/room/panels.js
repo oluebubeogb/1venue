@@ -268,7 +268,7 @@ export function createPanel(R) {
     const wrap = h('div', { class: 'engage-view' }, seg([['polls', 'Polls', openPolls], ['qa', 'Q&A', openQs], ['comments', 'Comments', R.data.comments.length]], mode, (v) => { sub.engage = v; render(); }));
     if (mode === 'polls') wrap.append(pollsView());
     else if (mode === 'qa') wrap.append(qaView());
-    else wrap.append(commentsView());
+    else { R.unread.comments = 0; wrap.append(commentsView()); }
     return wrap;
   }
   function pollsView() {
@@ -287,7 +287,7 @@ export function createPanel(R) {
         h('span', { class: 'grow' }, o), show ? h('b', null, pct + '%') : null);
         return b;
       }));
-      box.append(h('div', { class: 'poll card', 'data-group': 'engage' }, h('div', { class: 'row' }, I('poll'), h('b', { class: 'grow' }, p.question), closed ? h('span', { class: 'pill static' }, 'Closed') : h('span', { class: 'pill live' }, 'Live')),
+      box.append(h('div', { class: 'poll card', 'data-group': 'engage' }, h('div', { class: 'poll-head' }, h('b', { class: 'grow poll-title' }, p.question), h('span', { class: 'status-tag' }, closed ? 'CLOSED' : 'LIVE')),
         h('div', { class: 'tiny muted' }, `${p.voters} vote${p.voters === 1 ? '' : 's'}${p.multi ? ' · pick any' : ''}${p.anonymous ? ' · anonymous' : ''}`), opts,
         p.multi && !voted && !closed ? btn('check', 'Submit vote', () => picks.size && R.send('poll-vote', { pollId: p.id, choices: [...picks] }), { cls: 'sm', group: 'engage' }) : null,
         R.isMod() && !closed ? btn('lock', 'Close poll', () => R.send('poll-close', { pollId: p.id }), { cls: 'sm ghost' }) : null));
@@ -322,11 +322,27 @@ export function createPanel(R) {
     const qs = [...R.data.questions].filter((q) => q.status !== 'dismissed' || R.isMod()).sort((a, b) => (order[a.status] - order[b.status]) || (b.upvotes - a.upvotes));
     if (!qs.length) box.append(h('div', { class: 'empty sm' }, I('question', 28), h('p', null, 'No questions yet — be the first.')));
     qs.forEach((q) => box.append(h('div', { class: `qa card s-${q.status}`, 'data-group': 'engage' },
-      h('button', { class: `upvote${q.voted ? ' on' : ''}`, type: 'button', 'data-tip': 'Upvote', onclick: () => R.send('qa-upvote', { id: q.id }), html: icon('arrowUp', { size: 16 }) + `<b>${q.upvotes}</b>` }),
-      h('div', { class: 'grow' }, h('div', { class: 'row gap-xs tiny muted' }, h('b', null, q.authorName), '·', timeAgo(q.createdAt), q.status === 'live' ? h('span', { class: 'pill live' }, 'Answering now') : q.status === 'answered' ? h('span', { class: 'pill static' }, 'Answered') : null),
-        h('p', null, q.body), q.aiAnswer ? h('div', { class: 'ai-box sm' }, h('div', { class: 'tiny row gap-xs', html: icon('sparkles', { size: 14 }) + 'AI answer' }), h('div', { class: 'prose', html: md(q.aiAnswer) })) : null,
-        R.isMod() ? h('div', { class: 'row gap-xs wrap' }, q.status !== 'live' ? btn('radio', 'Live', () => R.send('qa-status', { id: q.id, status: 'live' }), { cls: 'xs', group: 'engage' }) : null, q.status !== 'answered' ? btn('check', 'Answered', () => R.send('qa-status', { id: q.id, status: 'answered' }), { cls: 'xs', group: 'people' }) : null,
-          btn('sparkles', 'AI answer', () => { R.send('qa-ai-answer', { id: q.id }); toast('Asking AI…', { icon: 'sparkles', group: 'ai' }); }, { cls: 'xs', group: 'ai' }), q.status !== 'dismissed' ? btn('x', 'Dismiss', () => R.send('qa-status', { id: q.id, status: 'dismissed' }), { cls: 'xs ghost' }) : null) : null))));
+      h('div', { class: 'qa-votes' }, 
+        h('button', { class: 'vote-btn', type: 'button', 'data-tip': 'Upvote', onclick: () => R.send('qa-upvote', { id: q.id, dir: 'up' }), html: icon('arrowUp', { size: 14 }) + `<b>${q.upvotes || 0}</b>` }),
+        h('button', { class: 'vote-btn', type: 'button', 'data-tip': 'Downvote', onclick: () => R.send('qa-upvote', { id: q.id, dir: 'down' }), html: icon('arrowDown', { size: 14 }) + `<b>${q.downvotes || 0}</b>` })
+      ),
+      h('div', { class: 'grow' }, 
+        h('div', { class: 'qa-head' }, h('b', { class: 'qa-title' }, q.body), h('span', { class: 'status-tag' + (q.status === 'live' ? ' live' : '') }, (q.status || 'open').toUpperCase())),
+        h('div', { class: 'row gap-xs tiny muted' }, h('b', null, q.authorName), '·', timeAgo(q.createdAt)),
+        q.hostAnswer ? h('div', { class: 'host-answer' }, h('div', { class: 'tiny' }, 'Host answer'), h('p', null, q.hostAnswer)) : null,
+        q.aiAnswer ? h('div', { class: 'ai-box sm' }, h('div', { class: 'tiny row gap-xs', html: icon('sparkles', { size: 14 }) + 'AI answer' }), h('div', { class: 'prose', html: md(q.aiAnswer) })) : null,
+        R.isMod() ? h('div', { class: 'qa-actions' }, 
+          h('span', { class: 'icon-sep', html: icon('radio', { size: 14 }), 'data-tip': 'Set live', onclick: () => R.send('qa-status', { id: q.id, status: 'live' }) }),
+          h('span', { class: 'sep' }, '|'),
+          h('span', { class: 'icon-sep', html: icon('check', { size: 14 }), 'data-tip': 'Mark answered', onclick: () => R.send('qa-status', { id: q.id, status: 'answered' }) }),
+          h('span', { class: 'sep' }, '|'),
+          h('span', { class: 'icon-sep', html: icon('sparkles', { size: 14 }), 'data-tip': 'AI answer', onclick: () => { R.send('qa-ai-answer', { id: q.id }); toast('Asking AI…', { icon: 'sparkles' }); } }),
+          h('span', { class: 'sep' }, '|'),
+          h('span', { class: 'icon-sep', html: icon('x', { size: 14 }), 'data-tip': 'Dismiss', onclick: () => R.send('qa-status', { id: q.id, status: 'dismissed' }) }),
+          h('span', { class: 'sep' }, '|'),
+          h('span', { class: 'icon-sep', html: icon('edit', { size: 14 }), 'data-tip': 'Answer with text', onclick: () => { const ans = prompt('Host answer:'); if (ans) R.send('qa-host-answer', { id: q.id, answer: ans }); } })
+        ) : null
+      ))));
     return box;
   }
   function commentsView() {

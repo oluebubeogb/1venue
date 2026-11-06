@@ -1,6 +1,6 @@
 import { icon } from '../icons.js';
 import { h, api, esc, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debounce } from '../ui.js';
-import { state, requireLogin } from '../app.js';
+import { state, requireLogin, navigate } from '../app.js';
 import { empty } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 
@@ -40,6 +40,12 @@ export async function mount(view, params) {
   view.append(h('div', { class: 'page-head' }, h('div', { class: 'tiny muted', html: icon('history', { size: 14 }) + ` Session · ${String(s.code).toLowerCase()}` }), h('h1', null, s.name || 'Session'),
     h('p', { class: 'muted small' }, `${fmtDate(s.startedAt)}${s.endedAt ? ' · ' + fmtDur((new Date(s.endedAt) - start) / 1000) : ' · in progress'} · ${lines.length} transcript lines`)),
     h('div', { class: 'row wrap', style: { gap: '.5rem', marginBottom: '1rem' } }, dl(`/api/sessions/${s.id}/transcript.txt`, 'Transcript .txt', 'download'), Object.keys(sums).length ? dl(`/api/sessions/${s.id}/summary.md`, 'Summary .md', 'fileText') : null,
+      h('button', { class: 'btn sm', onclick: async () => {
+        try {
+          const r = await api('/api/attendance/generate', { method: 'POST', body: { historyId: s.id, public: true } });
+          navigate(r.url);
+        } catch (e) { alert(e.message || 'Could not generate'); }
+      } }, icon('users', { size: 15 }) + ' Attendance list'),
       h('button', { class: 'btn sm', html: icon('copy', { size: 15 }) + 'Copy transcript', onclick: () => copy(lines.map((l) => `${l.name}: ${l.text}`).join('\n'), 'Transcript copied') })),
     h('div', { class: 'split' }, h('section', { class: 'card pad layer' }, h('div', { class: 'row between', style: { marginBottom: '.6rem' } }, h('strong', { html: icon('captions', { size: 18 }) + ' Transcript' }), filter), tx),
       h('aside', { class: 'col sticky', style: { gap: '1rem' } }, sumBox('summary', 'Summary', 'sparkles'), sumBox('action_items', 'Action items', 'listChecks'))));

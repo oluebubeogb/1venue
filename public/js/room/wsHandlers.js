@@ -57,7 +57,7 @@ export function handle(R, m) {
     case 'qa-update': { const i = R.data.questions.findIndex((q) => q.id === m.question.id); if (i >= 0) R.data.questions[i] = { ...m.question, voted: R.data.questions[i].voted }; else R.data.questions.push(m.question); break; }
     case 'qa-voted': { const q = R.data.questions.find((x) => x.id === m.id); if (q) q.voted = m.voted; break; }
     case 'comments': R.data.comments = m.comments || []; break;
-    case 'comment-new': if (!R.data.comments.some((c) => c.id === m.comment.id)) R.data.comments.push(m.comment); break;
+    case 'comment-new': if (!R.data.comments.some((c) => c.id === m.comment.id)) { R.data.comments.push(m.comment); R.unread.comments++; } break;
     case 'comment-liked': { const c = R.data.comments.find((x) => x.id === m.id); if (c) c.liked = m.liked; break; }
     case 'comment-likes': { const c = R.data.comments.find((x) => x.id === m.id); if (c) c.likeCount = m.likeCount; break; }
     case 'comment-hidden': R.data.comments = R.data.comments.filter((c) => c.id !== m.id); break;
@@ -109,6 +109,7 @@ export function handle(R, m) {
     case 'activity': R.data.activity.push(m.entry); if (R.data.activity.length > 300) R.data.activity.shift(); if (!(R.panel.tab === 'tools' && R.panel.sub.tools === 'activity')) return; break;
     case 'toast': toast(m.message, { icon: 'info' }); return;
     case 'error': toast(m.error || 'Something went wrong', { icon: 'alert' }); return;
+    case 'permission-request': if (R.isMod()) { toast(`${m.fromName} wants to ${m.detail}`, { icon: 'alert', action: { label: 'Grant', run: () => R.send('grant-permission', { targetId: m.fromId, action: m.action }) } }); } return;
     case 'admitted': case 'declined': return; // handled during waiting
     default: return;
   }

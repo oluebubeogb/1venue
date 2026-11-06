@@ -484,7 +484,7 @@ button.list-item:hover { background: var(--s2); }
 .glass { background: var(--glass); backdrop-filter: blur(14px); }
 
 /* hero sits on a saturated gradient: keep accents legible */
-.hero .eyebrow { color: rgba(255,255,255,.9); display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .7rem; border-radius: 999px; background: rgba(255,255,255,.14); }
+.hero .eyebrow { color: rgba(255,255,255,.9); display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .7rem; border-radius: 999px; background: rgba(255,255,255,.14); text-transform: none; letter-spacing: 0.02em; }
 .hero .grad-text { background: linear-gradient(100deg, #ffffff, #c7f9ff 45%, #ffe39a); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 /* ---------------------------------------------------------------- WhatsApp-style pill composer */
@@ -632,3 +632,20 @@ select.tr-select { appearance: none; -webkit-appearance: none; height: 30px; min
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7385' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .55rem center; transition: border-color .15s, box-shadow .15s; }
 select.tr-select:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 select.tr-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* Attendance list page */
+.att-page { max-width: 860px; margin: 0 auto; }
+.att-hero { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--s1)), color-mix(in srgb, var(--accent-2, var(--accent)) 12%, var(--s1))); border-radius: var(--r-xl); padding: clamp(1.6rem, 4vw, 2.8rem); margin-bottom: 1.2rem; text-align: center; }
+.att-brand { display: flex; align-items: center; justify-content: center; gap: .5rem; font-weight: 750; letter-spacing: .04em; margin-bottom: .6rem; color: var(--accent); }
+.att-hero h1 { margin: .2rem 0 .4rem; font-size: clamp(1.6rem, 4vw, 2.2rem); }
+.host-card { display: inline-flex; align-items: center; gap: .8rem; margin-top: 1rem; padding: .6rem 1rem; background: color-mix(in srgb, var(--s1) 80%, transparent); border-radius: 999px; }
+.att-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.att-table th, .att-table td { padding: .65rem .5rem; text-align: left; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.att-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+@media print {
+  .no-print, .topbar, .bottomnav, .btn { display: none !important; }
+  .att-page { max-width: none; }
+  .att-hero { background: #f8fafc !important; color: #111; -webkit-print-color-adjust: exact; }
+  .card { box-shadow: none; border: 1px solid #ddd; }
+  body { background: #fff; }
+}

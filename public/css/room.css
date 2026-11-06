@@ -465,3 +465,18 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 /* v6: small tiles — same white name on dark bar whether cam on, off, or screen only */
 .filmstrip .tile .tile-meta, .filmstrip .tile.has-video .tile-meta { left: 6px; right: auto; bottom: 6px; max-width: calc(100% - 12px); padding: .18rem .45rem; border-radius: 8px; background: rgba(8,12,22,.6); backdrop-filter: blur(6px); color: #fff; text-shadow: none; }
 .filmstrip .tile .tile-name { color: #fff; }
+
+/* Polls & Q&A status tags */
+.poll-head, .qa-head { display: flex; align-items: flex-start; gap: 0.75rem; }
+.poll-title, .qa-title { min-width: 0; word-wrap: break-word; overflow-wrap: anywhere; }
+.status-tag { font-size: 0.65rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); flex-shrink: 0; margin-left: auto; padding-top: 0.15rem; }
+.status-tag.live { color: var(--g-engage); }
+
+.qa-votes { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 36px; }
+.vote-btn { border: 0; background: none; display: flex; flex-direction: column; align-items: center; color: var(--muted); font-size: .7rem; padding: 2px; cursor: pointer; }
+.vote-btn:hover { color: var(--g-engage); }
+.qa-actions { display: flex; align-items: center; gap: 4px; margin-top: .4rem; font-size: .8rem; }
+.icon-sep { cursor: pointer; color: var(--muted); padding: 2px; }
+.icon-sep:hover { color: var(--text); }
+.sep { color: var(--line-2); }
+.host-answer { background: color-mix(in srgb, var(--g-engage) 8%, transparent); padding: .5rem; border-radius: 8px; margin: .4rem 0; }

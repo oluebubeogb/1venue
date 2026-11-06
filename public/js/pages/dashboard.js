@@ -38,5 +38,26 @@ export async function mount(view) {
             : h('p', { class: 'tiny faint', style: { marginTop: '.5rem' } }, 'Transcripts and AI summaries of your sessions appear here.')),
         h('div', { class: 'card pad layer' }, h('strong', { html: icon('userPlus', { size: 18 }) + ' People to follow' }), d.people.length ? d.people.map((u) => personRow(u)) : h('p', { class: 'tiny faint' }, 'No suggestions yet.')),
         h('div', { class: 'card pad layer group-tint', 'data-group': 'content' }, h('strong', { html: icon('board', { size: 18 }) + ' Personal whiteboard' }), h('p', { class: 'small muted', style: { margin: '.3rem 0 .7rem' } }, 'Sketch privately; share view-only inside any room.'), h('a', { class: 'btn sm', href: '/whiteboard', 'data-link': '' }, 'Open board')))));
+
+  // Attendance lists
+  try {
+    const att = await api('/api/attendance/list');
+    if (att.lists && att.lists.length) {
+      const attCard = h('div', { class: 'card pad layer', style: { marginTop: '1rem' } },
+        h('div', { class: 'row between' }, h('strong', { html: icon('users', { size: 18 }) + ' Attendance lists' }), h('span', { class: 'tiny faint' }, 'Public by default')),
+        h('div', { class: 'stack', style: { marginTop: '.6rem', gap: '.4rem' } },
+          ...att.lists.map(l => h('div', { class: 'row between' },
+            h('div', { class: 'grow' }, h('div', { style: { fontWeight: 600 } }, l.name || l.code), h('div', { class: 'tiny muted' }, l.isPublic ? 'Public' : 'Private · host only')),
+            h('div', { class: 'row gap-xs' },
+              h('a', { class: 'btn sm', href: l.url, 'data-link': '' }, 'View'),
+              l.isPublic ? h('button', { class: 'btn sm ghost', onclick: async () => { try { await api('/api/attendance/share-timeline', { method: 'POST', body: { token: l.token } }); alert('Shared to timeline'); } catch(e){ alert(e.message); } } }, 'Share') : null
+            )
+          ))
+        )
+      );
+      view.append(attCard);
+    }
+  } catch (_) {}
+
   if (location.hash === '#hosting') setTimeout(() => document.getElementById('hosting')?.scrollIntoView({ behavior: 'smooth' }), 100);
 }

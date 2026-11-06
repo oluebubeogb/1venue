@@ -157,6 +157,16 @@ export function createStage(R) {
       if (t) { present.append(t.el); t.el.classList.add('big'); }
       present.append(h('div', { class: 'present-tools' }, R.isMod() || R.media.sharing ? h('button', { class: 'btn sm glass', 'data-group': 'content', 'data-tip': 'Save this slide to the timeline', onclick: () => R.snapshotToTimeline(), html: icon('camera', { size: 14 }) + '<span>Snapshot</span>' }) : null,
         h('button', { class: 'btn sm glass', 'data-group': 'media', 'data-tip': 'Fullscreen', onclick: () => R.fullscreen(), html: icon('maximize', { size: 14 }) })));
+      const currentId = key.slice(7);
+      const others = screens().filter(s => s.id !== currentId);
+      if (others.length) {
+        const links = others.map(s => {
+          const p = R.p(s.id) || { name: 'Someone' };
+          return h('a', { href: '#', onclick: (e) => { e.preventDefault(); setPick(s.id); }, style: { margin: '0 0.3rem' } }, p.name);
+        });
+        const switcher = h('div', { class: 'screen-switch tiny', style: { textAlign: 'center', padding: '0.4rem', color: 'var(--muted)' } }, 'Switch to: ', ...links.reduce((acc, l, i) => i ? acc.concat(h('span', null, ' | '), l) : [l], []));
+        present.append(switcher);
+      }
       return;
     }
     if (key.startsWith('content:')) return buildContent();
@@ -332,7 +342,7 @@ export function createStage(R) {
     const maxTiles = key || main ? 12 : (R.isMobile ? 8 : 25);
     film.slice(0, maxTiles).forEach((t) => strip.append(t.el));
     if (film.length > maxTiles) strip.append(h('button', { class: 'tile more', onclick: () => R.panel.open('people') }, h('b', null, `+${film.length - maxTiles}`), h('small', null, 'more')));
-    if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); }
+    if (strip !== tilesEl) { if ((layout === 'speaker' if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); }if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); } main if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); }if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); } !key) || (layout === 'screenshare' if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); }if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); } key if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); }if (strip !== tilesEl) { if (layout === 'speaker' && main && !key) strip.classList.add('hidden-strip'); tilesEl.append(strip); } key.startsWith('screen:'))) strip.classList.add('hidden-strip'); tilesEl.append(strip); }
     const n = Math.min(film.length, maxTiles) + (film.length > maxTiles ? 1 : 0);
     tilesEl.style.setProperty('--n', n);
     tilesEl.dataset.count = n > 9 ? 'many' : n;

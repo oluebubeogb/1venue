@@ -98,6 +98,7 @@ const ROUTES = [
   [/^\/e\/([\w-]+)\/?$/, () => import('./pages/event.js'), 'slug'],
   [/^\/create\/?$/, () => import('./pages/create.js')],
   [/^\/dashboard\/?$/, () => import('./pages/dashboard.js')],
+  [/^\/a\/([a-f0-9]{32,})\/?$/, () => import('./pages/attendance.js'), 'token'],
   [/^\/feed\/?$/, () => import('./pages/feed.js')],
   [/^\/u\/([\w-]+)\/?$/, () => import('./pages/profile.js'), 'id'],
   [/^\/me\/?$/, () => import('./pages/profile.js'), { me: true }],

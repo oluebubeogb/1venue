@@ -178,6 +178,11 @@ function attachWebSocket(server) {
         const p = meeting.participants.get(participantId);
         if (p) {
           p.sharing = false;
+          if (p.permissionOverrides && p.permissionOverrides.screenShare) {
+            delete p.permissionOverrides.screenShare;
+            // notify client to update perms
+            try { ctx.sendToParticipant && ctx.sendToParticipant(participantId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, p) }); } catch(_) {}
+          }
           broadcast(meetingCode, {
             type: 'share-stopped',
             participantId,

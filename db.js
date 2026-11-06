@@ -238,6 +238,50 @@ async function getMeetingParticipantsLog(meetingHistoryId) {
   return r.rows;
 }
 
+
+async function createAttendanceShare(meetingHistoryId, createdBy, isPublic = true) {
+  await ensureReady();
+  const crypto = require('crypto');
+  const token = crypto.randomBytes(24).toString('hex'); // 48 chars
+  const r = await q(
+    `INSERT INTO attendance_shares (meeting_history_id, token, is_public, created_by)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [meetingHistoryId, token, !!isPublic, createdBy || null]
+  );
+  return r.rows[0];
+}
+
+async function getAttendanceShareByToken(token) {
+  await ensureReady();
+  const r = await q(`SELECT * FROM attendance_shares WHERE token = $1`, [token]);
+  return r.rows[0] || null;
+}
+
+async function getAttendanceShareForHistory(meetingHistoryId) {
+  await ensureReady();
+  const r = await q(`SELECT * FROM attendance_shares WHERE meeting_history_id = $1 ORDER BY id DESC LIMIT 1`, [meetingHistoryId]);
+  return r.rows[0] || null;
+}
+
+async function setAttendancePublic(token, isPublic) {
+  await ensureReady();
+  await q(`UPDATE attendance_shares SET is_public = $1 WHERE token = $2`, [!!isPublic, token]);
+  return getAttendanceShareByToken(token);
+}
+
+async function listAttendanceSharesForUser(userId, limit = 50) {
+  await ensureReady();
+  const r = await q(
+    `SELECT s.*, h.name, h.code, h.created_at AS meeting_created, h.ended_at, h.host_display_name
+     FROM attendance_shares s
+     JOIN meeting_history h ON h.id = s.meeting_history_id
+     WHERE h.host_user_id = $1
+     ORDER BY s.created_at DESC LIMIT $2`,
+    [userId, limit]
+  );
+  return r.rows;
+}
+
 async function getMeetingHistoryById(id) {
   await ensureReady();
   const r = await q(`SELECT * FROM meeting_history WHERE id = $1`, [id]);
@@ -748,6 +792,11 @@ module.exports = {
   endMeetingHistory,
   getHistoryForUser,
   getMeetingParticipantsLog,
+  createAttendanceShare,
+  getAttendanceShareByToken,
+  getAttendanceShareForHistory,
+  setAttendancePublic,
+  listAttendanceSharesForUser,
   getMeetingHistoryById,
   // scheduled
   createScheduledMeeting,

@@ -289,6 +289,27 @@ module.exports = {
       if (!actor || !can(meeting, actor, 'manageSecurity')) return;
       if (!meeting.settings) return;
       const s = meeting.settings;
+    ctx.onWs('request-permission', ({ msg, participantId, meeting, meetingCode }) => {
+      const p = meeting.participants.get(participantId);
+      if (!p) return;
+      const action = msg.action || 'unknown';
+      const detail = msg.detail || action;
+      const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
+      hosts.forEach(h => {
+        ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: participantId, fromName: p.name, action, detail, at: Date.now() });
+      });
+    });
+    ctx.onWs('grant-permission', ({ msg, participantId, meeting }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || (actor.role !== 'host' && actor.role !== 'cohost' && !actor.isHost)) return;
+      const target = meeting.participants.get(msg.targetId);
+      if (!target) return;
+      if (!target.permissionOverrides) target.permissionOverrides = {};
+      target.permissionOverrides[msg.action] = true;
+      // temporary, will reset on stop for screen
+      ctx.sendToParticipant(msg.targetId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, target) });
+      ctx.sendToParticipant(participantId, { type: 'toast', text: `Granted ${msg.action} to ${target.name}` });
+    });
       const patch = msg.settings || {};
       const keys = [
         'waitingRoom', 'guestAccess', 'locked',
@@ -350,7 +371,49 @@ module.exports = {
       const targetId = msg.targetId;
       const target = meeting.participants.get(targetId);
       if (!target || target.role === 'host') return;
+    ctx.onWs('request-permission', ({ msg, participantId, meeting, meetingCode }) => {
+      const p = meeting.participants.get(participantId);
+      if (!p) return;
+      const action = msg.action || 'unknown';
+      const detail = msg.detail || action;
+      const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
+      hosts.forEach(h => {
+        ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: participantId, fromName: p.name, action, detail, at: Date.now() });
+      });
+    });
+    ctx.onWs('grant-permission', ({ msg, participantId, meeting }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || (actor.role !== 'host' && actor.role !== 'cohost' && !actor.isHost)) return;
+      const target = meeting.participants.get(msg.targetId);
+      if (!target) return;
+      if (!target.permissionOverrides) target.permissionOverrides = {};
+      target.permissionOverrides[msg.action] = true;
+      // temporary, will reset on stop for screen
+      ctx.sendToParticipant(msg.targetId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, target) });
+      ctx.sendToParticipant(participantId, { type: 'toast', text: `Granted ${msg.action} to ${target.name}` });
+    });
       const patch = msg.permissions || {};
+    ctx.onWs('request-permission', ({ msg, participantId, meeting, meetingCode }) => {
+      const p = meeting.participants.get(participantId);
+      if (!p) return;
+      const action = msg.action || 'unknown';
+      const detail = msg.detail || action;
+      const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
+      hosts.forEach(h => {
+        ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: participantId, fromName: p.name, action, detail, at: Date.now() });
+      });
+    });
+    ctx.onWs('grant-permission', ({ msg, participantId, meeting }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || (actor.role !== 'host' && actor.role !== 'cohost' && !actor.isHost)) return;
+      const target = meeting.participants.get(msg.targetId);
+      if (!target) return;
+      if (!target.permissionOverrides) target.permissionOverrides = {};
+      target.permissionOverrides[msg.action] = true;
+      // temporary, will reset on stop for screen
+      ctx.sendToParticipant(msg.targetId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, target) });
+      ctx.sendToParticipant(participantId, { type: 'toast', text: `Granted ${msg.action} to ${target.name}` });
+    });
       target.permissionOverrides = target.permissionOverrides || {};
       ['microphone', 'camera', 'screenShare', 'chat', 'reactions', 'raiseHand'].forEach((k) => {
         if (typeof patch[k] === 'boolean') target.permissionOverrides[k] = patch[k];
@@ -416,6 +479,27 @@ module.exports = {
       const actor = meeting.participants.get(participantId);
       if (!actor || actor.role !== 'host') return;
       const max = Math.min(100, Math.max(2, parseInt(msg.max || 20, 10)));
+    ctx.onWs('request-permission', ({ msg, participantId, meeting, meetingCode }) => {
+      const p = meeting.participants.get(participantId);
+      if (!p) return;
+      const action = msg.action || 'unknown';
+      const detail = msg.detail || action;
+      const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
+      hosts.forEach(h => {
+        ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: participantId, fromName: p.name, action, detail, at: Date.now() });
+      });
+    });
+    ctx.onWs('grant-permission', ({ msg, participantId, meeting }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || (actor.role !== 'host' && actor.role !== 'cohost' && !actor.isHost)) return;
+      const target = meeting.participants.get(msg.targetId);
+      if (!target) return;
+      if (!target.permissionOverrides) target.permissionOverrides = {};
+      target.permissionOverrides[msg.action] = true;
+      // temporary, will reset on stop for screen
+      ctx.sendToParticipant(msg.targetId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, target) });
+      ctx.sendToParticipant(participantId, { type: 'toast', text: `Granted ${msg.action} to ${target.name}` });
+    });
       if (!meeting.settings) meeting.settings = {};
       meeting.settings.maxParticipants = max;
       meeting.maxParticipants = max;
@@ -483,4 +567,25 @@ module.exports = {
     });
 
   },
+    ctx.onWs('request-permission', ({ msg, participantId, meeting, meetingCode }) => {
+      const p = meeting.participants.get(participantId);
+      if (!p) return;
+      const action = msg.action || 'unknown';
+      const detail = msg.detail || action;
+      const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
+      hosts.forEach(h => {
+        ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: participantId, fromName: p.name, action, detail, at: Date.now() });
+      });
+    });
+    ctx.onWs('grant-permission', ({ msg, participantId, meeting }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || (actor.role !== 'host' && actor.role !== 'cohost' && !actor.isHost)) return;
+      const target = meeting.participants.get(msg.targetId);
+      if (!target) return;
+      if (!target.permissionOverrides) target.permissionOverrides = {};
+      target.permissionOverrides[msg.action] = true;
+      // temporary, will reset on stop for screen
+      ctx.sendToParticipant(msg.targetId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, target) });
+      ctx.sendToParticipant(participantId, { type: 'toast', text: `Granted ${msg.action} to ${target.name}` });
+    });
 };

@@ -175,6 +175,11 @@ const qaPlugin = {
       const question = await data.setQuestionStatus(msg.id, msg.status);
       if (question) broadcast(meetingCode, { type: 'qa-update', question });
     });
+    ctx.onWs('qa-host-answer', async ({ msg, participantId: pid, meeting, meetingCode }) => {
+      if (!mod(meeting, pid)) return;
+      const question = await data.setQuestionStatus(msg.id, null, null, msg.answer);
+      if (question) broadcast(meetingCode, { type: 'qa-update', question });
+    });
     ctx.onWs('qa-ai-answer', async ({ msg, participantId: pid, meeting, meetingCode }) => {
       if (!mod(meeting, pid)) return;
       const qs = await data.listQuestions(meetingCode, meeting.historyId);
@@ -254,7 +259,12 @@ const scripturePlugin = {
       const p = active(meeting, pid);
       if (!p) return;
       const st = stage.ensure(meeting);
-      if (!(mod(meeting, pid) || st.speakers.has(pid))) return err(ctx, pid, 'Only hosts and speakers can put scripture on screen');
+      if (!(mod(meeting, pid) || st.speakers.has(pid))) {
+        ctx.sendToParticipant if (!(mod(meeting, pid) || st.speakers.has(pid))) return err(ctx, pid, 'Only hosts and speakers can put scripture on screen');if (!(mod(meeting, pid) || st.speakers.has(pid))) return err(ctx, pid, 'Only hosts and speakers can put scripture on screen'); ctx.sendToParticipant(pid, { type: 'error', error: 'Request sent to host' });
+        const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
+        hosts.forEach(h => ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: pid, fromName: p.name, action: 'scripture', detail: `share ${msg.reference}`, at: Date.now() }));
+        return;
+      }
       const bible = require('../venue/bible');
       const ref = bible.parseReference(msg.reference);
       if (!ref) return err(ctx, pid, 'Could not read that reference');

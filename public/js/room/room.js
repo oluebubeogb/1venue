@@ -193,7 +193,7 @@ Object.assign(Room.prototype, {
     this.inRoom = true;
     this.roomName = r.name || fmtCode(this.code);
     this.data = { chat: [], dms: [], groups: new Map(), polls: [], questions: [], comments: [], captions: [], activity: [] };
-    this.unread = { chat: 0, dm: 0, engage: 0 };
+    this.unread = { chat: 0, dm: 0, engage: 0, comments: 0 };
     Object.assign(this, { dmNames: {}, dmRead: {}, drafts: {}, replyOpen: new Set(), speaking: new Set(), quality: {}, viewFrames: {}, boards: [], groupOpen: null, dmWith: null });
     this.security = r.security || {}; this.maxParticipants = this.security.maxParticipants || this.config.maxParticipants;
     this.waiting = r.waiting || []; this.hands = r.raisedHands || [];
@@ -299,8 +299,8 @@ Object.assign(Room.prototype, {
     this.rafC = requestAnimationFrame(() => { if (!this.alive) return; this.stageR.render(); this.stageR.paintAll(); this.panel.refresh(); this.paintHead(); refreshBar(); });
   },
   renderStage(force) { this.stageR.render(force); },
-  cycleLayout(dir = 1) { const L = ['grid', 'spotlight', 'speaker']; this.setLayout(L[(L.indexOf(this.layout) + dir + 3) % 3]); },
-  setLayout(l) { this.layout = l; lsSet('venue.layout', l); this.renderStage(true); this.paintHead(); refreshBar(); toast({ grid: 'Grid view', spotlight: 'Spotlight view', speaker: 'Speaker view' }[l], { icon: l === 'grid' ? 'grid' : l === 'spotlight' ? 'spotlight' : 'speaker', group: 'media', ms: 1200 }); },
+  cycleLayout(dir = 1) { const L = ['grid', 'spotlight', 'speaker', 'screenshare']; this.setLayout(L[(L.indexOf(this.layout) + dir + 4) % 4]); },
+  setLayout(l) { this.layout = l; lsSet('venue.layout', l); this.renderStage(true); this.paintHead(); refreshBar(); toast({ grid: 'Grid view', spotlight: 'Spotlight view', speaker: 'Speaker view', screenshare: 'Screenshare view' }[l], { icon: l === 'grid' ? 'grid' : l === 'spotlight' ? 'spotlight' : 'speaker', group: 'media', ms: 1200 }); },
   pin(id) { this.pinned = id; if (id && this.layout === 'grid') this.layout = 'spotlight'; if (id && this.stageR.screens().length) return this.stageR.setPick('cameras'); this.renderStage(true); },
   applyWant() { const w = this.want || {}; if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
@@ -360,10 +360,11 @@ Object.assign(Room.prototype, {
   async toggleShare(force) {
     if (typeof force !== 'boolean' && this.media.sharing) return this.confirmStopShare();
     const on = typeof force === 'boolean' ? force : !this.media.sharing;
-    if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; }
+    if (on if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; }if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; } !this.perm('screenShare') if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; }if (on && !this.perm('screenShare') && !this.isMod()) { toast('Screen sharing is off for participants', { icon: 'screenOff' }); return; } !this.isMod()) { this.send('request-permission', { action: 'screenShare', detail: 'share screen' }); toast('Request sent to host', { icon: 'screen' }); return; }
     if (on && !navigator.mediaDevices?.getDisplayMedia) { toast('Screen sharing isn’t supported on this device', { icon: 'alert' }); return; }
     try {
       await this.media.setShare(on, lsGet('venue.shareQuality', 'auto'));
+      if (on) this.setLayout('screenshare');
       this.send(on ? 'start-share' : 'stop-share', {});
     } catch (e) { if (e && e.name !== 'NotAllowedError') toastErr(e); }
     this.changed();
@@ -429,7 +430,7 @@ Object.assign(Room.prototype, {
       h('span', { class: 'pill rh-cap', 'data-group': 'content', hidden: true, html: icon('captions', { size: 13 }) + 'CC' }),
       h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) }),
       h('div', { class: 'grow' }),
-      h('div', { class: 'seg rh-lay hide-sm' }, lay('grid', 'grid', 'Grid'), lay('spotlight', 'spotlight', 'Spotlight'), lay('speaker', 'speaker', 'Speaker')),
+      h('div', { class: 'seg rh-lay hide-sm' }, lay('grid', 'grid', 'Grid'), lay('spotlight', 'spotlight', 'Spotlight'), lay('speaker', 'speaker', 'Speaker'), lay('screenshare', 'screen', 'Screenshare')),
       h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
       h('button', { class: 'pill rh-people', 'data-group': 'people', 'data-tip': 'People', type: 'button', onclick: () => this.panel.toggle('people'), html: icon('users', { size: 14 }) + '<span class="rh-count"></span>' }),
       ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'hide-xs' }),
