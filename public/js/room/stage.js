@@ -186,7 +186,7 @@ export function createStage(R) {
     const sub = h('span', { class: 'tiny muted ellipsis' }, who + (c.type === 'youtube' ? (holder ? ' · you have the remote' : ' · synced') : ''));
     const head = h('div', { class: 'present-head' }, I(c.type === 'youtube' ? 'youtube' : 'presentation'), h('div', { class: 'grow col-tight' }, h('b', { class: 'ellipsis' }, c.title || 'Shared content'), sub),
       c.type === 'youtube' ? h('a', { class: 'icon-btn sm', href: c.url, target: '_blank', rel: 'noopener', 'data-tip': 'Open on YouTube', 'aria-label': 'Open on YouTube', html: icon('link', { size: 14 }) }) : null,
-      canStop ? closeBtn('Stop', () => R.send('content-stop', {})) : null);
+      canStop ? closeBtn('Stop', () => R.confirmStopContent()) : null);
     const body = h('div', { class: 'present-body' });
     present.append(head, body);
     R.applyMediaSync = null; R.applyPage = null;

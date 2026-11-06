@@ -422,7 +422,7 @@ Object.assign(Room.prototype, {
       this.root.dataset.layout = this.layout;
       return;
     }
-    const lay = (l, ic, tip) => h('button', { class: 'seg-b', 'data-lay': l, 'data-group': 'media', 'data-tip': tip, type: 'button', onclick: () => this.setLayout(l), html: icon(ic, { size: 16 }) });
+    const lay = (l, ic, tip) => h('button', { class: 'seg-b', 'data-lay': l, 'data-group': 'media', 'data-tip': tip, type: 'button', onclick: () => this.setLayout(l), html: icon(ic, { size: 20 }) });
     this.headEl.replaceChildren(
       h('a', { class: 'rh-logo', href: '/', 'aria-label': '1venue home', onclick: (e) => { e.preventDefault(); this.leave(); }, html: LOGO(26) }),
       h('div', { class: 'rh-title' }, h('b', { class: 'ellipsis' }, this.roomName), h('div', { class: 'tiny muted row gap-xs' }, h('span', { class: 'rh-timer' }, tstr), '·', h('button', { class: 'linkish', type: 'button', 'data-tip': 'Copy room code', 'data-group': 'people', onclick: () => copy(location.origin + '/' + fmtCode(this.code)).then(() => toast('Link copied', { icon: 'link' })) }, fmtCode(this.code)))),
@@ -434,9 +434,10 @@ Object.assign(Room.prototype, {
       h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
       h('button', { class: 'pill rh-people', 'data-group': 'people', 'data-tip': 'People', type: 'button', onclick: () => this.panel.toggle('people'), html: icon('users', { size: 14 }) + '<span class="rh-count"></span>' }),
       ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'hide-xs' }),
+      this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity() }, icon('bell', { size: 16 }), h('em', { class: 'badge rh-bell-badge', hidden: true })),
       ibtn('pip', 'Picture-in-picture', () => this.pip(), { group: 'media', cls: 'hide-xs' }),
       ibtn('phoneOff', 'Leave', () => this.leaveMenu(), { group: 'danger', cls: 'danger' }));
-    this.paintHead();
+    this.paintHead(); this.updateBell && this.updateBell();
   },
   netBanner(on, text = 'Reconnecting…', sticky = false) {
     if (!this.netEl) return;
@@ -612,6 +613,32 @@ Object.assign(Room.prototype, {
     if (!this.onFsChange) { this.onFsChange = () => document.documentElement.classList.toggle('room-fs', !!document.fullscreenElement && this.alive); document.addEventListener('fullscreenchange', this.onFsChange); }
   },
   /** Ask before ending a screenshare (S / toolbar) so a stray key doesn't cut the presentation. */
+  confirmStopContent() {
+    if (this.stopContentEl) return;
+    const close = (stop) => { document.removeEventListener('keydown', key, true); this.stopContentEl && this.stopContentEl.remove(); this.stopContentEl = null; if (stop) this.send('content-stop', {}); };
+    const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); } else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(true); } };
+    const ok = h('button', { class: 'btn danger', type: 'button', onclick: () => close(true), html: icon('stop', { size: 16 }) + '<span>Stop presenting</span>' });
+    this.stopContentEl = h('div', { class: 'share-confirm', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Stop presenting?', onclick: (e) => { if (e.target === this.stopContentEl) close(false); } },
+      h('div', { class: 'share-confirm-card' }, h('span', { class: 'sc-ic', html: icon('presentation', { size: 22 }) }), h('b', null, 'Stop presenting?'), h('p', { class: 'muted small' }, 'Everyone will stop seeing this content.'),
+        h('div', { class: 'row gap-s' }, h('button', { class: 'btn ghost', type: 'button', onclick: () => close(false) }, 'Keep presenting'), ok)));
+    document.body.append(this.stopContentEl); document.addEventListener('keydown', key, true); setTimeout(() => ok.focus(), 30);
+  },
+  openActivity() {
+    const items = [];
+    if (this.unread.chat) items.push({ label: this.unread.chat + ' new chat', icon: 'chat', run: () => this.panel.open('chat') });
+    if (this.unread.dm) items.push({ label: this.unread.dm + ' new direct', icon: 'chat', run: () => this.panel.open('chat') });
+    if (this.unread.engage) items.push({ label: this.unread.engage + ' new poll/Q&A', icon: 'poll', run: () => this.panel.open('engage') });
+    if (this.unread.comments) items.push({ label: this.unread.comments + ' new comments', icon: 'heart', run: () => this.panel.open('engage') });
+    if (this.waiting && this.waiting.length && this.isMod()) items.push({ label: this.waiting.length + ' waiting', icon: 'users', run: () => this.panel.open('people') });
+    if (!items.length) items.push({ label: 'No new activity', icon: 'check', run: () => {} });
+    import('../ui.js').then(({ menu }) => menu(this.bellBtn, items));
+  },
+  updateBell() {
+    if (!this.bellBtn) return;
+    const n = (this.unread.chat || 0) + (this.unread.dm || 0) + (this.unread.engage || 0) + (this.unread.comments || 0) + (this.isMod() ? (this.waiting || []).length : 0);
+    const b = this.bellBtn.querySelector('.rh-bell-badge');
+    if (b) { b.hidden = !n; b.textContent = n > 99 ? '99+' : n; }
+  },
   confirmStopShare() {
     if (this.stopShareEl) return;
     const close = (stop) => { document.removeEventListener('keydown', key, true); this.stopShareEl && this.stopShareEl.remove(); this.stopShareEl = null; if (stop) this.toggleShare(false); };

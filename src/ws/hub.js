@@ -253,7 +253,15 @@ function attachWebSocket(server) {
               waiting: getWaitingList(meeting),
               raisedHands: getRaisedHands(meeting),
             });
-            if (meeting.content && meeting.content.remoteHolderId === participantId) {
+            if (meeting.content && (meeting.content.remoteHolderId === participantId || meeting.content.ownerId === participantId)) {
+              // Auto-hand to a co-host or another active participant
+              const others = [...meeting.participants.values()].filter((p) => p.id !== participantId && p.status === 'ACTIVE');
+              const cohost = others.find((p) => p.role === 'cohost' || p.isHost);
+              const next = cohost || others[0];
+              if (next) {
+                meeting.content.remoteHolderId = next.id;
+                if (meeting.content.ownerId === participantId) meeting.content.ownerId = next.id;
+              }
               broadcast(meetingCode, {
                 type: 'content-state',
                 content: getContentState(meeting),

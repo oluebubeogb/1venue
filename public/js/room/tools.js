@@ -168,10 +168,23 @@ export function buildTools(R) {
     present() {
       const box = h('div', { class: 'stack' });
       const c = R.content;
-      if (c) box.append(h('div', { class: 'shade', 'data-group': 'content' }, h('div', { class: 'tiny muted' }, `Presenting now · ${c.type}`), h('b', null, c.title || c.url),
-        h('div', { class: 'row gap-s wrap', style: { marginTop: '.5rem' } }, (c.ownerId === R.me.id || R.isMod()) ? btn('stop', 'Stop presenting', () => R.send('content-stop', {}), { cls: 'sm danger' }) : null,
-          c.ownerId === R.me.id ? btn('users', 'Hand remote to…', (e) => import('../ui.js').then(({ menu }) => menu(e.currentTarget, R.people().filter((p) => p.id !== R.me.id).map((p) => ({ label: p.name, icon: 'user', run: () => R.send('remote-handoff', { targetId: p.id }) })))), { cls: 'sm' }) : null,
-          c.remoteHolderId === R.me.id || c.ownerId === R.me.id ? null : btn('hand', 'Request remote', () => R.send('remote-claim', {}), { cls: 'sm ghost' }))));
+      if (c) {
+        const canStop = c.ownerId === R.me.id || R.isMod();
+        const canHand = c.ownerId === R.me.id || c.remoteHolderId === R.me.id || R.isMod();
+        const stopBtn = canStop ? h('button', { class: 'icon-btn sm danger', 'data-tip': 'Stop presenting', type: 'button', onclick: () => R.confirmStopContent(), html: icon('stop', { size: 16 }) }) : null;
+        const handBtn = canHand ? h('button', { class: 'icon-btn sm', 'data-tip': 'Hand remote', type: 'button', onclick: (e) => {
+          const people = R.people().filter((p) => p.id !== R.me.id);
+          if (!people.length) return toast('No one else in the call', { icon: 'users' });
+          import('../ui.js').then(({ menu }) => menu(e.currentTarget, people.map((p) => ({ label: p.name, icon: 'user', run: () => R.send('remote-handoff', { targetId: p.id }) }))));
+        }, html: icon('users', { size: 16 }) }) : null;
+        box.append(h('div', { class: 'shade', 'data-group': 'content', style: { padding: '.8rem' } },
+          h('div', { class: 'tiny muted', style: { marginBottom: '.3rem' } }, `Presenting now · ${c.type}`),
+          h('div', { class: 'row between', style: { alignItems: 'center', gap: '.5rem' } },
+            h('b', { class: 'grow', style: { fontSize: '1.05rem' } }, c.title || c.url),
+            h('div', { class: 'row gap-xs' }, stopBtn, handBtn)
+          )
+        ));
+      }
       const canPresent = R.perm('screenShare') || R.isMod();
       if (!canPresent) { box.append(note('The host controls who can present.')); return box; }
       const yurl = h('input', { class: 'input', type: 'url', inputmode: 'url', 'data-focus': '', value: R.ytDraft || '', placeholder: 'Paste a YouTube link…', oninput: (e) => { R.ytDraft = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') goYT(); } });
@@ -181,9 +194,9 @@ export function buildTools(R) {
       const items = [
         btn('screen', R.media.sharing ? 'Stop sharing screen' : 'Share your screen', () => R.toggleShare(), { group: 'media', cls: 'primary block', disabled: !lkOk }),
         lkOk ? null : note('Screen sharing needs the audio/video server, which isn’t connected right now.'),
-        h('div', { class: 'sec-sub' }, 'Watch together'),
+        h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Watch together'),
         h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, yurl), btn('youtube', 'Play', goYT, { group: 'content' })),
-        h('div', { class: 'sec-sub' }, 'Slides & images'),
+        h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Slides & images'),
         h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
         busy,
       ].filter(Boolean);
