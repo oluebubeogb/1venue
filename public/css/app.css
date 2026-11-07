@@ -730,10 +730,28 @@ select.tr-select:focus { outline: none; border-color: var(--accent); box-shadow:
 /* speaker / material suggest */
 .suggest-box { position: relative; }
 .suggest-list {
-  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px);
+  position: absolute; z-index: 200; left: 0; right: 0; top: calc(100% + 4px);
   background: var(--s1); border: 1px solid var(--line); border-radius: var(--r-md);
-  box-shadow: 0 16px 40px -20px rgba(0,0,0,.35); max-height: 240px; overflow: auto;
+  box-shadow: 0 16px 40px -20px rgba(0,0,0,.35); max-height: 280px; overflow: auto;
 }
+.suggest-box { position: relative; z-index: 5; }
+.suggest-box:focus-within { z-index: 200; }
+.card.pad.layer { overflow: visible; }
+.split .card { overflow: visible; }
+.suggest-list .sug-thumb {
+  width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: var(--s2); flex-shrink: 0;
+}
+.mat-thumb {
+  width: 56px; height: 40px; border-radius: 8px; object-fit: cover; background: var(--s2); flex-shrink: 0;
+}
+.dash-list-head {
+  display: flex; align-items: center; gap: .5rem; margin-bottom: .55rem;
+}
+.dash-list-head .ic {
+  width: 18px; height: 18px; color: var(--accent);
+}
+.dash-list-head strong { font-weight: 700; }
+
 .suggest-list button {
   display: flex; align-items: center; gap: .65rem; width: 100%; padding: .55rem .75rem;
   border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit;
@@ -762,3 +780,27 @@ select.tr-select:focus { outline: none; border-color: var(--accent); box-shadow:
 }
 .hero-art .d2 { animation-delay: .6s; }
 .hero-art .d3 { animation-delay: 1.2s; }
+
+/* pull first content up under full-bleed hero */
+.hero + .home-band,
+.hero + .install,
+.hero + * {
+  margin-top: 0;
+}
+.home-band.band-a { padding-top: 1rem; }
+.page-main, main, #view, .view {
+  /* hero already provides top chrome spacing */
+}
+body:has(.hero) .view > .hero { margin-top: 0; }
+
+.card.has-suggest, .card.pad.layer.has-suggest { overflow: visible !important; }
+.suggest-box { isolation: isolate; }
+
+/* full-bleed hero cancels main top padding */
+.main:has(> .hero),
+.main:has(> section.hero) {
+  padding-top: 0;
+}
+.hero {
+  margin-top: 0 !important;
+}

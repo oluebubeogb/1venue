@@ -103,17 +103,28 @@ export async function mount(view, params) {
   let allMats = [];
   const paintMats = () => {
     const selected = allMats.filter((m) => materialIds.includes(m.id));
-    matChips.replaceChildren(...selected.map((m) => h('span', { class: 'chip-mat' },
-      m.title,
-      h('button', { class: 'rm', type: 'button', 'aria-label': 'Remove', onclick: () => { materialIds = materialIds.filter((id) => id !== m.id); paintMats(); } }, '−'))));
+    matChips.replaceChildren(...selected.map((m) => {
+      const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
+        : m.kind === 'image' && m.payload?.url ? m.payload.url
+        : (m.payload?.pages && m.payload.pages[0]) || null;
+      return h('span', { class: 'chip-mat' },
+        th ? h('img', { src: th, alt: '', style: { width: '22px', height: '22px', borderRadius: '5px', objectFit: 'cover' } }) : null,
+        m.title,
+        h('button', { class: 'rm', type: 'button', 'aria-label': 'Remove', onclick: () => { materialIds = materialIds.filter((id) => id !== m.id); paintMats(); } }, '−'));
+    }));
   };
   api('/api/materials').then((r) => { allMats = r.materials || []; paintMats(); }).catch(() => {});
   matInput.addEventListener('input', debounce(() => {
     const q = matInput.value.trim().toLowerCase();
     const list = allMats.filter((m) => !materialIds.includes(m.id) && (!q || m.title.toLowerCase().includes(q))).slice(0, 8);
-    matSug.replaceChildren(...list.map((m) => h('button', { type: 'button', onclick: () => {
-      materialIds.push(m.id); matInput.value = ''; matSug.hidden = true; paintMats();
-    } }, h('span', { class: 'ico-tile sm', html: icon(m.kind === 'youtube' ? 'youtube' : 'presentation', { size: 14 }) }), h('b', { class: 'grow' }, m.title))));
+    matSug.replaceChildren(...list.map((m) => {
+      const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
+        : m.kind === 'image' && m.payload?.url ? m.payload.url
+        : (m.payload?.pages && m.payload.pages[0]) || null;
+      return h('button', { type: 'button', onclick: () => {
+        materialIds.push(m.id); matInput.value = ''; matSug.hidden = true; paintMats();
+      } }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', html: icon(m.kind === 'youtube' ? 'youtube' : 'presentation', { size: 14 }) }), h('b', { class: 'grow' }, m.title));
+    }));
     matSug.hidden = !list.length;
   }, 180));
   matInput.addEventListener('blur', () => setTimeout(() => { matSug.hidden = true; }, 180));
@@ -185,15 +196,15 @@ export async function mount(view, params) {
       h('div', { class: 'row', style: { justifyContent: 'flex-end' } }, aiBtn),
       field('Category', 'tag', catSel),
       field('Tags', 'hash', tags)),
-    h('div', { class: 'card pad layer col', style: { gap: '1rem' } },
+    h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
       h('div', { class: 'grid2' }, field('Starts', 'calendar', starts), field('Ends', 'clock', ends)),
       field('Visibility', 'eye', visSeg),
-      field('Speaker seats', 'stage', h('div', { class: 'col', style: { gap: '.6rem' } },
+      field('Speaker seats', 'stage', h('div', { class: 'col has-suggest', style: { gap: '.6rem' } },
         h('div', { class: 'row between wrap' }, h('div', { class: 'tiny faint' }, 'Everyone else watches and can request to speak.'), stepper),
         h('div', { class: 'suggest-box' }, speakerInput, speakerSug),
         speakerChips,
       ))),
-    h('div', { class: 'card pad layer col', style: { gap: '1rem' } },
+    h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },
       field('Event colours', 'palette', swatches),
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn sm', 'data-group': 'content', html: icon('image', { size: 15 }) + (coverUrl ? 'Change cover' : 'Upload cover'), onclick: () => coverIn.click() }), coverIn),
       field('Materials', 'folder', h('div', { class: 'col', style: { gap: '.5rem' } },

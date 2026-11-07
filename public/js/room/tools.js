@@ -30,10 +30,13 @@ async function fillMaterialsInline(R, root) {
     host.replaceChildren();
     list.slice(0, 12).forEach((m) => {
       const sub = m.kind === 'youtube' ? 'YouTube' : m.kind === 'image' ? 'Image' : `${(m.payload?.pages || []).length || 0} pages`;
+      const th = m.kind === 'youtube' && m.payload?.videoId ? `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`
+        : m.kind === 'image' && m.payload?.url ? m.payload.url
+        : (m.payload?.pages && m.payload.pages[0]) || null;
       host.append(h('button', {
         class: 'list-item', type: 'button',
         onclick: () => presentMaterial(R, m),
-      }, h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : 'presentation', { size: 16 }) }),
+      }, th ? h('img', { class: 'sug-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : 'presentation', { size: 16 }) }),
         h('div', { class: 'grow' }, h('b', null, m.title), h('div', { class: 'tiny muted' }, sub)),
         h('span', { html: icon('play', { size: 14 }) })));
     });

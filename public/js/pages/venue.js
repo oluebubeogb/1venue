@@ -83,7 +83,7 @@ async function list(view) {
       try { await api('/api/venues', { method: 'POST', body: r }); paint(); } catch (e) { toastErr(e); }
     } });
     wrap.replaceChildren(
-      h('div', { class: 'row between wrap', style: { gap: '10px' } }, h('div', null, h('h1', null, 'Venues'), h('p', { class: 'muted small' }, 'Permanent links. Waiting room always on — you admit everyone.')), create),
+      h('div', { class: 'row between wrap', style: { gap: '10px' } }, h('h1', { html: icon('door', { size: 28 }) + 'Venues' }), create),
       venues.length ? h('div', { class: 'col', style: { gap: '8px' } }, ...venues.map((v) => h('div', { class: 'card pad row wrap venue-row', style: { gap: '10px' } },
         h('span', { class: 'ico-tile', 'data-group': 'media', html: icon('door', { size: 20 }) }),
         h('div', { class: 'grow' }, h('div', null, h('strong', null, v.name), v.live ? h('span', { class: 'chip tiny', style: { marginLeft: '6px' } }, '● Open') : null),

@@ -4,6 +4,14 @@ import { state, navigate, requireLogin } from '../app.js';
 import { ytId } from '../room/youtube.js';
 
 const kindLabel = (k) => ({ slides: 'Slides', image: 'Image', youtube: 'YouTube', pdf: 'PDF', pptx: 'PPTX' }[k] || k);
+function materialThumb(m) {
+  if (!m) return null;
+  if (m.kind === 'youtube' && m.payload?.videoId) return `https://i.ytimg.com/vi/${m.payload.videoId}/mqdefault.jpg`;
+  if (m.kind === 'image' && m.payload?.url) return m.payload.url;
+  const pages = m.payload?.pages;
+  if (Array.isArray(pages) && pages[0]) return pages[0];
+  return null;
+}
 
 export async function mount(view) {
   if (!requireLogin('Sign in to manage materials')) return;
@@ -31,9 +39,10 @@ export async function mount(view) {
           : m.kind === 'image'
             ? '1 image'
             : `${pages.length} page${pages.length === 1 ? '' : 's'}`;
+        const th = materialThumb(m);
         listEl.append(h('div', { class: 'card pad layer row between wrap', style: { gap: '.6rem', alignItems: 'center' } },
           h('div', { class: 'row gap-s grow', style: { minWidth: 0 } },
-            h('span', { class: 'ico-tile', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : 'presentation', { size: 18 }) }),
+            th ? h('img', { class: 'mat-thumb', src: th, alt: '' }) : h('span', { class: 'ico-tile', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : 'presentation', { size: 18 }) }),
             h('div', { class: 'grow', style: { minWidth: 0 } },
               h('b', { class: 'ellipsis' }, m.title),
               h('div', { class: 'tiny muted' }, `${kindLabel(m.kind)} · ${sub}`),
