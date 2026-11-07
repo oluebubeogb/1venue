@@ -99,7 +99,12 @@ function mock(useCase, messages, opts) {
     }
     case 'title': {
       const t = kw.slice(0, 3).map((w) => w[0].toUpperCase() + w.slice(1)).join(', ');
-      return JSON.stringify({ title: t ? `Conversations on ${t}` : 'Live session', description: lines.slice(0, 2).join(' ').slice(0, 280) || 'Join us live on 1venue.' });
+      const tags = kw.slice(0, 6).map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((w) => w.length >= 2);
+      return JSON.stringify({
+        title: t ? `Conversations on ${t}` : 'Live session',
+        description: lines.slice(0, 2).join(' ').slice(0, 280) || 'Join us live on 1venue.',
+        tags: tags.length ? tags : ['live', 'event'],
+      });
     }
     case 'moderate': {
       const bad = /\b(fuck|shit|bitch|bastard|idiot|stupid|kill yourself|nigga|scam link|free money)\b/i.test(input);
@@ -146,9 +151,9 @@ module.exports = {
     { role: 'user', content: `Translate to ${lang}:\n${String(text).slice(0, 2000)}` },
   ], { maxTokens: 400, temperature: 0.1 }),
   titleDescription: (notes, category) => chat('title', [
-    { role: 'system', content: 'Write a catchy event title (max 80 chars) and description (max 400 chars). Reply as JSON {"title":"","description":""}.' },
+    { role: 'system', content: 'Write a catchy event title (max 80 chars), description (max 400 chars), and 3–8 short discovery tags (lowercase, no #, max 32 chars each). Reply as JSON {"title":"","description":"","tags":["tag1","tag2"]}.' },
     { role: 'user', content: `Category: ${category || 'event'}\nNotes: ${String(notes).slice(0, 2000)}` },
-  ], { json: true, maxTokens: 300 }),
+  ], { json: true, maxTokens: 350 }),
   moderate: async (text) => {
     const r = await chat('moderate', [
       { role: 'system', content: 'You moderate a community comment section. Reply JSON {"allowed":true|false,"reason":"..."}; block hate, harassment, explicit sexual content, scams and spam.' },

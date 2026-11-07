@@ -39,7 +39,14 @@ export async function mount(view, params) {
   aiBtn.onclick = async () => {
     const notes = [title.value, desc.value].filter(Boolean).join('\n') || catOf(category)[0];
     aiBtn.disabled = true;
-    try { const r = await api('/api/ai/title', { method: 'POST', body: { notes, category } }); if (r.title) title.value = r.title; if (r.description) desc.value = r.description; preview(); toast(r.mock ? 'AI demo mode — add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' }); } catch (e) { toastErr(e); } finally { aiBtn.disabled = false; }
+    try {
+      const r = await api('/api/ai/title', { method: 'POST', body: { notes, category } });
+      if (r.title) title.value = r.title;
+      if (r.description) desc.value = r.description;
+      if (Array.isArray(r.tags) && r.tags.length) tags.value = r.tags.join(', ');
+      preview();
+      toast(r.mock ? 'AI demo mode — add RunPod keys for real suggestions' : 'Drafted with AI', { icon: 'sparkles', group: 'ai' });
+    } catch (e) { toastErr(e); } finally { aiBtn.disabled = false; }
   };
   const submit = h('button', { class: 'btn primary lg', type: 'submit', html: icon(editing ? 'check' : 'calendarPlus', { size: 18 }) + (editing ? 'Save changes' : 'Publish event') });
   const liveNow = editing ? null : h('button', { type: 'button', class: 'btn lg', 'data-group': 'engage', html: icon('radio', { size: 18 }) + 'Publish & go live' });
@@ -65,7 +72,7 @@ export async function mount(view, params) {
     h('div', { class: 'row wrap', style: { gap: '.6rem' } }, submit, liveNow));
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon(editing ? 'pen' : 'calendarPlus', { size: 28 }) + (editing ? 'Edit event' : 'Create an event') }), h('p', { class: 'muted' }, 'Talk show, seminar, sermon or class — it’ll show up in Discover with a themed QR invite.')),
     h('div', { class: 'split' }, form, h('aside', { class: 'sticky col' }, h('div', { class: 'tiny muted', html: icon('eye', { size: 14 }) + ' Preview' }), prev,
-      h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '' }, 'Start an instant meeting')))));
+      h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: '#2563eb', fontWeight: '700' } }, 'Start an instant meeting')))));
 }
 
 function instant(view) {

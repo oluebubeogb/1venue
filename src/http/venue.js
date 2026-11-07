@@ -442,7 +442,10 @@ route('POST', '/api/ai/title', async (ctx) => {
   const r = await ai().titleDescription(String(b.notes || ''), b.category);
   let out = {};
   try { out = JSON.parse(String(r.text).replace(/^```(json)?|```$/g, '').trim()); } catch (_) { out = { title: String(r.text).split('\n')[0].slice(0, 80), description: String(r.text).slice(0, 400) }; }
-  return { title: out.title || '', description: out.description || '', provider: r.provider, mock: !!r.mock };
+  const tags = Array.isArray(out.tags)
+    ? out.tags.map((t) => String(t).trim().toLowerCase().replace(/^#/, '').slice(0, 32)).filter(Boolean).slice(0, 12)
+    : [];
+  return { title: out.title || '', description: out.description || '', tags, provider: r.provider, mock: !!r.mock };
 });
 route('POST', '/api/ai/scripture', async (ctx) => {
   await aiGuard(ctx);

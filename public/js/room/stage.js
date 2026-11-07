@@ -26,6 +26,7 @@ export function createStage(R) {
   function setPick(v) { pick = v; if (v && v !== 'cameras') autoScreen = v; render(true); }
   const tiles = new Map(); // id -> {el, video, screenEl}
   let presentKey = null, presentCleanup = null;
+  let lastSig = '';
 
   // gestures: swipe to cycle layouts, double-tap to pin
   let sx = null, sy = null;
@@ -336,6 +337,37 @@ export function createStage(R) {
   // ---------- layout ----------
   function render(force) {
     const pk = presentation(); const key = pk && pk[0];
+    const people = visiblePeople();
+    const ids = people.map((p) => p.id);
+    if (!ids.includes(R.me.id) && (!R.stage.enabled || R.isSpeaker(R.me.id))) ids.unshift(R.me.id);
+
+    // Stage mode: grid + spotlight use the same main+filmstrip layout as speaker view.
+    let layout = R.layout;
+    if (R.stage.enabled && (layout === 'grid' || layout === 'spotlight')) layout = 'speaker';
+
+    let main = null;
+    if (!key && (layout === 'spotlight' || layout === 'speaker')) {
+      const focusId = R.pinned || [...R.speaking].find((x) => x !== R.me.id && ids.includes(x)) || R.lastSpeaker || ids.find((x) => x !== R.me.id) || R.me.id;
+      if (focusId && ids.includes(focusId)) { R.lastSpeaker = focusId; main = tileFor(focusId); }
+    }
+
+    const list = ids.map((id) => tileFor(id));
+    const film = main ? list.filter((t) => t !== main) : list;
+    const maxTiles = key || main ? 12 : (R.isMobile ? 8 : 25);
+    const filmIds = film.slice(0, maxTiles).map((t) => t.id).join(',');
+    const audCount = (R.stage.enabled && layout !== 'screenshare')
+      ? R.people().filter((p) => !R.isSpeaker(p.id)).length
+      : 0;
+    const sig = [key || '', layout, main ? main.id : '', filmIds, audCount, R.stage.enabled ? 1 : 0].join('|');
+
+    // Skip structural DOM work when only overlays/chat/reactions/etc. changed — avoids video blink.
+    if (!force && sig === lastSig && key === presentKey) {
+      for (const t of tiles.values()) paintTile(t);
+      renderSide();
+      return;
+    }
+    lastSig = sig;
+
     if (key !== presentKey || force) {
       // put a screen tile back if it was in the presentation area
       present.querySelectorAll('.tile').forEach((t) => t.classList.remove('big'));
@@ -345,39 +377,38 @@ export function createStage(R) {
     present.hidden = !key;
     el.classList.toggle('presenting', !!key);
     el.classList.toggle('content-only', R.layout === 'screenshare' && !!key);
-    const people = visiblePeople();
-    const ids = people.map((p) => p.id);
-    if (!ids.includes(R.me.id) && (!R.stage.enabled || R.isSpeaker(R.me.id))) ids.unshift(R.me.id);
-    const list = ids.map((id) => tileFor(id));
-    const presentScreenId = key && key.startsWith('screen:') ? key.slice(7) : null;
-    void presentScreenId;
-    let layout = R.layout;
-    let main = null;
-    if (!key) {
-      if (layout === 'spotlight' || layout === 'speaker') {
-        const focusId = R.pinned || [...R.speaking].find((x) => x !== R.me.id && ids.includes(x)) || R.lastSpeaker || ids.find((x) => x !== R.me.id) || R.me.id;
-        if (focusId && ids.includes(focusId)) { R.lastSpeaker = focusId; main = tileFor(focusId); }
-      }
-    }
     el.dataset.layout = key ? 'present' : layout;
-    const arr = list; // screens never take a filmstrip tile — they live in the spotlight + switcher chips
-    const film = main ? arr.filter((t) => t !== main) : arr;
+
+    // Rebuild structure by moving existing tile nodes (never recreate video elements).
     tilesEl.replaceChildren();
-    if (main) { tilesEl.append(h('div', { class: 'tile-main' }, main.el)); }
+    if (main) {
+      const mainWrap = h('div', { class: 'tile-main' });
+      mainWrap.append(main.el);
+      tilesEl.append(mainWrap);
+    }
     const strip = (key || main) ? h('div', { class: 'filmstrip' }) : tilesEl;
-    const maxTiles = key || main ? 12 : (R.isMobile ? 8 : 25);
     film.slice(0, maxTiles).forEach((t) => strip.append(t.el));
     if (film.length > maxTiles) strip.append(h('button', { class: 'tile more', onclick: () => R.panel.open('people') }, h('b', null, `+${film.length - maxTiles}`), h('small', null, 'more')));
-    if (strip !== tilesEl) { if ((layout === 'speaker' && main && !key) || (layout === 'screenshare' && key)) strip.classList.add('hidden-strip'); tilesEl.append(strip); }
+    if (strip !== tilesEl) {
+      // Match speaker-view filmstrip visibility: hide strip in speaker (and stage-forced speaker) and screenshare.
+      if ((layout === 'speaker' && main && !key) || (layout === 'screenshare' && key)) strip.classList.add('hidden-strip');
+      tilesEl.append(strip);
+    }
     const n = Math.min(film.length, maxTiles) + (film.length > maxTiles ? 1 : 0);
     tilesEl.style.setProperty('--n', n);
     tilesEl.dataset.count = n > 9 ? 'many' : n;
-    if (R.stage.enabled && !ids.length && !(R.layout === 'screenshare' && key)) tilesEl.append(h('div', { class: 'empty sm stage-empty' }, I('stage', 28), h('p', null, 'The stage is open — speakers will appear here.')));
+    if (R.stage.enabled && !ids.length && !(R.layout === 'screenshare' && key)) {
+      tilesEl.append(h('div', { class: 'empty sm stage-empty' }, I('stage', 28), h('p', null, 'The stage is open — speakers will appear here.')));
+    }
     for (const t of tiles.values()) paintTile(t);
     // audience strip for stage events
-    if (R.stage.enabled && R.layout !== 'screenshare') {
+    if (R.stage.enabled && layout !== 'screenshare') {
       const aud = R.people().filter((p) => !R.isSpeaker(p.id));
-      if (aud.length) tilesEl.append(h('div', { class: 'audience', onclick: () => R.panel.open('people') }, ...aud.slice(0, 7).map((p) => avatar(p.name, p.avatarUrl, 'xs')), h('span', { class: 'tiny' }, `${aud.length} in the audience`)));
+      if (aud.length) {
+        tilesEl.append(h('div', { class: 'audience', onclick: () => R.panel.open('people') },
+          ...aud.slice(0, 7).map((p) => avatar(p.name, p.avatarUrl, 'xs')),
+          h('span', { class: 'tiny' }, `${aud.length} in the audience`)));
+      }
     }
     // drop tiles of people that left
     for (const [k, t] of tiles) if (t.kind === 'camera' && t.id !== R.me.id && !R.p(t.id)) { t.el.remove(); tiles.delete(k); }
