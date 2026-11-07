@@ -10,13 +10,13 @@ export async function mount(view, params) {
   const results = h('div');
   const statusSeg = h('div', { class: 'seg', role: 'tablist' }, [['', 'All', 'sparkle'], ['live', 'Live', 'radio'], ['upcoming', 'Upcoming', 'calendar'], ['past', 'Replays', 'history']].map(([v, l, ic]) =>
     h('button', { class: status === v ? 'on' : '', 'data-v': v, html: icon(ic, { size: 15 }) + l, onclick: () => { status = v; sync(); } })));
-  const cats = h('div', { class: 'chips hscroll' }, h('button', { class: `chip${!category ? ' on' : ''}`, 'data-c': '', onclick: () => { category = ''; sync(); } }, 'All'),
+  const cats = h('div', { class: 'chips free-grid' }, h('button', { class: `chip${!category ? ' on' : ''}`, 'data-c': '', onclick: () => { category = ''; sync(); } }, 'All'),
     CATS.map(([k, l, ic]) => h('button', { class: `chip${category === k ? ' on' : ''}`, 'data-c': k, style: { '--g': catOf(k)[2] }, html: icon(ic, { size: 15 }) + esc(l), onclick: () => { category = category === k ? '' : k; sync(); } })));
   const tabs = h('div', { class: 'tabs' }, [['events', 'Events', 'calendar'], ['people', 'People', 'users'], ['scripture', 'Scripture', 'bookOpen']].map(([v, l, ic]) =>
     h('button', { class: tab === v ? 'on' : '', html: icon(ic, { size: 16 }) + l, onclick: () => { tab = v; sync(); } })));
   view.append(
     h('div', { class: 'page-head' }, h('h1', { html: icon(isSearch ? 'search' : 'compass', { size: 28 }) + (isSearch ? 'Search' : 'Discover') }),
-      h('p', { class: 'muted' }, isSearch ? 'Everything on 1venue in one place.' : 'Live and upcoming public events from hosts across the community.')),
+      isSearch ? h('p', { class: 'muted' }, 'Everything on 1venue in one place.') : null),
     h('div', { class: 'search-line' }, frag(icon('search', { size: 20 })), input),
     isSearch ? tabs : h('div', { class: 'col', style: { gap: '.8rem', margin: '1rem 0' } }, statusSeg, cats),
     results);

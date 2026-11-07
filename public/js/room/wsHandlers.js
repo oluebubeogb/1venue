@@ -38,6 +38,12 @@ export function handle(R, m) {
     case 'group-members': { const g = R.data.groups.get(m.groupId); if (g) g.members = m.members; break; }
     case 'group-removed': R.data.groups.delete(m.groupId); if (R.groupOpen === m.groupId) R.groupOpen = null; break;
     case 'group-chat-history': { const g = R.data.groups.get(m.groupId); if (g) g.messages = m.messages || []; break; }
+    case 'force-layout':
+      if (m.layout && R.security?.forceLayout && !R.isMod()) {
+        R.setLayout(m.layout, { fromHost: true });
+        if (m.pick != null && R.stageR?.setPick) R.stageR.setPick(m.pick);
+      }
+      break;
     case 'reaction': R.stageR.burst(m.emoji, m.participantId === R.me.id ? '' : m.name); return;
     case 'sound': { const sd = soundById(m.id); if (!sd) return; playSound(m.id); R.stageR.burst(sd.emoji, m.participantId === R.me.id ? '' : `${m.name} · ${sd.label}`); return; }
     case 'sound-denied': toast(m.error || 'Sound not sent', { icon: 'volumeX', group: 'engage', ms: 2500 }); return;

@@ -203,6 +203,7 @@ function getSecurityState(meeting) {
     reactions: s.reactions !== false,
     raiseHand: s.raiseHand !== false,
     sounds: s.sounds !== false,
+    forceLayout: !!s.forceLayout,
     participantsCanInvite: !!s.participantsCanInvite,
     guestsCanInvite: !!s.guestsCanInvite,
   };

@@ -300,7 +300,15 @@ Object.assign(Room.prototype, {
   },
   renderStage(force) { this.stageR.render(force); },
   cycleLayout(dir = 1) { const L = ['grid', 'spotlight', 'speaker', 'screenshare']; this.setLayout(L[(L.indexOf(this.layout) + dir + 4) % 4]); },
-  setLayout(l) { this.layout = l; lsSet('venue.layout', l); this.renderStage(true); this.paintHead(); refreshBar(); toast({ grid: 'Grid view', spotlight: 'Spotlight view', speaker: 'Speaker view', screenshare: 'Screenshare view' }[l], { icon: l === 'grid' ? 'grid' : l === 'spotlight' ? 'spotlight' : 'speaker', group: 'media', ms: 1200 }); },
+  setLayout(l, { fromHost = false } = {}) {
+    if (this.security?.forceLayout && !this.isMod() && !fromHost) {
+      return toast('The host controls the display view', { icon: 'lock', group: 'media', ms: 1600 });
+    }
+    this.layout = l; if (!fromHost) lsSet('venue.layout', l);
+    this.renderStage(true); this.paintHead(); refreshBar();
+    if (this.isMod() && this.security?.forceLayout) this.send('force-layout', { layout: l, presentKey: this.stageR?.presentKey || null, pick: this.stageR?.pick || null });
+    if (!fromHost) toast({ grid: 'Grid view', spotlight: 'Spotlight view', speaker: 'Speaker view', screenshare: 'Screenshare view' }[l] || 'Layout', { icon: l === 'grid' ? 'grid' : l === 'spotlight' ? 'spotlight' : 'speaker', group: 'media', ms: 1200 });
+  },
   pin(id) { this.pinned = id; if (id && this.layout === 'grid') this.layout = 'spotlight'; if (id && this.stageR.screens().length) return this.stageR.setPick('cameras'); this.renderStage(true); },
   applyWant() { const w = this.want || {}; if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },

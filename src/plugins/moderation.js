@@ -297,32 +297,11 @@ module.exports = {
       if (!actor || !can(meeting, actor, 'manageSecurity')) return;
       if (!meeting.settings) return;
       const s = meeting.settings;
-    ctx.onWs('request-permission', ({ msg, participantId, meeting, meetingCode }) => {
-      const p = meeting.participants.get(participantId);
-      if (!p) return;
-      const action = msg.action || 'unknown';
-      const detail = msg.detail || action;
-      const hosts = [...meeting.participants.values()].filter(x => x.role === 'host' || x.role === 'cohost' || x.isHost);
-      hosts.forEach(h => {
-        ctx.sendToParticipant(h.id, { type: 'permission-request', fromId: participantId, fromName: p.name, action, detail, at: Date.now() });
-      });
-    });
-    ctx.onWs('grant-permission', ({ msg, participantId, meeting }) => {
-      const actor = meeting.participants.get(participantId);
-      if (!actor || (actor.role !== 'host' && actor.role !== 'cohost' && !actor.isHost)) return;
-      const target = meeting.participants.get(msg.targetId);
-      if (!target) return;
-      if (!target.permissionOverrides) target.permissionOverrides = {};
-      target.permissionOverrides[msg.action] = true;
-      // temporary, will reset on stop for screen
-      ctx.sendToParticipant(msg.targetId, { type: 'permissions-updated', permissions: require('../lib/permissions').resolvePermissions(meeting, target) });
-      ctx.sendToParticipant(participantId, { type: 'toast', text: `Granted ${msg.action} to ${target.name}` });
-    });
       const patch = msg.settings || {};
       const keys = [
         'waitingRoom', 'guestAccess', 'locked',
         'participantScreenShare', 'participantMicrophone', 'participantCamera',
-        'chat', 'reactions', 'raiseHand', 'sounds',
+        'chat', 'reactions', 'raiseHand', 'sounds', 'forceLayout',
         'participantsCanInvite', 'guestsCanInvite',
       ];
       const prevShare = s.participantScreenShare !== false;
@@ -354,6 +333,17 @@ module.exports = {
       }
       emitSecurity(meetingCode, meeting);
       emitRoster(meetingCode, meeting);
+    });
+
+    
+    ctx.onWs('force-layout', ({ msg, participantId, meeting, meetingCode }) => {
+      const actor = meeting.participants.get(participantId);
+      if (!actor || !can(meeting, actor, 'manageSecurity')) return;
+      if (!meeting.settings?.forceLayout) return;
+      const layout = ['grid', 'spotlight', 'speaker', 'screenshare'].includes(msg.layout) ? msg.layout : null;
+      if (!layout) return;
+      meeting.forcedLayout = { layout, presentKey: msg.presentKey || null, pick: msg.pick || null, by: participantId };
+      broadcast(meetingCode, { type: 'force-layout', layout, presentKey: meeting.forcedLayout.presentKey, pick: meeting.forcedLayout.pick, fromId: participantId });
     });
 
     ctx.onWs('lock-meeting', ({ participantId, meeting, meetingCode }) => {

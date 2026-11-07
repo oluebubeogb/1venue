@@ -262,6 +262,7 @@ function createRequestHandler() {
 
       const passwordHash = await bcrypt.hash(password, 10);
       const user = await db.createUser({ username, email, passwordHash });
+      try { await require('../venue/data').syncSpeakerInvites(user.id, email); } catch (_) {}
       const token = signToken(user);
       return sendJSON(res, 201, { token, user: publicUser(user) }, { 'Set-Cookie': localCookie(token) });
     } catch (e) {

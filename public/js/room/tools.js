@@ -441,6 +441,7 @@ export function buildTools(R) {
         row('smile', 'Send reactions', null, sw(s.reactions !== false, set('reactions'))),
         row('hand', 'Raise hand', null, sw(s.raiseHand !== false, set('raiseHand'))),
         row('music', 'Play sounds', 'Applause, drum roll… (rate-limited)', sw(s.sounds !== false, set('sounds'))),
+        row('layout', 'Force audience view', 'Everyone follows the host’s grid / speaker / screenshare view', sw(!!s.forceLayout, (v) => { set('forceLayout')(v); if (v) R.send('force-layout', { layout: R.layout }); })),
         row('userPlus', 'Invite others', null, sw(s.participantsCanInvite !== false, set('participantsCanInvite'))),
         row('users', 'Max participants', 'Cap the room size', max),
         btn('refresh', 'Reset invite link', async () => { try { const r = await api('/api/invite/regenerate', { method: 'POST', headers: R.headers(), body: { code: R.code, participantId: R.me.id } }); R.inviteKey = r.key || r.inviteKey || null; toast('New invite link created — old links stop working', { icon: 'link', group: 'admin' }); } catch (e) { toastErr(e); } }, { cls: 'block' }),

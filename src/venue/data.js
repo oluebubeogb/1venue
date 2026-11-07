@@ -234,7 +234,7 @@ async function updateViewers(eventId, live, joinedDelta = 0) {
 }
 async function listSpeakers(eventId) {
   return (await many('SELECT * FROM event_speakers WHERE event_id=$1 ORDER BY sort_order, id', [eventId]))
-    .map((r) => ({ id: Number(r.id), userId: r.user_id, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url }));
+    .map((r) => ({ id: Number(r.id), userId: r.user_id, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null }));
 }
 async function setSpeakers(eventId, list) {
   return tx(async (c) => {
@@ -243,8 +243,8 @@ async function setSpeakers(eventId, list) {
     for (const s of (list || []).slice(0, 20)) {
       const name = String(s.name || '').trim().slice(0, 80);
       if (!name) continue;
-      await c.query('INSERT INTO event_speakers (event_id, user_id, display_name, headline, avatar_url, sort_order) VALUES ($1,$2,$3,$4,$5,$6)',
-        [eventId, s.userId || null, name, s.headline ? String(s.headline).slice(0, 140) : null, s.avatarUrl || null, i++]);
+      await c.query('INSERT INTO event_speakers (event_id, user_id, display_name, headline, avatar_url, email, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [eventId, s.userId || null, name, s.headline ? String(s.headline).slice(0, 140) : null, s.avatarUrl || null, s.email ? String(s.email).toLowerCase().slice(0, 200) : null, i++]);
     }
   }).then(() => listSpeakers(eventId));
 }
@@ -267,11 +267,11 @@ function postOut(r) {
     id: Number(r.id), kind: r.kind, body: r.body, media: r.media || [], likeCount: r.like_count, commentCount: r.comment_count,
     liked: !!r.liked, createdAt: r.created_at,
     author: { id: r.user_id, name: r.author_name, avatarUrl: r.author_avatar, handle: r.author_handle },
-    event: r.event_id ? { id: Number(r.event_id), slug: r.ev_slug, title: r.ev_title, status: r.ev_status, category: r.ev_category, startsAt: r.ev_starts_at, theme: r.ev_theme || {} } : null,
+    event: r.event_id ? { id: Number(r.event_id), slug: r.ev_slug, title: r.ev_title, status: r.ev_status, category: r.ev_category, startsAt: r.ev_starts_at, theme: r.ev_theme || {}, coverUrl: r.ev_cover_url || null } : null,
   };
 }
 const POST_SELECT = `SELECT p.*, COALESCE(u.display_name, split_part(u.email,'@',1), u.username) AS author_name, u.avatar_url AS author_avatar, u.handle AS author_handle,
-  e.slug AS ev_slug, e.title AS ev_title, e.status AS ev_status, e.category AS ev_category, e.starts_at AS ev_starts_at, e.theme AS ev_theme,
+  e.slug AS ev_slug, e.title AS ev_title, e.status AS ev_status, e.category AS ev_category, e.starts_at AS ev_starts_at, e.theme AS ev_theme, e.cover_url AS ev_cover_url,
   EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id=p.id AND l.user_id=$1) AS liked
   FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN events e ON e.id=p.event_id`;
 async function createPost(userId, { kind = 'post', body, eventId, media }) {
@@ -742,11 +742,22 @@ async function setEventMaterials(eventId, userId, materialIds) {
 }
 
 
+
+async function syncSpeakerInvites(userId, email) {
+  if (!email) return 0;
+  const r = await q(
+    `UPDATE event_speakers SET user_id=$1, avatar_url=COALESCE(avatar_url, (SELECT avatar_url FROM users WHERE id=$1)), display_name=COALESCE(NULLIF(display_name,''), (SELECT COALESCE(display_name, username) FROM users WHERE id=$1))
+     WHERE user_id IS NULL AND lower(email)=lower($2)`,
+    [userId, String(email).trim()]
+  );
+  return r.rowCount || 0;
+}
+
 module.exports = {
   createVenue, myVenues, getVenueBySlug, getVenueByCode, addVenueAdmins, removeVenueAdmin, listVenueAdmins, isVenueAdmin, logVenueAudit, getVenueAudit, renameVenue, deleteVenue, venueMeetings, markVenueOpen, markVenueClosed, getUserPlan, setVenueSlug,
   CATEGORIES, getPrefs, setPrefs, getUserProfile, updateProfile, searchUsers,
   createEvent, updateEvent, deleteEvent, getEventById, getEventBySlug, getEventByCode, discover, categoryCounts, myEvents, rsvpedEvents,
-  toggleRsvp, markEventLive, markEventEnded, updateViewers, listSpeakers, setSpeakers,
+  toggleRsvp, markEventLive, markEventEnded, updateViewers, listSpeakers, setSpeakers, syncSpeakerInvites,
   follow, suggestedPeople, createPost, feed, userTimeline, togglePostLike, deletePost,
   listComments, addComment, toggleCommentLike, hideComment, getComment,
   createPoll, votePoll, closePoll, listPolls, pollResults,

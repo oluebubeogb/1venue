@@ -41,7 +41,7 @@ export async function mount(view, params) {
     comp = h('div', { class: 'card pad layer row between' }, h('span', { class: 'muted' }, 'Sign in to post, like and comment.'), a);
   }
   const side = h('aside', { class: 'col sticky', style: { gap: '1rem' } });
-  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('feed', { size: 28 }) + 'Feed' }), h('p', { class: 'muted' }, 'Updates from hosts and friends you follow — plus what’s live.')),
+  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('feed', { size: 28 }) + 'Feed' })),
     h('div', { class: 'split' }, h('div', { class: 'col', style: { gap: '1rem' } }, comp, list), side));
   if (params.compose && state.user) setTimeout(() => comp.querySelector('textarea')?.focus(), 100);
   let before = null, loading = false, done = false;

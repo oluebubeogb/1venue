@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy } from '../ui.js';
+import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy, debounce, uploadFile } from '../ui.js';
 import { state, navigate, requireLogin } from '../app.js';
 import { catOf, commentThread, shareLink, sectionHead, empty, followBtn } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
@@ -25,7 +25,7 @@ export function qrSheet(ev) {
   const paint = () => { img.src = url(); };
   paint();
   s.body.append(h('div', { class: 'qr-wrap' }, img),
-    h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.6rem 0 1rem' } }, 'Coloured with this event’s theme. Scan to open the event page.'),
+    
     h('div', { class: 'row wrap center' },
       h('button', { class: 'btn', 'data-group': 'settings', html: icon('moon', { size: 16 }) + 'Dark / light', onclick: () => { dark = !dark; paint(); } }),
       h('button', { class: 'btn', 'data-group': 'content', html: icon('download', { size: 16 }) + 'SVG', onclick: () => { const a = h('a', { href: url() + '&download=1', download: '' }); a.click(); } }),
@@ -120,17 +120,66 @@ export const barPinned = null;
 
 function editSpeakers(ev, done) {
   const s = sheet({ title: 'Speakers', icon: 'stage', group: 'people' });
-  const list = h('div', { class: 'col' });
+  const list = h('div', { class: 'col', style: { gap: '.6rem' } });
   const rows = (ev.speakers || []).map((x) => ({ ...x }));
+  const search = h('input', { class: 'input', placeholder: 'Search name, @username or email…', autocomplete: 'off' });
+  const sug = h('div', { class: 'suggest-list', hidden: true });
   const paint = () => {
-    list.innerHTML = '';
-    rows.forEach((r, i) => list.append(h('div', { class: 'row' },
-      h('input', { class: 'input', placeholder: 'Name', value: r.name || '', oninput: (e) => { r.name = e.target.value; } }),
-      h('input', { class: 'input', placeholder: 'Headline (e.g. Pastor, CTO)', value: r.headline || '', oninput: (e) => { r.headline = e.target.value; } }),
+    list.replaceChildren(...rows.map((r, i) => h('div', { class: 'card pad layer row wrap', style: { gap: '.5rem', alignItems: 'center' } },
+      r.avatarUrl || r.userId ? avatar(r.name, r.avatarUrl, 'sm') : h('span', { class: 'ico-tile sm', html: icon('user', { size: 16 }) }),
+      h('div', { class: 'grow col', style: { gap: '.35rem', minWidth: '140px' } },
+        h('input', { class: 'input sm', placeholder: 'Name', value: r.name || '', oninput: (e) => { r.name = e.target.value; } }),
+        h('input', { class: 'input sm', placeholder: 'Headline', value: r.headline || '', oninput: (e) => { r.headline = e.target.value; } }),
+        r.email ? h('div', { class: 'tiny muted' }, r.email) : null),
+      h('button', { class: 'btn sm', type: 'button', html: icon('image', { size: 14 }), onclick: () => {
+        const inp = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
+        document.body.append(inp);
+        inp.onchange = async () => {
+          const f = inp.files[0]; inp.remove();
+          if (!f) return;
+          try { const up = await uploadFile(f, { purpose: 'avatar' }); r.avatarUrl = up.url; paint(); toast('Photo set', { icon: 'image' }); } catch (e) { toastErr(e); }
+        };
+        inp.click();
+      } }),
       h('button', { class: 'icon-btn', 'data-group': 'admin', 'aria-label': 'Remove', html: icon('x'), onclick: () => { rows.splice(i, 1); paint(); } }))));
   };
   paint();
-  s.body.append(list, h('div', { class: 'row between', style: { marginTop: '1rem' } },
-    h('button', { class: 'btn', html: icon('plus', { size: 16 }) + 'Add speaker', onclick: () => { rows.push({ name: '', headline: '' }); paint(); } }),
-    h('button', { class: 'btn primary', onclick: async () => { try { await api(`/api/events/${ev.id}/speakers`, { method: 'PUT', body: { speakers: rows } }); toast('Speakers saved', { icon: 'check' }); s.close(); done && done(); } catch (e) { toastErr(e); } } }, 'Save')));
+  const runSearch = debounce(async () => {
+    const q = search.value.trim();
+    if (q.length < 2) { sug.hidden = true; return; }
+    try {
+      const r = await api('/api/users/search?q=' + encodeURIComponent(q));
+      const users = r.users || [];
+      sug.replaceChildren();
+      users.forEach((u) => sug.append(h('button', { type: 'button', onclick: () => {
+        if (rows.some((x) => x.userId === u.id)) return;
+        rows.push({ userId: u.id, name: u.name, avatarUrl: u.avatarUrl, headline: u.handle ? '@' + u.handle : '' });
+        search.value = ''; sug.hidden = true; paint();
+      } }, avatar(u.name, u.avatarUrl, 'sm'), h('div', { class: 'grow' }, h('b', null, u.name), h('div', { class: 'tiny muted' }, u.handle ? '@' + u.handle : '')))));
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q)) {
+        sug.append(h('button', { type: 'button', onclick: () => {
+          rows.push({ name: q.split('@')[0], email: q.toLowerCase(), headline: 'Invited by email' });
+          search.value = ''; sug.hidden = true; paint();
+        } }, h('span', { class: 'ico-tile sm', html: icon('mail', { size: 14 }) }), h('b', null, 'Invite ' + q)));
+      } else if (!users.length) {
+        sug.append(h('button', { type: 'button', onclick: () => {
+          rows.push({ name: q, headline: '' });
+          search.value = ''; sug.hidden = true; paint();
+        } }, h('span', { class: 'ico-tile sm', html: icon('userPlus', { size: 14 }) }), h('b', null, 'Add “' + q + '”')));
+      }
+      sug.hidden = !sug.childNodes.length;
+    } catch { sug.hidden = true; }
+  }, 220);
+  search.addEventListener('input', runSearch);
+  s.body.append(
+    h('div', { class: 'suggest-box', style: { marginBottom: '.8rem' } }, search, sug),
+    list,
+    h('div', { class: 'row between', style: { marginTop: '1rem' } },
+      h('button', { class: 'btn', type: 'button', html: icon('plus', { size: 16 }) + 'Blank speaker', onclick: () => { rows.push({ name: '', headline: '' }); paint(); } }),
+      h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+        try {
+          await api(`/api/events/${ev.id}/speakers`, { method: 'PUT', body: { speakers: rows } });
+          toast('Speakers saved', { icon: 'check' }); s.close(); done && done();
+        } catch (e) { toastErr(e); }
+      } }, 'Save')));
 }

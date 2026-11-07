@@ -92,7 +92,7 @@ export async function mount(view, params) {
     }
   }
   refIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && refIn.value.trim()) goRef(refIn.value.trim()); });
-  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('bookOpen', { size: 28 }) + 'Bible' }), h('p', { class: 'muted' }, 'Open-licence translations in English, Yorùbá, Igbo, Hausa, French, Spanish and more.')),
+  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('bookOpen', { size: 28 }) + 'Bible' })),
     h('div', { class: 'bible-tools card layer' }, h('span', { class: 'bt-ic', html: icon('search', { size: 16 }) }), refIn, bookSel, chSel, trSel), body, selBar);
   bookSel.value = book; fillCh();
   if (params.ref) goRef(params.ref); else load();
