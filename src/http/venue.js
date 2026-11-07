@@ -78,8 +78,22 @@ route('POST', '/api/convert/pptx', async (ctx) => {
   if (!converter.MIMES.has(mime)) throw httpError(415, 'Choose a PPTX presentation');
   if (Number(ctx.req.headers['content-length']) > converter.MAX_BYTES) throw httpError(413, 'PPTX must be 50 MB or smaller');
   const buf = await readRaw(ctx.req, converter.MAX_BYTES);
-  const pdf = await converter.convertPptx(buf);
-  return { raw: pdf, type: 'application/pdf', headers: { 'Cache-Control': 'no-store' } };
+  // Optional filename from query or header for nicer slide titles
+  const qTitle = String(ctx.url.searchParams.get('title') || '').trim();
+  const title = (qTitle || 'Slides').slice(0, 80);
+  const out = await converter.convertPptxToSlides(buf, {
+    ownerUserId: u ? u.id : null,
+    ownerKey: rp ? `room:${rp.code}:${rp.participant.id}` : null,
+    roomCode: rp ? rp.code : null,
+    title,
+  });
+  return {
+    contentType: 'slides',
+    pages: out.pages,
+    title: out.title,
+    total: out.total,
+    truncated: out.truncated,
+  };
 });
 
 // ------------------------------------------------------------ prefs & profile

@@ -76,7 +76,7 @@ export async function mount(view, params) {
 }
 
 function instant(view) {
-  const name = h('input', { class: 'input lg', placeholder: 'Meeting name', value: state.user ? `${state.user.displayName.split(' ')[0]}’s meeting` : 'Quick meeting', maxlength: 60 });
+  const name = h('input', { class: 'input lg', placeholder: 'Meeting name', value: state.user ? `${state.user.displayName.split(' ')[0]}’s meeting` : 'Quick meeting', maxlength: 120 });
   let stage = false, waiting = false;
   const sw = (label, ic, g, get, set, hint) => { const t = h('input', { type: 'checkbox', checked: get() }); t.onchange = () => set(t.checked); return h('label', { class: 'set-row' }, h('span', { class: 'ico', style: { '--g': `var(--g-${g})` }, html: icon(ic) }), h('div', { class: 'grow' }, h('div', null, label), h('div', { class: 'tiny faint' }, hint)), h('span', { class: 'switch' }, t, h('span'))); };
   const go = () => { sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, name: name.value.trim() || 'Meeting', stage, waitingRoom: waiting })); navigate('/new'); };

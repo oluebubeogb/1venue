@@ -57,14 +57,14 @@ test('content batches permit a deck above 12 images while ordinary upload policy
   assert.throws(() => uploads.precheck({ mime: 'image/jpeg', rateKey: 'ordinary-test' }), (e) => e.status === 429);
 });
 
-test('PPTX: bounded validation, async conversion contract, cleanup, binary response, guest room authorization', async (t) => {
+test('PPTX: bounded validation, async conversion contract, JSON slides response, guest room authorization', async (t) => {
   const converter = require('../src/venue/pptx');
   await assert.rejects(converter.convertPptx(Buffer.from('not a deck')), (e) => e.status === 415);
   await assert.rejects(converter.convertPptx(Buffer.alloc(0)), (e) => e.status === 400);
   await assert.rejects(converter.convertPptx(Buffer.alloc(converter.MAX_BYTES + 1)), (e) => e.status === 413);
   const zip = fs.readFileSync(path.join(__dirname, 'fixtures/conversion.pptx'));
-  const pdf = Buffer.from('%PDF-1.7\n\x00\xff\n', 'latin1');
-  t.mock.method(converter, 'convertPptx', async (buf) => { assert.deepEqual(buf, zip); return pdf; });
+  const slides = { pages: ['/files/a/p1.jpg', '/files/b/p2.jpg'], total: 2, truncated: false, title: 'Slides' };
+  t.mock.method(converter, 'convertPptxToSlides', async (buf) => { assert.deepEqual(buf, zip); return slides; });
   const store = require('../src/rooms/store');
   const { signWsCredential } = require('../src/lib/wsCredential');
   const { handleVenueRoutes } = require('../src/http/venue');
@@ -79,7 +79,11 @@ test('PPTX: bounded validation, async conversion contract, cleanup, binary respo
     await handleVenueRoutes(req, res, new URL('http://localhost/api/convert/pptx'));
     return res;
   }
-  const res = await request(); assert.equal(res.status, 200); assert.deepEqual(res.body, pdf); assert.equal(res.headers['Content-Type'], 'application/pdf');
+  const res = await request();
+  assert.equal(res.status, 200);
+  const body = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
+  assert.equal(body.contentType, 'slides');
+  assert.deepEqual(body.pages, slides.pages);
   assert.equal((await request({ 'content-type': 'text/html' })).status, 415);
   assert.equal((await request({ 'content-length': String(converter.MAX_BYTES + 1) })).status, 413);
   store.getMeeting(code).settings.participantScreenShare = false;
@@ -100,6 +104,16 @@ test('PPTX: real LibreOffice conversion produces two PDF pages', async (t) => {
     const text = spawnSync('pdftotext', [output, '-'], { encoding: 'utf8' });
     if (!text.error) { assert.match(text.stdout, /1venue slide 1/); assert.match(text.stdout, /1venue slide 2/); }
   } finally { fs.rmSync(output, { force: true }); }
+});
+
+test('PPTX: server rasterize path needs pdftoppm when available', async (t) => {
+  const { spawnSync } = require('node:child_process');
+  if (spawnSync('libreoffice', ['--version']).error) return t.skip('LibreOffice not installed');
+  if (spawnSync('pdftoppm', ['-v']).error && spawnSync('pdftoppm', ['-v']).status == null) return t.skip('pdftoppm not installed');
+  // Storage would need DB in full env; here we only assert convertPptx still works as the PDF stage.
+  const converter = require('../src/venue/pptx');
+  const pdf = await converter.convertPptx(fs.readFileSync(path.join(__dirname, 'fixtures/conversion.pptx')));
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
 });
 
 // Minimal DOM adapter exercises actual stage / picker functions without a browser or media server.

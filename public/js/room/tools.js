@@ -44,19 +44,24 @@ export async function shareContentFile(R, f) {
       const r = await uploadFile(f, { purpose: 'content', headers: R.headers() });
       startContent(R, { contentType: 'image', url: r.url, title: name || 'Image', fileMeta: { name: f.name, size: f.size, mime: f.type } });
     } else if (/\.pptx$/i.test(f.name) || f.type.includes('presentationml')) {
-      setBusy('Converting PPTX…');
-      const res = await fetch('/api/convert/pptx', { method: 'POST', body: f, credentials: 'include', headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ...R.headers() } });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `PPTX conversion failed (${res.status})`); }
-      if (!res.headers.get('content-type')?.includes('application/pdf')) throw new Error('The server did not return a PDF');
-      const pdfBlob = await res.blob();
-      const pdfFile = new File([pdfBlob], (name || 'slides') + '.pdf', { type: 'application/pdf' });
-      setBusy('Preparing slides…');
-      const { pdfToImages } = await import('./pdfslides.js');
-      const { files, total, truncated } = await pdfToImages(pdfFile, { onProgress: (i, n) => setBusy(`Rendering page ${i} of ${n}…`) });
-      const pages = [];
-      for (let i = 0; i < files.length; i++) { setBusy(`Uploading page ${i + 1} of ${files.length}…`); pages.push((await uploadFile(files[i], { purpose: 'content', headers: R.headers() })).url); }
-      startContent(R, { contentType: 'slides', pages, title: name || 'Slides', fileMeta: { name: f.name, size: f.size, mime: f.type } });
-      if (truncated) toast(`Only the first ${files.length} of ${total} pages were shared`, { icon: 'alert' });
+      setBusy('Converting PPTX on server…');
+      const q = name ? `?title=${encodeURIComponent(name)}` : '';
+      const res = await fetch('/api/convert/pptx' + q, {
+        method: 'POST',
+        body: f,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ...R.headers() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `PPTX conversion failed (${res.status})`);
+      if (!Array.isArray(data.pages) || !data.pages.length) throw new Error('No slides were produced from this presentation');
+      startContent(R, {
+        contentType: 'slides',
+        pages: data.pages,
+        title: data.title || name || 'Slides',
+        fileMeta: { name: f.name, size: f.size, mime: f.type },
+      });
+      if (data.truncated) toast(`Only the first ${data.pages.length} of ${data.total} pages were shared`, { icon: 'alert' });
     } else toast('Pick a PDF, PPTX, or images', { icon: 'alert' });
   } catch (e) { toastErr(e); } finally { setBusy(''); }
 }

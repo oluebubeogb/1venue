@@ -706,9 +706,9 @@ function createRequestHandler() {
   if (urlPath === '/api/create' && req.method === 'POST') {
     try {
       const body = await parseBody(req);
-      const name = (body.name || '').trim();
+      // Align with event titles (2–120). Create → go-live passes the event title as the meeting name.
+      const name = String(body.name || '').trim().slice(0, 120);
       if (!name || name.length < 2) return sendJSON(res, 400, { error: 'Meeting name must be at least 2 characters' });
-      if (name.length > 60) return sendJSON(res, 400, { error: 'Meeting name too long' });
 
       const authUser = await getAuthUser(req, res);
       let code = generateCode();

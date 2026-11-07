@@ -7,7 +7,7 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 FROM node:22-alpine
 ENV NODE_ENV=production PORT=3000 DATA_DIR=/data STORAGE_DIR=/data/uploads NODE_OPTIONS=--max-old-space-size=384
 WORKDIR /app
-RUN apk add --no-cache tini libreoffice-impress font-dejavu font-liberation && mkdir -p /data/uploads && chown -R node:node /data
+RUN apk add --no-cache tini libreoffice-impress poppler-utils font-dejavu font-liberation && mkdir -p /data/uploads && chown -R node:node /data
 COPY --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node . .
 USER node
