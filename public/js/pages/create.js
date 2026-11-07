@@ -69,6 +69,10 @@ export async function mount(view, params) {
       h('div', { class: 'row between wrap' }, h('div', null, h('span', { class: 'lbl', html: icon('stage', { size: 15 }) + 'Speaker seats' }), h('div', { class: 'tiny faint' }, 'Everyone else watches and can request to speak.')), stepper)),
     h('div', { class: 'card pad layer col' }, h('span', { class: 'lbl', html: icon('palette', { size: 15 }) + 'Event colours (used on cards, QR codes and the room)' }), swatches,
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn sm', 'data-group': 'content', html: icon('image', { size: 15 }) + (coverUrl ? 'Change cover' : 'Upload cover'), onclick: () => coverIn.click() }), coverIn)),
+    h('div', { class: 'card pad layer col' },
+      h('span', { class: 'lbl', html: icon('folder', { size: 15 }) + 'Materials' }),
+      h('p', { class: 'tiny muted', style: { margin: 0 } }, 'Preload PDFs, PPTX, images or YouTube for this event. Present them live without re-uploading.'),
+      h('a', { class: 'btn sm', href: '/materials', 'data-link': '', html: icon('folder', { size: 15 }) + 'Open materials library' })),
     h('div', { class: 'row wrap', style: { gap: '.6rem' } }, submit, liveNow));
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon(editing ? 'pen' : 'calendarPlus', { size: 28 }) + (editing ? 'Edit event' : 'Create an event') }), h('p', { class: 'muted' }, 'Talk show, seminar, sermon or class — it’ll show up in Discover with a themed QR invite.')),
     h('div', { class: 'split' }, form, h('aside', { class: 'sticky col' }, h('div', { class: 'tiny muted', html: icon('eye', { size: 14 }) + ' Preview' }), prev,

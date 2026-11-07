@@ -12,6 +12,36 @@ const btn = (ic, label, run, { group = '', cls = '', disabled } = {}) => h('butt
 
 // Content sharing helpers live at module level: the panel re-renders often, so the file input and progress must survive it.
 let presentBusy = '';
+
+async function fillMaterialsInline(R, root) {
+  const host = root.querySelector('[data-materials]');
+  if (!host) return;
+  host.replaceChildren(h('div', { class: 'tiny muted' }, 'Loading…'));
+  try {
+    if (!R._materials) {
+      const r = await api('/api/materials');
+      R._materials = r.materials || [];
+    }
+    const list = R._materials;
+    if (!list.length) {
+      host.replaceChildren(h('div', { class: 'tiny muted' }, 'No saved materials yet. Add some on the Materials page.'));
+      return;
+    }
+    host.replaceChildren();
+    list.slice(0, 12).forEach((m) => {
+      const sub = m.kind === 'youtube' ? 'YouTube' : m.kind === 'image' ? 'Image' : `${(m.payload?.pages || []).length || 0} pages`;
+      host.append(h('button', {
+        class: 'list-item', type: 'button',
+        onclick: () => presentMaterial(R, m),
+      }, h('span', { class: 'ico-tile sm', 'data-group': 'content', html: icon(m.kind === 'youtube' ? 'youtube' : m.kind === 'image' ? 'image' : 'presentation', { size: 16 }) }),
+        h('div', { class: 'grow' }, h('b', null, m.title), h('div', { class: 'tiny muted' }, sub)),
+        h('span', { html: icon('play', { size: 14 }) })));
+    });
+  } catch (e) {
+    host.replaceChildren(h('div', { class: 'tiny muted' }, e.message || 'Could not load materials'));
+  }
+}
+
 const startContent = (R, payload) => { R.send('content-start', payload); toast('Presenting to everyone', { icon: 'presentation', group: 'content' }); setTimeout(() => R.panel && R.panel.refresh('tools'), 300); };
 let contentInput = null;
 function pickContentFile(R) {
@@ -65,7 +95,7 @@ export async function shareContentFile(R, f) {
     } else toast('Pick a PDF, PPTX, or images', { icon: 'alert' });
   } catch (e) { toastErr(e); } finally { setBusy(''); }
 }
-async function shareContentImages(R, files) {
+async function shareContentImages(R, files, { append = false } = {}) {
   const setBusy = (t) => { presentBusy = t || ''; R.panel.refresh('tools'); };
   try {
     const pages = [];
@@ -74,8 +104,44 @@ async function shareContentImages(R, files) {
       const r = await uploadFile(files[i], { purpose: 'content', headers: R.headers() });
       pages.push(r.url);
     }
-    startContent(R, { contentType: 'slides', pages, title: files.length + ' images', fileMeta: { name: 'images', size: 0, mime: 'image/*' } });
+    const c = R.content;
+    if (append && c && c.type === 'slides' && Array.isArray(c.pages) && R.canControlContent()) {
+      R.setContentPages([...(c.pages || []), ...pages]);
+      toast(`Added ${pages.length} image${pages.length === 1 ? '' : 's'}`, { icon: 'image', group: 'content' });
+      R.panel.refresh('tools');
+    } else {
+      startContent(R, { contentType: 'slides', pages, title: pages.length + ' images', fileMeta: { name: 'images', size: 0, mime: 'image/*' } });
+    }
   } catch (e) { toastErr(e); } finally { setBusy(''); }
+}
+function pickMoreImages(R) {
+  const input = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+  document.body.append(input);
+  input.onchange = () => {
+    const files = Array.from(input.files || []);
+    input.remove();
+    if (!files.length) return;
+    if (files.length > 200) return toast('Select up to 200 images', { icon: 'alert' });
+    shareContentImages(R, files, { append: true });
+  };
+  input.click();
+}
+async function presentMaterial(R, m) {
+  if (!m) return;
+  if (m.kind === 'youtube' && m.payload?.videoId) {
+    startContent(R, { contentType: 'youtube', videoId: m.payload.videoId, title: m.title || 'YouTube video' });
+    return;
+  }
+  if (m.kind === 'image' && m.payload?.url) {
+    startContent(R, { contentType: 'image', url: m.payload.url, title: m.title || 'Image' });
+    return;
+  }
+  const pages = m.payload?.pages;
+  if (Array.isArray(pages) && pages.length) {
+    startContent(R, { contentType: 'slides', pages, title: m.title || 'Slides', fileMeta: { name: m.payload?.sourceName || m.title, mime: m.payload?.sourceMime || '' } });
+    return;
+  }
+  toast('This material has no pages to present', { icon: 'alert' });
 }
 const sw = (checked, onchange, disabled) => h('span', { class: 'switch' }, h('input', { type: 'checkbox', checked: !!checked, disabled: !!disabled, onchange: (e) => onchange(e.target.checked) }), h('span'));
 const row = (ic, label, sub, ctl) => h('label', { class: 'set-row' }, h('span', { class: 'ico', html: icon(ic, { size: 18 }) }), h('span', { class: 'grow' }, h('b', null, label), sub ? h('small', { class: 'muted block' }, sub) : null), ctl);
@@ -212,13 +278,51 @@ export function buildTools(R) {
             h('div', { class: 'row gap-xs' }, stopBtn, handBtn)
           )
         ));
-        if (c.type === 'slides' && Array.isArray(c.pages) && c.pages.length > 1) {
-          const thumbs = h('div', { class: 'slide-thumbs' });
+        if (c.type === 'slides' && Array.isArray(c.pages) && c.pages.length) {
+          const thumbs = h('div', { class: 'slide-thumbs deck-edit' });
+          let dragFrom = null;
           c.pages.forEach((url, i) => {
-            const t = h('button', { class: 'slide-thumb' + ((c.page || 1) === i + 1 ? ' on' : ''), type: 'button', disabled: !canControl, 'aria-label': 'Show page ' + (i + 1), onclick: () => R.setContentPage(i + 1) },
-              h('img', { src: url, alt: 'Page ' + (i + 1) }),
-              h('span', { class: 'tiny' }, String(i + 1))
+            const t = h('div', {
+              class: 'slide-thumb' + ((c.page || 1) === i + 1 ? ' on' : ''),
+              draggable: canControl,
+              'aria-label': 'Page ' + (i + 1),
+              onclick: (e) => { if (!canControl || e.target.closest('.thumb-rm')) return; R.setContentPage(i + 1); },
+            },
+              h('img', { src: url, alt: 'Page ' + (i + 1), draggable: false }),
+              h('span', { class: 'tiny' }, String(i + 1)),
+              canControl ? h('button', {
+                class: 'thumb-rm', type: 'button', title: 'Remove', 'aria-label': 'Remove page ' + (i + 1),
+                onclick: (e) => {
+                  e.stopPropagation();
+                  if (c.pages.length <= 1) return toast('Keep at least one image', { icon: 'alert' });
+                  const next = c.pages.filter((_, j) => j !== i);
+                  const page = (c.page || 1) > i + 1 ? (c.page - 1) : Math.min(c.page || 1, next.length);
+                  R.setContentPages(next, { page });
+                  setTimeout(() => R.panel.refresh('tools'), 200);
+                },
+                html: '−',
+              }) : null,
             );
+            if (canControl) {
+              t.addEventListener('dragstart', (e) => { dragFrom = i; t.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+              t.addEventListener('dragend', () => { dragFrom = null; t.classList.remove('dragging'); });
+              t.addEventListener('dragover', (e) => { e.preventDefault(); t.classList.add('drag-over'); });
+              t.addEventListener('dragleave', () => t.classList.remove('drag-over'));
+              t.addEventListener('drop', (e) => {
+                e.preventDefault(); t.classList.remove('drag-over');
+                if (dragFrom == null || dragFrom === i) return;
+                const next = c.pages.slice();
+                const [item] = next.splice(dragFrom, 1);
+                next.splice(i, 0, item);
+                const cur = (c.page || 1) - 1;
+                let page = cur + 1;
+                if (cur === dragFrom) page = i + 1;
+                else if (dragFrom < cur && i >= cur) page = cur;
+                else if (dragFrom > cur && i <= cur) page = cur + 2;
+                R.setContentPages(next, { page });
+                setTimeout(() => R.panel.refresh('tools'), 200);
+              });
+            }
             thumbs.append(t);
           });
           const ss = h('label', { class: 'row gap-xs tiny', style: { marginTop: '.5rem' } },
@@ -229,7 +333,11 @@ export function buildTools(R) {
             h('div', { class: 'row gap-s' },
               btn('chevronLeft', 'Previous', () => R.setContentPage((R.content.page || 1) - 1), { disabled: !canControl || c.page <= 1 }),
               h('span', { class: 'tiny grow center' }, `${c.page || 1} / ${c.pages.length}`),
-              btn('chevronRight', 'Next', () => R.setContentPage((R.content.page || 1) + 1), { disabled: !canControl || c.page >= c.pages.length })), thumbs, ss));
+              btn('chevronRight', 'Next', () => R.setContentPage((R.content.page || 1) + 1), { disabled: !canControl || c.page >= c.pages.length })),
+            thumbs, ss,
+            canControl ? h('div', { class: 'row gap-s wrap', style: { marginTop: '.5rem' } },
+              btn('image', 'Add images', () => pickMoreImages(R), { group: 'content', disabled: !!presentBusy }),
+            ) : null));
         }
       }
       const canPresent = R.perm('screenShare') || R.isMod();
@@ -245,9 +353,23 @@ export function buildTools(R) {
         h('div', { class: 'row gap-s' }, h('div', { class: 'grow' }, yurl), btn('youtube', 'Play', goYT, { group: 'content' })),
         h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Slides & images'),
         h('div', { class: 'row gap-s wrap' }, btn('upload', 'Upload PDF, PPTX or images', () => pickContentFile(R), { group: 'content', disabled: !!presentBusy })),
+        h('div', { class: 'sec-sub', style: { marginTop: '1rem' } }, 'Materials'),
+        h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Preloaded decks and links — present instantly without re-uploading.'),
+        h('div', { class: 'materials-inline', 'data-materials': '1' }),
+        h('div', { class: 'row gap-s wrap', style: { marginTop: '.4rem' } },
+          btn('folder', 'Manage materials', () => { window.open('/materials', '_blank'); }, { group: 'content' }),
+          btn('refresh', 'Refresh', async () => {
+            try {
+              const r = await api('/api/materials');
+              R._materials = r.materials || [];
+              R.panel.refresh('tools');
+            } catch (e) { toastErr(e); }
+          }, { group: 'content' }),
+        ),
         busy,
       ].filter(Boolean);
       box.append(...items);
+      fillMaterialsInline(R, box);
       return box;
     },
     sounds() {

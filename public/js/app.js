@@ -97,6 +97,7 @@ const ROUTES = [
   [/^\/search\/?$/, () => import('./pages/discover.js'), { search: true }],
   [/^\/e\/([\w-]+)\/?$/, () => import('./pages/event.js'), 'slug'],
   [/^\/create\/?$/, () => import('./pages/create.js')],
+  [/^\/materials\/?$/, () => import('./pages/materials.js')],
   [/^\/dashboard\/?$/, () => import('./pages/dashboard.js')],
   [/^\/a\/([a-f0-9]{32,})\/?$/, () => import('./pages/attendance.js'), 'token'],
   [/^\/feed\/?$/, () => import('./pages/feed.js')],

@@ -620,6 +620,15 @@ Object.assign(Room.prototype, {
     page = Math.max(1, Math.min(c.pages.length, Math.round(Number(page)) || 1));
     this.send('content-update', { page });
   },
+  /** Replace slide pages live (add/remove/reorder) without stopping the share. */
+  setContentPages(pages, { page } = {}) {
+    const c = this.content;
+    if (!this.canControlContent() || c.type !== 'slides') return;
+    const list = (Array.isArray(pages) ? pages : []).filter((u) => typeof u === 'string' && u.startsWith('/files/')).slice(0, 200);
+    if (!list.length) return toast('Keep at least one image in the deck', { icon: 'alert' });
+    const nextPage = page != null ? page : Math.min(c.page || 1, list.length);
+    this.send('content-update', { pages: list, page: nextPage });
+  },
   toggleSlideshow(on) {
     if (this.canControlContent() && this.content.type === 'slides') this.send('content-update', { slideshow: !!on });
   },

@@ -42,7 +42,7 @@ export function handle(R, m) {
     case 'sound': { const sd = soundById(m.id); if (!sd) return; playSound(m.id); R.stageR.burst(sd.emoji, m.participantId === R.me.id ? '' : `${m.name} · ${sd.label}`); return; }
     case 'sound-denied': toast(m.error || 'Sound not sent', { icon: 'volumeX', group: 'engage', ms: 2500 }); return;
     case 'content-state': R.content = m.content; R.stageView = null; break;
-    case 'content-update': if (R.content && m.content) { const pg = R.content.page; R.content = { ...R.content, ...m.content }; if (m.content.media && R.applyMediaSync) R.applyMediaSync(m.content.media); if (m.content.page !== pg && R.applyPage) R.applyPage(m.content.page); } R.applySlideshow && R.applySlideshow(!!R.content?.slideshow); R.panel.refresh(); return;
+    case 'content-update': if (R.content && m.content) { const pg = R.content.page; const pagesChanged = Array.isArray(m.content.pages); R.content = { ...R.content, ...m.content }; if (m.content.media && R.applyMediaSync) R.applyMediaSync(m.content.media); if (pagesChanged) R.renderStage(true); else if (m.content.page !== pg && R.applyPage) R.applyPage(m.content.page); } R.applySlideshow && R.applySlideshow(!!R.content?.slideshow); R.panel.refresh(); return;
     case 'stage-state': { const was = R.isSpeaker(R.me.id); R.stage = { requests: [], speakers: [], ...m.stage }; if (was && !R.isSpeaker(R.me.id)) R.demoted(); break; }
     case 'stage-request': if (R.isMod()) { chime(600); toast(`🎤 ${m.request.name} wants to speak`, { group: 'engage', icon: 'stage' }); } break;
     case 'stage-invited': chime(880); toast('You’re on stage — unmute when you’re ready', { icon: 'stage', group: 'engage', ms: 5000 }); R.promoted(); break;

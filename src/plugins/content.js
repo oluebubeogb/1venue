@@ -108,6 +108,16 @@ module.exports = {
       }
       if (msg.scrollMode) meeting.content.scrollMode = msg.scrollMode === 'free' ? 'free' : 'uniform';
       if (msg.title) meeting.content.title = String(msg.title).slice(0, 80);
+      // Live deck edit: replace pages without stopping the share (owner/holder only).
+      if (Array.isArray(msg.pages) && meeting.content.type === 'slides') {
+        const pages = msg.pages.filter(okFile).slice(0, 200);
+        if (pages.length) {
+          meeting.content.pages = pages;
+          meeting.content.url = pages[0];
+          const max = pages.length;
+          if (meeting.content.page > max) meeting.content.page = max;
+        }
+      }
       broadcast(
         meetingCode,
         { type: 'content-update', content: getContentState(meeting), from: participantId },
