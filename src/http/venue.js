@@ -293,20 +293,31 @@ route('GET', '/api/people/suggested', async (ctx) => {
   return { people: await data.suggestedPeople(u && u.id) };
 });
 route('GET', '/api/users/search', async (ctx) => ({ users: await data.searchUsers(ctx.url.searchParams.get('q') || '', 10) }));
+async function resolveUserId(idOrName) {
+  if (/^\d+$/.test(idOrName)) return int(idOrName);
+  const db = require('../../db');
+  const byName = await db.getUserByUsername(idOrName);
+  if (byName) return byName.id;
+  // collab internal usernames are u{hex8}_{public}; accept the public form + handle
+  const row = await db.q(
+    `SELECT id FROM users
+     WHERE LOWER(COALESCE(handle,'')) = LOWER($1)
+        OR username ~* ('^[uU][0-9a-fA-F]{8}_' || $1 || '$')
+     LIMIT 1`,
+    [idOrName]
+  ).then((r) => r.rows[0]).catch(() => null);
+  return row ? row.id : null;
+}
 route('GET', '/api/users/([\\w.-]+)', async (ctx, [idOrName]) => {
   const u = await getAuthUser(ctx.req, ctx.res);
-  let uid = /^\d+$/.test(idOrName) ? int(idOrName) : null;
-  if (!uid) {
-    const byName = await require('../../db').getUserByUsername(idOrName);
-    if (byName) uid = byName.id;
-  }
+  const uid = await resolveUserId(idOrName);
   const p = await data.getUserProfile(uid, u && u.id);
   if (!p) throw httpError(404, 'User not found');
   const events = (await data.myEvents(p.id)).filter((e) => e.visibility === 'public' && e.status !== 'draft');
   return { ...p, isMe: !!(u && u.id === p.id), events: events.slice(0, 12).map((e) => ({ ...e, live: liveInfo(e) })) };
 });
 route('GET', '/api/users/([\\w.-]+)/timeline', async (ctx, [idOrName]) => {
-  const uid = /^\\d+$/.test(idOrName) ? int(idOrName) : (await require('../../db').getUserByUsername(idOrName))?.id;
+  const uid = await resolveUserId(idOrName);
   const u = await getAuthUser(ctx.req, ctx.res);
   return { posts: await data.userTimeline(uid, u && u.id, { before: ctx.url.searchParams.get('before') }) };
 });

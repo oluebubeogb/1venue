@@ -41,15 +41,18 @@ async function setPrefs(userId, p = {}) {
 // ---------------------------------------------------------------- users
 function userCard(r) {
   if (!r) return null;
+  const { publicUsername, isInternalUsername } = require('../lib/auth');
+  const raw = r.username || null;
+  const uname = publicUsername(raw) || (!isInternalUsername(raw) ? raw : null);
   return {
     id: r.id,
-    username: r.username || null,
-    name: r.display_name || (r.email ? r.email.split('@')[0] : r.username),
-    handle: r.handle || null,
+    username: uname,
+    name: r.display_name || uname || (r.email ? r.email.split('@')[0] : raw),
+    handle: r.handle || uname || null,
     avatarUrl: r.avatar_url || null, bio: r.bio || null,
     followers: r.followers != null ? Number(r.followers) : undefined,
     following: r.following != null ? Number(r.following) : undefined,
-    events: r.events != null ? Number(r.events) : undefined,
+    eventCount: r.events != null ? Number(r.events) : undefined,
     isFollowing: r.is_following != null ? !!r.is_following : undefined,
   };
 }
@@ -96,7 +99,7 @@ function eventOut(r) {
     startsAt: r.starts_at, endsAt: r.ends_at, startedAt: r.started_at, endedAt: r.ended_at,
     coverUrl: r.cover_url, theme: r.theme || {}, speakerSeats: r.speaker_seats, settings: r.settings || {},
     templateSlug: r.template_slug, liveViewers: r.live_viewers, peakViewers: r.peak_viewers, totalJoins: r.total_joins,
-    host: { id: r.host_user_id, username: r.host_username || null, name: r.host_name, avatarUrl: r.host_avatar || null },
+    host: { id: r.host_user_id, username: (require('../lib/auth').publicUsername(r.host_username) || r.host_username || null), name: r.host_name, avatarUrl: r.host_avatar || null },
     rsvps: r.rsvps != null ? Number(r.rsvps) : undefined,
     rsvped: r.rsvped != null ? !!r.rsvped : undefined,
     historyId: r.meeting_history_id || null,
@@ -239,7 +242,10 @@ async function listSpeakers(eventId) {
   return (await many(`SELECT es.*, u.username
     FROM event_speakers es LEFT JOIN users u ON u.id=es.user_id
     WHERE es.event_id=$1 ORDER BY es.sort_order, es.id`, [eventId]))
-    .map((r) => ({ id: Number(r.id), userId: r.user_id, username: r.username || null, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null }));
+    .map((r) => {
+      const { publicUsername } = require('../lib/auth');
+      return { id: Number(r.id), userId: r.user_id, username: publicUsername(r.username) || r.username || null, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null };
+    });
 }
 async function setSpeakers(eventId, list) {
   return tx(async (c) => {
@@ -268,10 +274,12 @@ async function suggestedPeople(userId, limit = 6) {
     ORDER BY followers DESC, u.id DESC LIMIT $2`, [userId || 0, limit])).map(userCard);
 }
 function postOut(r) {
+  const { publicUsername } = require('../lib/auth');
+  const authorU = publicUsername(r.author_username) || r.author_handle || null;
   return {
     id: Number(r.id), kind: r.kind, body: r.body, media: r.media || [], likeCount: r.like_count, commentCount: r.comment_count,
     liked: !!r.liked, createdAt: r.created_at,
-    author: { id: r.user_id, username: r.author_username || null, name: r.author_name, avatarUrl: r.author_avatar, handle: r.author_handle },
+    author: { id: r.user_id, username: authorU, name: r.author_name, avatarUrl: r.author_avatar, handle: r.author_handle || authorU },
     event: r.event_id ? { id: Number(r.event_id), slug: r.ev_slug, title: r.ev_title, status: r.ev_status, category: r.ev_category, startsAt: r.ev_starts_at, theme: r.ev_theme || {}, coverUrl: r.ev_cover_url || null } : null,
   };
 }

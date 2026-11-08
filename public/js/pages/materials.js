@@ -16,8 +16,7 @@ function materialThumb(m) {
 export async function mount(view) {
   if (!requireLogin('Sign in to manage materials')) return;
   view.append(h('div', { class: 'page-head' },
-    h('h1', { html: icon('folder', { size: 28 }) + ' Materials' }),
-    h('p', { class: 'muted' }, 'Preload PDFs, PPTX, images and YouTube links. Present them instantly in any meeting — including instant calls from Tools → Present.')));
+    h('h1', { html: `<span class="ico-tile" data-group="content">${icon('folder', { size: 20 })}</span> Materials` })));
 
   const listEl = h('div', { class: 'stack', style: { gap: '.75rem' } });
   const formCard = h('div', { class: 'card pad layer col', style: { gap: '.75rem' } });
@@ -124,7 +123,9 @@ export async function mount(view) {
   fileIn.onchange = () => saveFromFiles(Array.from(fileIn.files || []));
 
   formCard.append(
-    h('span', { class: 'lbl', html: icon('plus', { size: 15 }) + ' Add material' }),
+    h('div', { class: 'row gap-s', style: { alignItems: 'center' } },
+      h('span', { class: 'ico-tile', 'data-group': 'content', html: icon('plus', { size: 16 }) }),
+      h('span', { class: 'lbl', style: { margin: 0 } }, 'Add material')),
     h('div', { class: 'grid2' }, title, yt),
     h('div', { class: 'row gap-s wrap' },
       h('button', { class: 'btn primary', type: 'button', html: icon('upload', { size: 16 }) + ' Upload PDF / PPTX / images', onclick: () => fileIn.click() }),

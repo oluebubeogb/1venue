@@ -5,11 +5,26 @@ export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/** Canonical profile path: prefer collab username, then handle, then numeric id. */
+/** Strip internal collab prefixes (u{hex8}_…, accounts:…) for public /u/… links. */
+export function publicUsername(name) {
+  if (name == null || name === '') return null;
+  let s = String(name).trim();
+  if (s.startsWith('accounts:')) s = s.slice(9);
+  if (s.startsWith('acc_')) s = s.slice(4);
+  const m = s.match(/^u[0-9a-f]{8}_(.+)$/i);
+  if (m) s = m[1];
+  s = s.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 40);
+  return s || null;
+}
+
+/** Canonical profile path: clean collab username → handle → id. */
 export function profilePath(u) {
   if (u == null) return '/me';
-  if (typeof u === 'string' || typeof u === 'number') return `/u/${u}`;
-  const key = u.username || u.handle || u.id;
+  if (typeof u === 'string' || typeof u === 'number') {
+    const cleaned = publicUsername(u) || String(u);
+    return `/u/${cleaned}`;
+  }
+  const key = publicUsername(u.username) || u.username || u.handle || publicUsername(u.handle) || u.id;
   return key != null ? `/u/${key}` : '/me';
 }
 

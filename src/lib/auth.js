@@ -38,15 +38,27 @@ function parseCookies(req) {
 function isInternalUsername(name) {
   if (!name) return true;
   const s = String(name);
-  return s.startsWith('accounts:') || s.startsWith('acc_') || s.endsWith('@accounts.local') || /^u[0-9a-f]{8}_/.test(s);
+  return s.startsWith('accounts:') || s.startsWith('acc_') || s.endsWith('@accounts.local') || /^u[0-9a-f]{8}_/i.test(s);
+}
+
+/** Strip internal collab prefixes so public URLs stay /u/oluebubeogb not /u/uec788dc4_oluebubeogb */
+function publicUsername(name) {
+  if (name == null || name === '') return null;
+  let s = String(name).trim();
+  if (s.startsWith('accounts:')) s = s.slice('accounts:'.length);
+  if (s.startsWith('acc_')) s = s.slice(4);
+  const m = s.match(/^u[0-9a-f]{8}_(.+)$/i);
+  if (m) s = m[1];
+  s = s.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 40);
+  return s || null;
 }
 
 function niceDisplayName({ displayName, username, email }) {
-  const candidates = [displayName, username, email && String(email).split('@')[0], 'User'];
+  const candidates = [displayName, publicUsername(username), username, email && String(email).split('@')[0], 'User'];
   for (const c of candidates) {
     if (c && !isInternalUsername(c)) return String(c).trim().slice(0, 80);
   }
-  return 'User';
+  return publicUsername(username) || 'User';
 }
 
 function shapeUser(row, extra = {}) {
@@ -78,15 +90,22 @@ async function ensureAccountsUser({ accountsId, email, username, displayName, av
     row = (await db.q('SELECT * FROM users WHERE username = $1', ['accounts:' + id])).rows[0] || null;
   }
   if (row) {
-    // Keep the profile in sync with Accounts (display name, accounts id link)
-    if (row.accounts_id !== id || (pretty !== 'User' && row.display_name !== pretty) || (avatarUrl && !row.avatar_url)) {
+    // Keep the profile in sync with Accounts (display name, accounts id link, public handle)
+    const pub = publicUsername(username) || publicUsername(pretty);
+    const needsSync = row.accounts_id !== id
+      || (pretty !== 'User' && row.display_name !== pretty)
+      || (avatarUrl && !row.avatar_url)
+      || (pub && !row.handle);
+    if (needsSync) {
       try {
         row = (await db.q(
           `UPDATE users SET accounts_id = COALESCE(accounts_id, $2),
              display_name = CASE WHEN $3 <> 'User' THEN $3 ELSE display_name END,
-             avatar_url = COALESCE(avatar_url, $4), updated_at = NOW()
+             avatar_url = COALESCE(avatar_url, $4),
+             handle = COALESCE(handle, $5),
+             updated_at = NOW()
            WHERE id = $1 RETURNING *`,
-          [row.id, id || null, pretty, avatarUrl || null]
+          [row.id, id || null, pretty, avatarUrl || null, pub || null]
         )).rows[0];
       } catch (e) { console.warn('[accounts] sync', e.message); }
     }
@@ -95,9 +114,13 @@ async function ensureAccountsUser({ accountsId, email, username, displayName, av
 
   const base =
     (username && !isInternalUsername(username) && String(username).replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16)) ||
+    (publicUsername(username)) ||
     (em && !em.endsWith('@accounts.local') && em.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16)) ||
     'user';
-  const uname = ('u' + id.replace(/-/g, '').slice(0, 8) + '_' + base).slice(0, 40).toLowerCase();
+  // Prefer a clean public username; fall back to prefixed form only on collision
+  let uname = String(base).toLowerCase().slice(0, 30);
+  const taken = (await db.q('SELECT 1 FROM users WHERE LOWER(username)=LOWER($1)', [uname])).rows[0];
+  if (taken) uname = ('u' + id.replace(/-/g, '').slice(0, 8) + '_' + base).slice(0, 40).toLowerCase();
   try {
     row = (await db.q(
       `INSERT INTO users (username, email, password_hash, display_name, accounts_id, avatar_url)
@@ -246,9 +269,10 @@ function publicUser(user) {
     username: user.username,
     email: user.email,
   });
+  const uname = publicUsername(user.username) || (!isInternalUsername(user.username) ? user.username : null) || displayName;
   return {
     id: user.id,
-    username: isInternalUsername(user.username) ? displayName : (user.username || displayName),
+    username: uname,
     email: user.email,
     displayName,
     avatarUrl: user.avatarUrl || user.avatar_url || null,
@@ -272,6 +296,7 @@ module.exports = {
   LOCAL_COOKIE,
   parseCookies,
   isInternalUsername,
+  publicUsername,
   niceDisplayName,
   ensureAccountsUser,
   getAuthUser,

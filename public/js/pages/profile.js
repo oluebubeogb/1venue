@@ -24,7 +24,7 @@ export async function mount(view, params) {
     h('div', { class: 'band' }),
     h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
       h('div', { class: 'grow' }, h('h1', null, u.name), u.handle ? h('div', { class: 'muted' }, '@' + u.handle) : null, u.bio ? h('p', { style: { marginTop: '.4rem' } }, u.bio) : null,
-        h('div', { class: 'row wrap small', style: { gap: '1.1rem', marginTop: '.6rem' } }, h('span', null, h('strong', null, fmtNum(u.followers)), ' followers'), h('span', null, h('strong', null, fmtNum(u.following)), ' following'), h('span', null, h('strong', null, fmtNum(u.events)), ' events'))),
+        h('div', { class: 'row wrap small', style: { gap: '1.1rem', marginTop: '.6rem' } }, h('span', null, h('strong', null, fmtNum(u.followers)), ' followers'), h('span', null, h('strong', null, fmtNum(u.following)), ' following'), h('span', null, h('strong', null, fmtNum(Array.isArray(u.events) ? u.events.length : (u.eventCount ?? u.events))), ' events'))),
       h('div', { class: 'row', style: { gap: '.4rem' } },
         u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
         h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Share profile', 'aria-label': 'Share', html: icon('share'), onclick: () => shareLink(`${location.origin}${profilePath(u)}`, u.name) })))),
