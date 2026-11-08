@@ -172,11 +172,14 @@ export function buildTools(R) {
         ref.value = x.reference || x; R.scriptureDraft = ref.value; preview();
       }
       function hitRow(x) {
-        const text = x.excerpt || x.text || x.why || '';
+        const text = x.text || x.excerpt || x.why || '';
+        const body = (x.verses && x.verses.length)
+          ? versesEl({ verses: x.verses }, { selectable: false, compact: true })
+          : (text ? h('div', { class: 'scr-hit-text' }, text) : null);
         return h('div', { class: 'scr-hit' },
           h('button', { class: 'scr-hit-ref', type: 'button', onclick: () => openHit(x) }, x.reference || x),
           x.why ? h('div', { class: 'tiny muted' }, x.why) : null,
-          text ? h('div', { class: 'scr-hit-text' }, text) : null,
+          body,
           h('div', { class: 'row gap-xs', style: { marginTop: '.25rem' } },
             h('button', { class: 'btn sm', type: 'button', onclick: () => openHit(x), html: icon('bookOpen', { size: 13 }) + ' Open' }),
             canShow ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => { ref.value = x.reference; R.scriptureDraft = ref.value; R.showScripture(x.reference, { translation: R.bibleTr(), mode: shared?.mode || 'side' }); }, html: icon('presentation', { size: 13 }) + ' Show' }) : null,

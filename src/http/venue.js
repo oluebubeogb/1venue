@@ -514,19 +514,21 @@ route('POST', '/api/ai/scripture', async (ctx) => {
     return bible().parseReference(ref) ? { reference: ref, why: why || '' } : null;
   }).filter(Boolean).slice(0, 6);
 
-  // Hydrate each suggestion with real verse text (numbered) so the UI can show
-  // excerpts and support copy / post / share without an extra round-trip.
+  // Hydrate with verse objects so the UI can use the same superscript style as the reader.
   const refs = [];
   for (const item of parsed) {
     try {
       const p = await bible().passage(item.reference, translation);
-      const text = (p.verses || []).map((v) => `${v.v} ${String(v.text).replace(/^¶\s*/, '').trim()}`).join(' ');
-      const excerpt = text.length > 220 ? text.slice(0, 220).trim() + '…' : text;
+      const verses = (p.verses || []).map((v) => ({
+        v: v.v,
+        text: String(v.text).replace(/^¶\s*/, '').trim(),
+      }));
+      const text = verses.map((v) => `${v.v} ${v.text}`).join(' ');
       refs.push({
         reference: p.reference || item.reference,
         why: item.why,
         text,
-        excerpt,
+        verses: verses.slice(0, 8),
         translation: p.translation?.id || translation,
         short: p.translation?.short || '',
         book: p.book,
@@ -534,7 +536,7 @@ route('POST', '/api/ai/scripture', async (ctx) => {
         selected: p.selected || null,
       });
     } catch {
-      refs.push({ reference: item.reference, why: item.why, text: '', excerpt: item.why || '' });
+      refs.push({ reference: item.reference, why: item.why, text: '', verses: [] });
     }
   }
   return { refs, query, provider: r.provider, mock: !!r.mock };

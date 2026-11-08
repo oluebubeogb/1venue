@@ -11,6 +11,9 @@ const BYSA = 'CC BY-SA 4.0 (attribution required, share-alike)';
 const TRANSLATIONS = [
   { id: 'eng_kjv', short: 'KJV', name: 'King James Version', lang: 'en', language: 'English', license: PD },
   { id: 'ENGWEBP', short: 'WEB', name: 'World English Bible', lang: 'en', language: 'English', license: PD },
+  { id: 'eng_webc', short: 'WEBc', name: 'World English Bible (Catholic)', lang: 'en', language: 'English', license: PD, deuterocanon: true },
+  { id: 'eng_dra', short: 'DRA', name: 'Douay-Rheims 1899 (Catholic)', lang: 'en', language: 'English', license: PD, deuterocanon: true },
+  { id: 'eng_kja', short: 'KJVA', name: 'King James Version + Apocrypha', lang: 'en', language: 'English', license: PD, deuterocanon: true },
   { id: 'BSB', short: 'BSB', name: 'Berean Standard Bible', lang: 'en', language: 'English', license: PD },
   { id: 'eng_asv', short: 'ASV', name: 'American Standard Version (1901)', lang: 'en', language: 'English', license: PD },
   { id: 'eng_bbe', short: 'BBE', name: 'Bible in Basic English', lang: 'en', language: 'English', license: PD },
@@ -27,6 +30,11 @@ const TRANSLATIONS = [
   { id: 'por_bsl', short: 'BSL', name: 'Bíblia Livre (Portuguese)', lang: 'pt', language: 'Portuguese', license: PD },
   { id: 'deu_l12', short: 'L1912', name: 'Luther Bibel 1912', lang: 'de', language: 'German', license: PD },
   { id: 'arb_vdv', short: 'SVD', name: 'Van Dyck (Arabic)', lang: 'ar', language: 'Arabic', license: PD, rtl: true },
+  // Qur’an (via Al Quran Cloud — free, no key)
+  { id: 'quran_en_sahih', short: 'Sahih', name: 'Qur’an — Sahih International', lang: 'en', language: 'English', license: 'Translation © Saheeh International', corpus: 'quran' },
+  { id: 'quran_en_pickthall', short: 'Pickthall', name: 'Qur’an — Mohammed Marmaduke Pickthall', lang: 'en', language: 'English', license: PD, corpus: 'quran' },
+  { id: 'quran_en_yusufali', short: 'Yusuf Ali', name: 'Qur’an — Abdullah Yusuf Ali', lang: 'en', language: 'English', license: PD, corpus: 'quran' },
+  { id: 'quran_ar_uthmani', short: 'Uthmani', name: 'Qur’an — Arabic (Uthmani)', lang: 'ar', language: 'Arabic', license: PD, corpus: 'quran', rtl: true },
 ];
 const BY_ID = new Map(TRANSLATIONS.map((t) => [t.id.toLowerCase(), t]));
 const BY_SHORT = new Map(TRANSLATIONS.map((t) => [t.short.toLowerCase(), t]));
@@ -36,7 +44,7 @@ function resolveTranslation(id) {
 }
 
 // USFM book ids, English names and chapter counts
-const BOOKS = [
+const CANON_BOOKS = [
   ['GEN', 'Genesis', 50], ['EXO', 'Exodus', 40], ['LEV', 'Leviticus', 27], ['NUM', 'Numbers', 36], ['DEU', 'Deuteronomy', 34],
   ['JOS', 'Joshua', 24], ['JDG', 'Judges', 21], ['RUT', 'Ruth', 4], ['1SA', '1 Samuel', 31], ['2SA', '2 Samuel', 24],
   ['1KI', '1 Kings', 22], ['2KI', '2 Kings', 25], ['1CH', '1 Chronicles', 29], ['2CH', '2 Chronicles', 36], ['EZR', 'Ezra', 10],
@@ -52,7 +60,69 @@ const BOOKS = [
   ['1PE', '1 Peter', 5], ['2PE', '2 Peter', 3], ['1JN', '1 John', 5], ['2JN', '2 John', 1], ['3JN', '3 John', 1],
   ['JUD', 'Jude', 1], ['REV', 'Revelation', 22],
 ].map(([id, name, chapters], i) => ({ id, name, chapters, testament: i < 39 ? 'OT' : 'NT' }));
-const ALIASES = { psalm: 'PSA', ps: 'PSA', pss: 'PSA', song: 'SNG', songofsolomon: 'SNG', canticles: 'SNG', jn: 'JHN', joh: 'JHN', mt: 'MAT', mk: 'MRK', lk: 'LUK', ac: 'ACT', rev: 'REV', revelations: 'REV', phil: 'PHP', philippians: 'PHP', phm: 'PHM', philemon: 'PHM', jas: 'JAS', jude: 'JUD', ezek: 'EZK', eze: 'EZK', judg: 'JDG', jdg: 'JDG', prov: 'PRO', eccl: 'ECC', qoheleth: 'ECC', obad: 'OBA', zeph: 'ZEP', zech: 'ZEC', hab: 'HAB', nah: 'NAM', joel: 'JOL', mic: 'MIC', lam: 'LAM', deut: 'DEU', dt: 'DEU', num: 'NUM', lev: 'LEV', ex: 'EXO', exod: 'EXO', gen: 'GEN', gn: 'GEN', josh: 'JOS', rom: 'ROM', gal: 'GAL', eph: 'EPH', col: 'COL', heb: 'HEB', tit: 'TIT', mat: 'MAT', matt: 'MAT', mark: 'MRK', luke: 'LUK', john: 'JHN', acts: 'ACT', isa: 'ISA', jer: 'JER', dan: 'DAN', hos: 'HOS', amos: 'AMO', jonah: 'JON', mal: 'MAL', hag: 'HAG', neh: 'NEH', est: 'EST', ezr: 'EZR', job: 'JOB', ruth: 'RUT' };
+
+// Catholic / Orthodox deuterocanonical books (available in eng_webc, eng_dra, eng_kja, …)
+const DEUTERO_BOOKS = [
+  ['TOB', 'Tobit', 14], ['JDT', 'Judith', 16], ['ESG', 'Esther (Greek)', 10],
+  ['WIS', 'Wisdom of Solomon', 19], ['SIR', 'Sirach', 51], ['BAR', 'Baruch', 6],
+  ['1MA', '1 Maccabees', 16], ['2MA', '2 Maccabees', 15], ['DAG', 'Daniel (Greek)', 14],
+].map(([id, name, chapters]) => ({ id, name, chapters, testament: 'DC' }));
+
+// Qur’an — 114 surahs (ayah counts). IDs Q01–Q114 for the chapter API.
+const QURAN_SURAHS = [
+  [1, 'Al-Fatihah', 7], [2, 'Al-Baqarah', 286], [3, 'Ali \'Imran', 200], [4, 'An-Nisa', 176], [5, 'Al-Ma\'idah', 120],
+  [6, 'Al-An\'am', 165], [7, 'Al-A\'raf', 206], [8, 'Al-Anfal', 75], [9, 'At-Tawbah', 129], [10, 'Yunus', 109],
+  [11, 'Hud', 123], [12, 'Yusuf', 111], [13, 'Ar-Ra\'d', 43], [14, 'Ibrahim', 52], [15, 'Al-Hijr', 99],
+  [16, 'An-Nahl', 128], [17, 'Al-Isra', 111], [18, 'Al-Kahf', 110], [19, 'Maryam', 98], [20, 'Ta-Ha', 135],
+  [21, 'Al-Anbiya', 112], [22, 'Al-Hajj', 78], [23, 'Al-Mu\'minun', 118], [24, 'An-Nur', 64], [25, 'Al-Furqan', 77],
+  [26, 'Ash-Shu\'ara', 227], [27, 'An-Naml', 93], [28, 'Al-Qasas', 88], [29, 'Al-\'Ankabut', 69], [30, 'Ar-Rum', 60],
+  [31, 'Luqman', 34], [32, 'As-Sajdah', 30], [33, 'Al-Ahzab', 73], [34, 'Saba', 54], [35, 'Fatir', 45],
+  [36, 'Ya-Sin', 83], [37, 'As-Saffat', 182], [38, 'Sad', 88], [39, 'Az-Zumar', 75], [40, 'Ghafir', 85],
+  [41, 'Fussilat', 54], [42, 'Ash-Shura', 53], [43, 'Az-Zukhruf', 89], [44, 'Ad-Dukhan', 59], [45, 'Al-Jathiyah', 37],
+  [46, 'Al-Ahqaf', 35], [47, 'Muhammad', 38], [48, 'Al-Fath', 29], [49, 'Al-Hujurat', 18], [50, 'Qaf', 45],
+  [51, 'Adh-Dhariyat', 60], [52, 'At-Tur', 49], [53, 'An-Najm', 62], [54, 'Al-Qamar', 55], [55, 'Ar-Rahman', 78],
+  [56, 'Al-Waqi\'ah', 96], [57, 'Al-Hadid', 29], [58, 'Al-Mujadila', 22], [59, 'Al-Hashr', 24], [60, 'Al-Mumtahanah', 13],
+  [61, 'As-Saff', 14], [62, 'Al-Jumu\'ah', 11], [63, 'Al-Munafiqun', 11], [64, 'At-Taghabun', 18], [65, 'At-Talaq', 12],
+  [66, 'At-Tahrim', 12], [67, 'Al-Mulk', 30], [68, 'Al-Qalam', 52], [69, 'Al-Haqqah', 52], [70, 'Al-Ma\'arij', 44],
+  [71, 'Nuh', 28], [72, 'Al-Jinn', 28], [73, 'Al-Muzzammil', 20], [74, 'Al-Muddaththir', 56], [75, 'Al-Qiyamah', 40],
+  [76, 'Al-Insan', 31], [77, 'Al-Mursalat', 50], [78, 'An-Naba', 40], [79, 'An-Nazi\'at', 46], [80, '\'Abasa', 42],
+  [81, 'At-Takwir', 29], [82, 'Al-Infitar', 19], [83, 'Al-Mutaffifin', 36], [84, 'Al-Inshiqaq', 25], [85, 'Al-Buruj', 22],
+  [86, 'At-Tariq', 17], [87, 'Al-A\'la', 19], [88, 'Al-Ghashiyah', 26], [89, 'Al-Fajr', 30], [90, 'Al-Balad', 20],
+  [91, 'Ash-Shams', 15], [92, 'Al-Layl', 21], [93, 'Ad-Duha', 11], [94, 'Ash-Sharh', 8], [95, 'At-Tin', 8],
+  [96, 'Al-\'Alaq', 19], [97, 'Al-Qadr', 5], [98, 'Al-Bayyinah', 8], [99, 'Az-Zalzalah', 8], [100, 'Al-\'Adiyat', 11],
+  [101, 'Al-Qari\'ah', 11], [102, 'At-Takathur', 8], [103, 'Al-\'Asr', 3], [104, 'Al-Humazah', 9], [105, 'Al-Fil', 5],
+  [106, 'Quraysh', 4], [107, 'Al-Ma\'un', 7], [108, 'Al-Kawthar', 3], [109, 'Al-Kafirun', 6], [110, 'An-Nasr', 3],
+  [111, 'Al-Masad', 5], [112, 'Al-Ikhlas', 4], [113, 'Al-Falaq', 5], [114, 'An-Nas', 6],
+].map(([n, name, ayahs]) => ({
+  id: `Q${String(n).padStart(3, '0')}`,
+  name,
+  chapters: 1, // one “chapter” per surah; ayahs live as verses of chapter 1
+  ayahs,
+  surah: n,
+  testament: 'Quran',
+}));
+
+const BOOKS = [...CANON_BOOKS, ...DEUTERO_BOOKS, ...QURAN_SURAHS];
+
+const ALIASES = {
+  psalm: 'PSA', ps: 'PSA', pss: 'PSA', song: 'SNG', songofsolomon: 'SNG', canticles: 'SNG',
+  jn: 'JHN', joh: 'JHN', mt: 'MAT', mk: 'MRK', lk: 'LUK', ac: 'ACT', rev: 'REV', revelations: 'REV',
+  phil: 'PHP', philippians: 'PHP', phm: 'PHM', philemon: 'PHM', jas: 'JAS', jude: 'JUD',
+  ezek: 'EZK', eze: 'EZK', judg: 'JDG', jdg: 'JDG', prov: 'PRO', eccl: 'ECC', qoheleth: 'ECC',
+  obad: 'OBA', zeph: 'ZEP', zech: 'ZEC', hab: 'HAB', nah: 'NAM', joel: 'JOL', mic: 'MIC', lam: 'LAM',
+  deut: 'DEU', dt: 'DEU', num: 'NUM', lev: 'LEV', ex: 'EXO', exod: 'EXO', gen: 'GEN', gn: 'GEN',
+  josh: 'JOS', rom: 'ROM', gal: 'GAL', eph: 'EPH', col: 'COL', heb: 'HEB', tit: 'TIT',
+  mat: 'MAT', matt: 'MAT', mark: 'MRK', luke: 'LUK', john: 'JHN', acts: 'ACT', isa: 'ISA', jer: 'JER',
+  dan: 'DAN', hos: 'HOS', amos: 'AMO', jonah: 'JON', mal: 'MAL', hag: 'HAG', neh: 'NEH', est: 'EST',
+  ezr: 'EZR', job: 'JOB', ruth: 'RUT',
+  // Deuterocanon
+  tobit: 'TOB', tob: 'TOB', judith: 'JDT', jdt: 'JDT', wisdom: 'WIS', wis: 'WIS', wisdomofsolomon: 'WIS',
+  sirach: 'SIR', sir: 'SIR', ecclesiasticus: 'SIR', baruch: 'BAR', bar: 'BAR',
+  '1maccabees': '1MA', '1macc': '1MA', '2maccabees': '2MA', '2macc': '2MA',
+  // Qur’an common aliases
+  fatihah: 'Q001', 'alfatihah': 'Q001', baqarah: 'Q002', 'albaqarah': 'Q002',
+  ikhlas: 'Q112', 'alikhlas': 'Q112', nas: 'Q114', 'annas': 'Q114',
+};
 function findBook(raw) {
   let s = String(raw || '').toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
   s = s.replace(/^(first|i)\s+/, '1 ').replace(/^(second|ii)\s+/, '2 ').replace(/^(third|iii)\s+/, '3 ');
@@ -111,6 +181,36 @@ const mem = new Map(); // tiny LRU in front of PG
 function memGet(k) { const v = mem.get(k); if (v) { mem.delete(k); mem.set(k, v); } return v; }
 function memSet(k, v) { mem.set(k, v); if (mem.size > 200) mem.delete(mem.keys().next().value); }
 
+const QURAN_EDITION = {
+  quran_en_sahih: 'en.sahih',
+  quran_en_pickthall: 'en.pickthall',
+  quran_en_yusufali: 'en.yusufali',
+  quran_ar_uthmani: 'quran-uthmani',
+};
+
+async function chapterQuran(t, book, c) {
+  const edition = QURAN_EDITION[t.id] || 'en.sahih';
+  const surah = book.surah || parseInt(String(book.id).replace(/^Q0*/, ''), 10);
+  if (!surah || surah < 1 || surah > 114) { const e = new Error('Unknown surah'); e.status = 400; throw e; }
+  const j = await fetchJSON(`https://api.alquran.cloud/v1/surah/${surah}/${edition}`);
+  const data = j.data || j;
+  const verses = (data.ayahs || []).map((a) => ({
+    v: a.numberInSurah || a.number,
+    text: String(a.text || '').replace(/\s+/g, ' ').trim(),
+  }));
+  return {
+    translation: t.id,
+    book: book.id,
+    bookName: data.englishName || book.name,
+    chapter: 1,
+    verses,
+    headings: data.englishNameTranslation ? [data.englishNameTranslation] : [],
+    source: 'alquran.cloud',
+    translationInfo: t,
+    chapters: 1,
+  };
+}
+
 async function chapter(translationId, bookId, ch) {
   const t = resolveTranslation(translationId);
   const book = BOOKS.find((b) => b.id === String(bookId).toUpperCase()) || findBook(bookId);
@@ -119,6 +219,24 @@ async function chapter(translationId, bookId, ch) {
   const key = `${t.id}|${book.id}|${c}`;
   const hit = memGet(key);
   if (hit) return hit;
+
+  // Qur’an editions use a different upstream
+  if (t.corpus === 'quran' || book.testament === 'Quran') {
+    if (t.corpus !== 'quran') {
+      const e = new Error('This translation does not include the Qur’an. Choose a Qur’an edition.');
+      e.status = 400; throw e;
+    }
+    const out = await chapterQuran(t, book, c);
+    memSet(key, out);
+    return out;
+  }
+
+  // Deuterocanonical books only in editions that include them
+  if (book.testament === 'DC' && !t.deuterocanon) {
+    const e = new Error(`“${book.name}” is in the deuterocanon. Switch to WEBc, DRA, or KJVA.`);
+    e.status = 400; throw e;
+  }
+
   const data = require('./data');
   let payload = await data.bibleCacheGet(t.id, book.id, c, config.BIBLE.cacheDays).catch(() => null);
   if (!payload) {

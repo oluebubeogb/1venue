@@ -21,9 +21,9 @@ export function translationSelect(value, onChange, { compact = false } = {}) {
   sel.onchange = () => onChange(sel.value);
   return sel;
 }
-export function versesEl(p, { selectable = true, onSelect } = {}) {
+export function versesEl(p, { selectable = true, onSelect, compact = false } = {}) {
   const sel = new Set(p.selected || []);
-  const wrap = h('div', { class: 'verse-wrap', lang: p.translation?.lang || 'en' });
+  const wrap = h('div', { class: `verse-wrap${compact ? ' compact' : ''}`, lang: p.translation?.lang || p.lang || 'en' });
   (p.verses || []).forEach((v) => {
     const el = h('span', { class: `verse${sel.has(v.v) ? ' sel' : ''}`, 'data-v': v.v }, h('sup', null, String(v.v)), ' ', String(v.text).replace(/^¶\s*/, ''), ' ');
     if (selectable) el.onclick = () => { el.classList.toggle('sel'); sel.has(v.v) ? sel.delete(v.v) : sel.add(v.v); onSelect && onSelect([...sel].sort((a, b) => a - b)); };
@@ -38,7 +38,12 @@ export async function mount(view, params) {
   let tr = params.t || state.prefs.bibleTranslation || state.config?.bible?.defaultTranslation || 'eng_kjv';
   let book = 'JHN', chapter = 1, highlight = [];
   const refIn = h('input', { class: 'input', placeholder: 'John 3:16, family, hope, “a man shall leave…”', 'aria-label': 'Reference or topic' });
-  const bookSel = h('select', { class: 'input', 'aria-label': 'Book' }, h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))), h('optgroup', { label: 'New Testament' }, books.filter((b) => b.testament === 'NT').map((b) => h('option', { value: b.id }, b.name))));
+  const bookSel = h('select', { class: 'input', 'aria-label': 'Book' },
+    h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))),
+    h('optgroup', { label: 'Deuterocanonical' }, books.filter((b) => b.testament === 'DC').map((b) => h('option', { value: b.id }, b.name))),
+    h('optgroup', { label: 'New Testament' }, books.filter((b) => b.testament === 'NT').map((b) => h('option', { value: b.id }, b.name))),
+    h('optgroup', { label: 'Qur’an' }, books.filter((b) => b.testament === 'Quran').map((b) => h('option', { value: b.id }, b.name))),
+  );
   const chSel = h('select', { class: 'input', 'aria-label': 'Chapter' });
   const trSel = translationSelect(tr, (v) => { tr = v; setPrefs({ bibleTranslation: v }); load(); }, { compact: true });
   const body = h('div', { class: 'card pad-lg bible-page' });
@@ -79,20 +84,18 @@ export async function mount(view, params) {
     const ref = refLabel(cur.bookName, chapter, highlight);
     const t = TR.find((x) => x.id === tr);
     selBar.innerHTML = '';
+    const selVerses = cur.verses.filter((v) => highlight.includes(v.v)).map((v) => ({ v: v.v, text: String(v.text).replace(/^¶\s*/, '').trim() }));
     const passage = { reference: ref, text: selectedText(), translation: tr, short: t?.short || '' };
     selBar.append(h('span', { class: 'sel-ref' }, h('strong', null, ref), h('small', null, `${highlight.length} verse${highlight.length > 1 ? 's' : ''}`)),
       h('button', { class: 'btn sm primary', 'data-group': 'social', onclick: () => sharePassageToFeed(passage), html: icon('feed', { size: 15 }) + '<span>Share to feed</span>' }),
       h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Copy', 'aria-label': 'Copy', html: icon('copy'), onclick: () => copy(`“${passage.text}” — ${ref} (${t?.short})`, 'Verse copied') }),
-      h('button', { class: 'icon-btn', 'data-group': 'ai', 'data-tip': 'Explain with AI', 'aria-label': 'Explain', html: icon('sparkles'), onclick: () => explain(ref, passage.text) }),
+      h('button', { class: 'icon-btn', 'data-group': 'ai', 'data-tip': 'Explain with AI', 'aria-label': 'Explain', html: icon('sparkles'), onclick: () => explain(ref, passage.text, selVerses) }),
       h('button', { class: 'icon-btn', 'data-tip': 'Clear selection', 'aria-label': 'Clear selection', html: icon('x'), onclick: () => { highlight = []; body.querySelectorAll('.verse.sel').forEach((e) => e.classList.remove('sel')); paintSel(); } }));
   }
-  async function explain(ref, text) {
+  async function explain(ref, text, verseList) {
     if (!state.user) return toast('Sign in to use AI', { icon: 'login' });
     const t = TR.find((x) => x.id === tr);
     const passage = { reference: ref, text, translation: tr, short: t?.short || '' };
-    // Keep verse display sleek: soft max length so cards stay tidy on small screens
-    const MAX_VERSE_CHARS = 320;
-    const displayText = text.length > MAX_VERSE_CHARS ? text.slice(0, MAX_VERSE_CHARS).trim() + '…' : text;
     const s = sheet({ title: ref, icon: 'sparkles', group: 'ai' });
     s.body.append(h('div', { class: 'skel', style: { height: '120px' } }));
     try {
@@ -142,14 +145,18 @@ export async function mount(view, params) {
         }),
       );
 
+      // Same superscript verse styling as the reader
+      const verseBlock = verseList?.length
+        ? versesEl({ verses: verseList, translation: t }, { selectable: false, compact: true })
+        : h('div', { class: 'verse-wrap compact' }, text);
+
       s.body.append(
-        // Sleek verse “card” (visual block, truncated for device-friendly layout)
         h('figure', { class: 'passage-card ai-verse-card', 'data-group': 'faith' },
           h('figcaption', { class: 'pc-head' },
             h('span', { class: 'pc-ic', html: icon('bookOpen', { size: 14 }) }),
             h('span', { class: 'pc-ref' }, ref),
             t?.short ? h('span', { class: 'pc-tr' }, t.short) : null),
-          h('blockquote', { class: 'pc-text' }, displayText)),
+          verseBlock),
         h('div', { class: 'ai-box prose', style: { marginTop: '1rem' }, html: md(explanation) }),
         acts,
         h('p', { class: 'tiny faint', style: { marginTop: '1rem' } }, r.mock ? 'Demo AI response — configure AI_PRIMARY_* for real answers.' : 'Venue AI'),
@@ -158,6 +165,7 @@ export async function mount(view, params) {
   }
   function resultCard(item) {
     const text = item.text || item.excerpt || '';
+    const verses = item.verses || [];
     const passage = {
       reference: item.reference,
       text: text || item.why || '',
@@ -196,12 +204,16 @@ export async function mount(view, params) {
         },
       }),
     );
+    // Same superscript numbering as the reader (gold/faith-coloured <sup>)
+    const bodyEl = verses.length
+      ? versesEl({ verses, translation: { lang: TR.find((x) => x.id === (item.translation || tr))?.lang || 'en' } }, { selectable: false, compact: true })
+      : (text ? h('div', { class: 'verse-wrap compact' }, text) : null);
     return h('article', { class: 'bible-hit card pad layer' },
       h('div', { class: 'row between wrap', style: { gap: '.4rem', alignItems: 'baseline' } },
         h('button', { class: 'bible-hit-ref', type: 'button', onclick: open }, item.reference),
         item.short ? h('span', { class: 'chip', 'data-group': 'faith' }, item.short) : null),
       item.why ? h('p', { class: 'tiny muted', style: { margin: '.2rem 0 .35rem' } }, item.why) : null,
-      text ? h('blockquote', { class: 'bible-hit-text' }, text) : null,
+      bodyEl,
       acts);
   }
 

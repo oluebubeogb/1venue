@@ -532,11 +532,19 @@ button.list-item:hover { background: var(--s2); }
   color: var(--g-faith, var(--accent)); cursor: pointer; text-align: left;
 }
 .bible-hit-ref:hover { text-decoration: underline; }
-.bible-hit-text {
-  margin: 0; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: .98rem; line-height: 1.55; color: var(--text); white-space: pre-wrap;
-  max-height: 7.5em; overflow: hidden;
+.bible-hit .verse-wrap {
+  margin-top: .35rem;
+  max-height: 9em;
+  overflow: hidden;
 }
+.verse-wrap.compact {
+  font-size: 1.02rem;
+  line-height: 1.7;
+  margin-top: .35rem;
+}
+.verse-wrap.compact .verse { font-size: inherit; line-height: inherit; }
+.passage-card .verse-wrap { margin-top: .45rem; }
+.passage-card .verse-wrap .verse { font-size: 1.02rem; line-height: 1.6; }
 
 .split { display: grid; gap: 1.2rem; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
 @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
