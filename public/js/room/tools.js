@@ -2,7 +2,7 @@
 import { h, esc, api, toast, toastErr, copy, download, md, uploadFile, timeAgo, debounce, fmtDur } from '../ui.js';
 import { state } from '../app.js';
 import { icon } from '../icons.js';
-import { translationSelect, versesEl, refLabel } from '../pages/bible.js';
+import { translationSelect, versesEl, refLabel, makeListenBtn } from '../pages/bible.js';
 import { createBoard, boardToolbar } from '../pages/whiteboard.js';
 import { SpeechRec } from './captions.js';
 import { SOUNDS, playSound, soundsMuted, setSoundsMuted } from './sounds.js';
@@ -171,18 +171,27 @@ export function buildTools(R) {
       function openHit(x) {
         ref.value = x.reference || x; R.scriptureDraft = ref.value; preview();
       }
+      function corpusOfTr(id) {
+        return /^quran_/i.test(id || '') ? 'quran' : 'bible';
+      }
       function hitRow(x) {
-        const text = x.text || x.excerpt || x.why || '';
+        const text = x.text || x.excerpt || '';
         const body = (x.verses && x.verses.length)
           ? versesEl({ verses: x.verses }, { selectable: false, compact: true })
           : (text ? h('div', { class: 'scr-hit-text' }, text) : null);
+        const lang = x.lang || (/^quran_/i.test(x.translation || R.bibleTr()) ? 'ar' : 'en');
         return h('div', { class: 'scr-hit' },
           h('button', { class: 'scr-hit-ref', type: 'button', onclick: () => openHit(x) }, x.reference || x),
           x.why ? h('div', { class: 'tiny muted' }, x.why) : null,
           body,
-          h('div', { class: 'row gap-xs', style: { marginTop: '.25rem' } },
+          h('div', { class: 'row gap-xs', style: { marginTop: '.25rem', flexWrap: 'wrap' } },
             h('button', { class: 'btn sm', type: 'button', onclick: () => openHit(x), html: icon('bookOpen', { size: 13 }) + ' Open' }),
-            canShow ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => { ref.value = x.reference; R.scriptureDraft = ref.value; R.showScripture(x.reference, { translation: R.bibleTr(), mode: shared?.mode || 'side' }); }, html: icon('presentation', { size: 13 }) + ' Show' }) : null,
+            canShow ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => { ref.value = x.reference; R.scriptureDraft = ref.value; R.showScripture(x.reference, { translation: x.translation || R.bibleTr(), mode: shared?.mode || 'side' }); }, html: icon('presentation', { size: 13 }) + ' Show' }) : null,
+            makeListenBtn(() => ({
+              verses: x.verses?.length ? x.verses : null,
+              text: text || null,
+              lang,
+            })),
             h('button', {
               class: 'icon-btn has-bg sm', type: 'button',
               'data-tip': 'Copy', 'aria-label': 'Copy',
@@ -195,18 +204,23 @@ export function buildTools(R) {
         const q = ref.value.trim(); if (!q) return;
         if (shared && canShow) return showNow(); // while sharing, previewing a new chapter re-broadcasts it
         out.replaceChildren(h('div', { class: 'skel', style: { height: '80px' } }));
+        const trId = R.bibleTr();
+        const corpus = corpusOfTr(trId);
         try {
-          const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${R.bibleTr()}`);
-          out.replaceChildren(h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`), versesEl(p, { selectable: false }));
+          const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${trId}`);
+          const head = h('div', { class: 'row between', style: { alignItems: 'center', gap: '.4rem' } },
+            h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`),
+            makeListenBtn(() => ({ verses: p.verses, lang: p.translation?.lang || (corpus === 'quran' ? 'ar' : 'en') })));
+          out.replaceChildren(head, versesEl(p, { selectable: false }));
         } catch {
           try {
-            const r = await api('/api/ai/scripture', { method: 'POST', headers: R.headers(), body: { query: q, translation: R.bibleTr() } });
+            const r = await api('/api/ai/scripture', { method: 'POST', headers: R.headers(), body: { query: q, translation: trId, corpus } });
             if (!(r.refs || []).length) {
               out.replaceChildren(h('p', { class: 'muted small' }, 'No matching passages. Try a reference or topic like “family”, “hope”.'));
               return;
             }
             out.replaceChildren(
-              h('div', { class: 'tiny muted', style: { marginBottom: '.35rem' } }, 'Topic & phrase matches'),
+              h('div', { class: 'tiny muted', style: { marginBottom: '.35rem' } }, `${corpus === 'quran' ? 'Qur’an' : 'Bible'} topic matches`),
               h('div', { class: 'scr-hits col', style: { gap: '.55rem' } }, ...(r.refs || []).map(hitRow)),
             );
           } catch (e) { out.replaceChildren(h('p', { class: 'muted small' }, 'Couldn’t find that passage.')); }

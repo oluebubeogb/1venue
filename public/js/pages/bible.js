@@ -4,6 +4,7 @@ import { state, setPrefs, navigate } from '../app.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { sharePassageToFeed } from '../passage.js';
 import { shareLink } from '../components.js';
+import { speak, stop as ttsStop, isSpeaking, ttsSupported, bestVoice } from '../tts.js';
 
 let TR = null, BOOKS = null;
 export async function bibleMeta() {
@@ -53,6 +54,49 @@ export function versesEl(p, { selectable = true, onSelect, compact = false } = {
   });
   return wrap;
 }
+/** Listen / Stop control for scripture text (Web Speech API). */
+export function makeListenBtn(getPayload) {
+  const btn = h('button', {
+    class: 'icon-btn has-bg',
+    type: 'button',
+    'data-tip': 'Listen',
+    'aria-label': 'Listen',
+    html: icon('volume', { size: 18 }),
+  });
+  if (!ttsSupported()) {
+    btn.disabled = true;
+    btn.setAttribute('data-tip', 'Speech not supported in this browser');
+    return btn;
+  }
+  const sync = () => {
+    const on = isSpeaking();
+    btn.classList.toggle('on', on);
+    btn.setAttribute('data-tip', on ? 'Stop' : 'Listen');
+    btn.setAttribute('aria-label', on ? 'Stop' : 'Listen');
+    btn.innerHTML = icon(on ? 'volumeX' : 'volume', { size: 18 });
+  };
+  btn.onclick = () => {
+    if (isSpeaking()) { ttsStop(); sync(); return; }
+    const { verses, text, lang } = getPayload() || {};
+    const payload = verses?.length ? verses : text;
+    if (!payload || (Array.isArray(payload) && !payload.length)) {
+      toast('Nothing to read', { icon: 'info' });
+      return;
+    }
+    const r = speak(payload, { lang: lang || 'en' });
+    if (!r.ok) {
+      toast(r.reason === 'unsupported' ? 'Speech not supported here' : 'Could not start reading', { icon: 'info' });
+      return;
+    }
+    if (!bestVoice(lang || 'en') && lang && !String(lang).startsWith('en')) {
+      toast('No native voice for this language on this device — pronunciation may vary', { icon: 'info' });
+    }
+    sync();
+    const tick = setInterval(() => { if (!isSpeaking()) { clearInterval(tick); sync(); } }, 300);
+  };
+  return btn;
+}
+
 export const refLabel = (bookName, ch, vs, { quran = false } = {}) => {
   const range = vs && vs.length
     ? (vs.length > 1 && vs[vs.length - 1] - vs[0] === vs.length - 1 ? `${vs[0]}-${vs[vs.length - 1]}` : vs.join(','))
@@ -157,10 +201,19 @@ export async function mount(view, params) {
         isQuran && meaning
           ? h('div', { class: 'surah-meaning' }, meaning)
           : null);
+      const listenBtn = makeListenBtn(() => {
+        const lang = t?.lang || 'en';
+        const vs = highlight.length
+          ? cur.verses.filter((v) => highlight.includes(v.v))
+          : cur.verses;
+        return { verses: vs, lang };
+      });
       body.append(
         h('div', { class: 'row between wrap', style: { alignItems: 'flex-start' } },
           titleBlock,
-          h('span', { class: 'chip', 'data-group': 'faith', 'data-tip': t?.license || '' }, t?.short || tr)),
+          h('div', { class: 'row', style: { gap: '.35rem', alignItems: 'center' } },
+            listenBtn,
+            h('span', { class: 'chip', 'data-group': 'faith', 'data-tip': t?.license || '' }, t?.short || tr))),
         versesEl({ ...cur, selected: highlight, translation: t }, { onSelect: (vs) => { highlight = vs; paintSel(); } }),
         h('div', { class: 'row between', style: { marginTop: '1.5rem' } },
           h('button', { class: 'btn', html: icon('chevronLeft', { size: 18 }) + (isQuran ? 'Previous surah' : 'Previous'), onclick: () => step(-1) }),
@@ -187,6 +240,7 @@ export async function mount(view, params) {
     const selVerses = cur.verses.filter((v) => highlight.includes(v.v)).map((v) => ({ v: v.v, text: String(v.text).replace(/^¶\s*/, '').trim() }));
     const passage = { reference: ref, text: selectedText(), translation: tr, short: t?.short || '' };
     selBar.append(h('span', { class: 'sel-ref' }, h('strong', null, ref), h('small', null, `${highlight.length} verse${highlight.length > 1 ? 's' : ''}`)),
+      makeListenBtn(() => ({ verses: selVerses, lang: t?.lang || 'en' })),
       h('button', { class: 'btn sm primary', 'data-group': 'social', onclick: () => sharePassageToFeed(passage), html: icon('feed', { size: 15 }) + '<span>Share to feed</span>' }),
       h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Copy', 'aria-label': 'Copy', html: icon('copy'), onclick: () => copy(`“${passage.text}” — ${ref} (${t?.short})`, 'Verse copied') }),
       h('button', { class: 'icon-btn', 'data-group': 'ai', 'data-tip': 'Explain with AI', 'aria-label': 'Explain', html: icon('sparkles'), onclick: () => explain(ref, passage.text, selVerses) }),
@@ -273,8 +327,14 @@ export async function mount(view, params) {
       short: item.short || (TR.find((x) => x.id === (item.translation || tr))?.short) || '',
     };
     const open = () => goRef(item.reference, { forcePassage: true });
+    const hitLang = TR.find((x) => x.id === (item.translation || tr))?.lang || 'en';
     const acts = h('div', { class: 'row gap-s', style: { marginTop: '.55rem', flexWrap: 'wrap' } },
       h('button', { class: 'btn sm primary', type: 'button', onclick: open, html: icon('bookOpen', { size: 14 }) + ' Open' }),
+      makeListenBtn(() => ({
+        verses: verses.length ? verses : null,
+        text: text || null,
+        lang: hitLang,
+      })),
       h('button', {
         class: 'icon-btn has-bg sm', type: 'button',
         'data-tip': 'Copy', 'aria-label': 'Copy',

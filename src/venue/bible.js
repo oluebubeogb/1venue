@@ -138,6 +138,7 @@ const ALIASES = {
   // Qur’an common aliases (normalized keys without hyphens/spaces also matched in findBook)
   fatihah: 'Q001', alfatihah: 'Q001', 'al-fatihah': 'Q001',
   baqarah: 'Q002', albaqarah: 'Q002', 'al-baqarah': 'Q002',
+  baqara: 'Q002', albaqara: 'Q002', 'al-baqara': 'Q002',
   imran: 'Q003', aliimran: 'Q003', alimran: 'Q003',
   nisa: 'Q004', annisa: 'Q004',
   ikhlas: 'Q112', alikhlas: 'Q112', 'al-ikhlas': 'Q112',
@@ -202,7 +203,9 @@ function findBook(raw) {
 function parseReference(ref) {
   const raw = String(ref || '').trim();
   // Allow hyphens / apostrophes in book names (Al-Ikhlas, Ali 'Imran, Song of Songs)
-  const m = raw.match(/^((?:[123]|i{1,3}|first|second|third)?\s*[a-zA-Z][a-zA-Z0-9 .'\-’]*?)\s+(\d{1,3})(?:\s*[:.]\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?((?:\s*,\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?)*))?\s*$/i);
+  // Chapter form: "John 3:16-18" OR range without colon "Al-Baqara 2-195" / "Psalm 23"
+  const m = raw.match(/^((?:[123]|i{1,3}|first|second|third)?\s*[a-zA-Z][a-zA-Z0-9 .'\-’]*?)\s+(\d{1,3})(?:\s*[:.]\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?((?:\s*,\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?)*))?$/i)
+    || raw.match(/^((?:[123]|i{1,3}|first|second|third)?\s*[a-zA-Z][a-zA-Z0-9 .'\-’]*?)\s+(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/i);
   if (!m) {
     // Bare surah name with no chapter (e.g. "Al-Ikhlas") → whole surah chapter 1
     const only = findBook(raw);
@@ -220,17 +223,23 @@ function parseReference(ref) {
   // Qur’an surahs are one chapter each. "Az-Zumar 53" / "Al-Baqarah 255" mean ayahs.
   if (book.testament === 'Quran') {
     if (m[3]) {
-      // "Al-Baqarah 1:255" or mistaken "Al-Baqarah 2:5"
-      if (chapter > 1) {
-        addRange(chapter, parseInt(m[3], 10));
-        chapter = 1;
-      } else {
-        addRange(parseInt(m[3], 10), m[4] ? parseInt(m[4], 10) : null);
+      const a = chapter;
+      const b = parseInt(m[3], 10);
+      // "Al-Baqarah 1:255" → ayah 255; "Al-Baqara 2-195" (surah:ayah miswritten) → ayah 195
+      if (a === 1 && book.surah) {
+        addRange(b, m[4] ? parseInt(m[4], 10) : b);
         for (const part of (m[5] || '').split(',').map((x) => x.trim()).filter(Boolean)) {
-          const [a, b] = part.split(/[-–]/).map((x) => parseInt(x, 10));
-          addRange(a, b);
+          const [x, y] = part.split(/[-–]/).map((n) => parseInt(n, 10));
+          addRange(x, y);
         }
+      } else if (book.surah && a === book.surah && b > a) {
+        addRange(b, b);
+      } else if (a > 1) {
+        addRange(Math.min(a, b), Math.max(a, b));
+      } else {
+        addRange(b, m[4] ? parseInt(m[4], 10) : b);
       }
+      chapter = 1;
     } else if (chapter > 1 || (book.ayahs && chapter <= book.ayahs && chapter !== 1)) {
       // "Az-Zumar 53" → ayah 53; bare "Al-Fatihah 1" opens whole surah
       addRange(chapter, chapter);
@@ -238,11 +247,18 @@ function parseReference(ref) {
     } else {
       chapter = 1; // full surah
     }
-    // Also handle "Al-Fatihah 1-7" without colon (regex may put end in m[2] only via range in raw)
+    // "Al-Fatihah 1-7" or mistaken "Al-Baqarah 2-195" (AI wrote surah:ayah with a hyphen)
     const dash = raw.match(/(\d{1,3})\s*[-–]\s*(\d{1,3})\s*$/);
     if (dash && !m[3]) {
+      const a = parseInt(dash[1], 10);
+      const b = parseInt(dash[2], 10);
       verses = [];
-      addRange(parseInt(dash[1], 10), parseInt(dash[2], 10));
+      // Start equals surah number + wide span → treat as single ayah b (e.g. 2-195 → ayah 195)
+      if (book.surah && a === book.surah && b > a && (b - a > 15 || b > (book.ayahs || 999))) {
+        addRange(b, b);
+      } else {
+        addRange(Math.min(a, b), Math.max(a, b));
+      }
       chapter = 1;
     }
     return { book: book.id, bookName: book.name, chapter: 1, verses };
