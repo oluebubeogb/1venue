@@ -51,7 +51,8 @@ export async function mount(view) {
           h('span', null, h('strong', null, fmtNum(s.following)), ' following'))),
       h('div', { class: 'row wrap', style: { gap: '.5rem' } },
         h('a', { class: 'btn primary', href: '/create', 'data-link': '', html: icon('radio', { size: 18 }) + 'Go live' }),
-        h('a', { class: 'btn', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', html: icon('zap', { size: 18 }) + 'Instant' }))),
+        h('a', { class: 'btn', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', html: icon('zap', { size: 18 }) + 'Instant' }),
+        h('a', { class: 'btn', href: '/venues', 'data-link': '', 'data-group': 'media', html: icon('door', { size: 18 }) + 'Venue' }))),
     h('div', { class: 'stats stagger' },
       stat('radio', 'engage', 'Hosted', fmtNum(s.hosted)),
       stat('users', 'people', 'Attended', fmtNum(s.attended)),
@@ -93,19 +94,48 @@ export async function mount(view) {
     if (att.lists && att.lists.length) {
       const lists = att.lists;
       const renderRow = (l) => {
-        const toggle = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
-          try {
-            await api('/api/attendance/toggle', { method: 'POST', body: { token: l.token, public: !l.isPublic } });
-            location.reload();
-          } catch (e) { alert(e.message); }
-        } }, l.isPublic ? 'Make private' : 'Make public');
-        const share = l.isPublic ? h('button', { class: 'btn sm ghost', type: 'button', onclick: async () => {
-          try { await api('/api/attendance/share-timeline', { method: 'POST', body: { token: l.token } }); alert('Shared to timeline'); } catch (e) { alert(e.message); }
-        } }, 'Share') : null;
-        const pdf = h('a', { class: 'btn sm', href: l.url, 'data-link': '', target: '_blank' }, 'PDF');
+        const toggle = h('button', {
+          class: 'icon-btn sm', type: 'button',
+          'data-tip': l.isPublic ? 'Make private' : 'Make public',
+          'aria-label': l.isPublic ? 'Make private' : 'Make public',
+          'data-group': 'admin',
+          html: icon(l.isPublic ? 'lock' : 'globe', { size: 16 }),
+          onclick: async () => {
+            try {
+              await api('/api/attendance/toggle', { method: 'POST', body: { token: l.token, public: !l.isPublic } });
+              location.reload();
+            } catch (e) { alert(e.message); }
+          },
+        });
+        const share = l.isPublic ? h('button', {
+          class: 'icon-btn sm', type: 'button',
+          'data-tip': 'Share to timeline', 'aria-label': 'Share to timeline',
+          'data-group': 'social',
+          html: icon('share', { size: 16 }),
+          onclick: async () => {
+            try { await api('/api/attendance/share-timeline', { method: 'POST', body: { token: l.token } }); alert('Shared to timeline'); } catch (e) { alert(e.message); }
+          },
+        }) : null;
+        const pdf = h('a', {
+          class: 'icon-btn sm', href: l.url, 'data-link': '', target: '_blank',
+          'data-tip': 'View PDF', 'aria-label': 'View PDF',
+          html: icon('file', { size: 16 }),
+        });
+        const view = h('a', {
+          class: 'icon-btn sm', href: l.url, 'data-link': '',
+          'data-tip': 'View list', 'aria-label': 'View list',
+          html: icon('eye', { size: 16 }),
+        });
         return h('div', { class: 'row between wrap', style: { gap: '.5rem', alignItems: 'center' } },
-          h('div', { class: 'grow' }, h('div', { style: { fontWeight: 600 } }, l.name || l.code), h('div', { class: 'tiny muted' }, l.isPublic ? 'Public' : 'Private · host & co-host')),
-          h('div', { class: 'row gap-xs wrap' }, h('a', { class: 'btn sm', href: l.url, 'data-link': '' }, 'View'), pdf, toggle, share));
+          h('div', { class: 'grow row', style: { gap: '.55rem', alignItems: 'center', minWidth: 0 } },
+            h('span', { class: 'ellipsis', style: { fontWeight: 600 } }, l.name || l.code),
+            h('span', {
+              class: 'att-vis',
+              'data-tip': l.isPublic ? 'Public' : 'Private · host & co-host',
+              html: icon(l.isPublic ? 'globe' : 'eyeOff', { size: 14 }),
+              style: { color: 'var(--muted)', display: 'inline-flex', flex: 'none' },
+            })),
+          h('div', { class: 'row gap-xs wrap' }, view, pdf, toggle, share));
       };
       const stack = h('div', { class: 'stack', style: { marginTop: '.8rem', gap: '.6rem' } }, ...lists.slice(0, 5).map(renderRow));
       if (lists.length > 5) {

@@ -416,8 +416,31 @@ button.list-item:hover { background: var(--s2); }
   display: flex; align-items: center; gap: .5rem; margin: 0;
   font-size: clamp(1.25rem, 2.4vw, 1.45rem); font-weight: 600;
 }
-.venues-head h1 .ico-tile { flex: none; }
+.venues-head h1 .venue-head-ic {
+  display: inline-flex; color: var(--accent); flex: none;
+}
+.venues-head h1 .venue-head-ic .ic { width: 22px; height: 22px; }
 .venues-head .btn { flex: none; margin-left: auto; }
+
+/* Per-venue colored mark + section bands (homepage-style stripes) */
+.venue-mark {
+  --g: var(--accent);
+  width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+  color: var(--g); background: color-mix(in srgb, var(--g) 14%, transparent); flex: none;
+}
+.venue-mark .ic { width: 20px; height: 20px; }
+.venue-sec-h {
+  display: flex; align-items: center; gap: .55rem; margin: 0 0 .65rem;
+  cursor: default;
+}
+.venue-sec-h h3 { margin: 0; font-size: 1rem; font-weight: 700; }
+.venue-band {
+  margin-top: 1rem; padding: 1rem clamp(.85rem, 3vw, 1.25rem);
+  border-radius: var(--r-lg);
+}
+.venue-band.band-a { background: color-mix(in srgb, var(--accent) 6%, var(--bg)); }
+.venue-band.band-b { background: color-mix(in srgb, var(--accent-2, var(--accent)) 5%, var(--bg)); }
+.venue-band.band-c { background: color-mix(in srgb, #059669 5%, var(--bg)); }
 
 .auth-wrap { min-height: 70dvh; display: grid; place-items: center; padding: 1rem; }
 .auth-card { width: min(440px, 100%); box-shadow: var(--shadow-3); }

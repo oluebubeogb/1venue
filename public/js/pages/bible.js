@@ -82,7 +82,14 @@ export async function mount(view, params) {
     if (!state.user) return toast('Sign in to use AI', { icon: 'login' });
     const s = sheet({ title: `Explain ${ref}`, icon: 'sparkles', group: 'ai' });
     s.body.append(h('div', { class: 'skel', style: { height: '120px' } }));
-    try { const r = await api('/api/ai/ask', { method: 'POST', body: { question: `Briefly explain the meaning and context of ${ref}: "${text}"` } }); s.body.innerHTML = ''; s.body.append(h('div', { class: 'ai-box prose', html: md(r.text) }), h('p', { class: 'tiny faint' }, r.mock ? 'Demo AI response — configure AI_PRIMARY_* for real answers.' : `via ${r.provider}`)); } catch (e) { s.body.innerHTML = ''; s.body.append(h('p', { class: 'muted' }, e.message)); }
+    try {
+      const r = await api('/api/ai/ask', { method: 'POST', body: { question: `Briefly explain the meaning and context of ${ref}: "${text}"` } });
+      s.body.innerHTML = '';
+      s.body.append(
+        h('div', { class: 'ai-box prose', html: md(r.text) }),
+        h('p', { class: 'tiny faint', style: { marginTop: '1rem' } }, r.mock ? 'Demo AI response — configure AI_PRIMARY_* for real answers.' : 'Venue AI'),
+      );
+    } catch (e) { s.body.innerHTML = ''; s.body.append(h('p', { class: 'muted' }, e.message)); }
   }
   async function goRef(ref) {
     try { const p = await api(`/api/bible/passage?ref=${encodeURIComponent(ref)}&t=${tr}`); book = p.book; chapter = p.chapter; highlight = p.selected || []; bookSel.value = book; fillCh(); load(); }

@@ -8,6 +8,25 @@ const fmtCode = (c) => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const vlink = (slug) => `${location.origin}/v/${slug}`;
 let timer = null;
 
+/** Pick a themed icon from the venue name so lists aren’t all the same door. */
+function venueIcon(name) {
+  const n = String(name || '').toLowerCase();
+  if (/school|class|learn|study|academy|lesson/.test(n)) return 'graduation';
+  if (/church|chapel|fellowship|sermon|worship|sunday|prayer|bible|gospel|choir|youth|pastor/.test(n)) return 'church';
+  if (/music|band|choir|concert|song|worship team/.test(n)) return 'music';
+  if (/team|staff|office|work|standup|sync/.test(n)) return 'users';
+  if (/talk|show|podcast|radio|live/.test(n)) return 'radio';
+  if (/seminar|workshop|training|course/.test(n)) return 'presentation';
+  if (/book|library|read/.test(n)) return 'bookOpen';
+  if (/heart|care|love|family|fathers|mothers/.test(n)) return 'heart';
+  if (/star|premium|vip/.test(n)) return 'star';
+  if (/globe|world|online|remote/.test(n)) return 'globe';
+  if (/lock|private|secure/.test(n)) return 'lock';
+  if (/meeting|room|hall/.test(n)) return 'users';
+  return 'door';
+}
+const venueMark = (name, size = 20) => h('span', { class: 'venue-mark', 'data-group': 'media', html: icon(venueIcon(name), { size }) });
+
 /* Custom venue links. Plans: free → 5+ chars + "-venue"; premium → 5+, no suffix; slug3 → 3+; slug2 → 2+. */
 const PLAN_LABEL = { free: 'Free', premium: 'Premium', slug3: '3-char package', slug2: '2-char package' };
 const RANK = { free: 0, premium: 1, slug3: 2, slug2: 3 };
@@ -23,9 +42,8 @@ function previewSlug(base, plan) {
   if (base.length < 2) return { slug: base, err: 'Too short' };
   return { slug: base };
 }
-const planNote = (plan) => h('div', { class: 'tiny muted' }, h('span', { class: 'chip tiny', style: { marginRight: '6px' } }, PLAN_LABEL[plan] || 'Free'),
-  (RANK[plan] || 0) === 0 ? 'Free: 5+ letters/numbers, we add -venue. Premium: 5+ without -venue. 3- and 2-character minimums are coming as packages.'
-    : (RANK[plan] || 0) < 3 ? 'Shorter links (3+ or 2+ characters) are separate packages (coming soon).' : 'Your plan allows 2-character links.');
+const planNote = (plan) => h('div', { class: 'tiny muted' },
+  h('span', { class: 'chip tiny' }, PLAN_LABEL[plan] || 'Free'));
 /** Sheet with name (optional) + custom URL field and live preview. Resolves { name, customSlug } or null. */
 function venueDlg({ title, plan, name = '', withName = true, slugRequired = false, ok = 'Save' }) {
   return new Promise((resolve) => {
@@ -85,10 +103,10 @@ async function list(view) {
     } });
     wrap.replaceChildren(
       h('div', { class: 'venues-head' },
-        h('h1', { html: `<span class="ico-tile" data-group="media">${icon('door', { size: 20 })}</span> Venues` }),
+        h('h1', { html: `<span class="venue-head-ic">${icon('door', { size: 22 })}</span> Venues` }),
         create),
       venues.length ? h('div', { class: 'col', style: { gap: '8px' } }, ...venues.map((v) => h('div', { class: 'card pad row wrap venue-row', style: { gap: '10px' } },
-        h('span', { class: 'ico-tile', 'data-group': 'media', html: icon('door', { size: 20 }) }),
+        venueMark(v.name, 20),
         h('div', { class: 'grow' }, h('div', null, h('strong', null, v.name), v.live ? h('span', { class: 'chip tiny', style: { marginLeft: '6px' } }, '● Open') : null),
           h('div', { class: 'tiny muted' }, `/v/${v.slug} · ${v.meetings || 0} meetings${v.lastHeld ? ' · last ' + timeAgo(v.lastHeld) : ''}`)),
         h('button', { class: 'btn sm ghost', 'data-tip': 'Copy link', html: icon('link', { size: 15 }), onclick: () => copy(vlink(v.slug), 'Venue link copied') }),
@@ -207,9 +225,17 @@ async function ownerView(wrap, v) {
   };
   loadAdmins();
   loadAudit();
+  const sec = (band, ic, title, tip, body) => h('section', { class: `venue-band ${band}` },
+    h('div', { class: 'band-inner' },
+      h('div', { class: 'venue-sec-h', 'data-tip': tip || null },
+        h('span', { class: 'venue-mark', html: icon(ic, { size: 18 }) }),
+        h('h3', null, title)),
+      body));
   wrap.append(
     h('div', { class: 'row between wrap', style: { gap: '10px' } },
-      h('div', null, h('h1', null, v.name), h('p', { class: 'muted small' }, `${location.host}/v/${v.slug} · waiting room always on`)),
+      h('div', { class: 'row', style: { gap: '.6rem', alignItems: 'center' } },
+        venueMark(v.name, 26),
+        h('h1', { style: { margin: 0 } }, v.name)),
       h('div', { class: 'row', style: { gap: '6px' } },
         h('button', { class: 'btn sm ghost', html: icon('link', { size: 15 }) + 'Copy link', onclick: () => copy(vlink(v.slug), 'Venue link copied') }),
         h('button', { class: 'btn sm ghost', html: icon('pencil', { size: 15 }) + 'Rename', onclick: async () => {
@@ -234,13 +260,9 @@ async function ownerView(wrap, v) {
               if (!activity) return toast('Enter an activity name', { icon: 'info' });
               open(v, activity);
             } }))),
-    h('h3', null, 'Sessions held here'), hist,
-    h('h3', { style: { marginTop: '1.2rem' } }, 'Admins'),
-    h('p', { class: 'tiny muted', style: { marginTop: '-.3rem' } }, 'Admins can open this venue and manage the room.'),
-    adminsBox,
-    h('h3', { style: { marginTop: '1.2rem' } }, 'Audit'),
-    h('p', { class: 'tiny muted', style: { marginTop: '-.3rem' } }, 'Who opened the venue, added admins, and other changes.'),
-    auditBox);
+    sec('band-a', 'history', 'Sessions held here', 'Past meetings opened from this venue', hist),
+    sec('band-b', 'shield', 'Admins', 'Admins can open this venue and manage the room', adminsBox),
+    sec('band-c', 'activity', 'Audit', 'Who opened the venue, added admins, and other changes', auditBox));
   try {
     const { meetings } = await api(`/api/venues/${v.slug}/meetings`);
     hist.replaceChildren(...(meetings.length ? meetings.map((m) => h(m.id ? 'a' : 'div', { class: 'card pad row', href: `/session/${m.id}`, 'data-link': '', style: { gap: '10px' } },
