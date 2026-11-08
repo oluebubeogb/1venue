@@ -226,19 +226,14 @@ async function ownerView(wrap, v) {
     v.live
       ? h('div', { class: 'card pad row wrap', style: { gap: '10px' } }, h('div', { class: 'grow' }, h('strong', null, 'Open now: '), v.live.meetingName || v.name), h('button', { class: 'btn primary', onclick: () => navigate('/' + fmtCode(v.code)) }, 'Rejoin'))
       : h('div', { class: 'card pad col', style: { gap: '10px' } },
-          h('div', null,
-            h('strong', null, 'Activity name'),
-            h('div', { class: 'small muted', style: { marginTop: '.2rem' } }, `What is happening at ${v.name} today? This labels the session — the venue link stays the same.`)),
+          h('strong', null, 'Activity name'),
           h('div', { class: 'row wrap', style: { gap: '8px' } },
             name,
             h('button', { class: 'btn primary', html: icon('video', { size: 16 }) + 'Open venue', onclick: () => {
               const activity = name.value.trim();
-              if (!activity) return toast('Name this activity (e.g. Youth Day)', { icon: 'info' });
+              if (!activity) return toast('Enter an activity name', { icon: 'info' });
               open(v, activity);
-            } })),
-          h('div', { class: 'row wrap', style: { gap: '.35rem' } },
-            ...['Youth Day', 'Fathers Day', 'Palm Sunday', 'Choir rehearsal', 'Bible study'].map((s) =>
-              h('button', { type: 'button', class: 'chip sm', onclick: () => { name.value = s; name.focus(); } }, s)))),
+            } }))),
     h('h3', null, 'Sessions held here'), hist,
     h('h3', { style: { marginTop: '1.2rem' } }, 'Admins'),
     h('p', { class: 'tiny muted', style: { marginTop: '-.3rem' } }, 'Admins can open this venue and manage the room.'),
