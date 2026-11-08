@@ -579,3 +579,21 @@ html.room-fs .cmdbar { bottom: calc(18px + var(--safe-b)); }
 .slide-thumbs.deck-edit .slide-thumb.dragging { opacity: .45; }
 .slide-thumbs.deck-edit .slide-thumb.drag-over { outline: 2px dashed var(--accent); }
 .materials-inline { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; }
+
+/* Scripture topic / phrase hits in the meeting panel */
+.scr-hits { display: flex; flex-direction: column; gap: .55rem; }
+.scr-hit {
+  padding: .55rem .65rem; border-radius: 12px;
+  background: color-mix(in srgb, var(--g-faith) 7%, var(--s1));
+  border: 1px solid color-mix(in srgb, var(--g-faith) 16%, var(--line));
+}
+.scr-hit-ref {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 700; font-size: .9rem;
+  color: var(--g-faith, var(--accent)); cursor: pointer; text-align: left;
+}
+.scr-hit-ref:hover { text-decoration: underline; }
+.scr-hit-text {
+  margin-top: .2rem; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: .88rem; line-height: 1.45; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}

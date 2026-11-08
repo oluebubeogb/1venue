@@ -516,12 +516,26 @@ button.list-item:hover { background: var(--s2); }
   color: var(--g, var(--accent));
 }
 .ai-explain-acts .icon-btn.has-bg { width: 44px; height: 44px; }
+.icon-btn.has-bg.sm { width: 36px; height: 36px; border-radius: 12px; }
 .ai-verse-card { margin: 0 0 .25rem; max-width: 100%; }
 .ai-verse-card .pc-text {
   font-size: clamp(.95rem, 2.4vw, 1.05rem);
   line-height: 1.55;
   max-height: 9.5em;
   overflow: hidden;
+}
+
+/* Bible topic / phrase search results */
+.bible-hits { display: flex; flex-direction: column; gap: .75rem; }
+.bible-hit-ref {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 700; font-size: 1.02rem;
+  color: var(--g-faith, var(--accent)); cursor: pointer; text-align: left;
+}
+.bible-hit-ref:hover { text-decoration: underline; }
+.bible-hit-text {
+  margin: 0; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: .98rem; line-height: 1.55; color: var(--text); white-space: pre-wrap;
+  max-height: 7.5em; overflow: hidden;
 }
 
 .split { display: grid; gap: 1.2rem; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }

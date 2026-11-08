@@ -112,8 +112,109 @@ function mock(useCase, messages, opts) {
     }
     case 'translate':
       return input.replace(/^Translate[^\n]*\n/i, '');
-    case 'scripture':
-      return 'Try a reference like "John 3:16", "Psalm 23" or "Romans 8:28-39". Connect an AI provider for topic lookups such as "verses about hope".';
+    case 'scripture': {
+      // Heuristic topic / phrase → well-known references so search works offline
+      const q = input.replace(/^Find passages for:\s*/i, '').replace(/\s*\(translation preference[^)]*\)\s*$/i, '').trim().toLowerCase();
+      const TOPIC = [
+        [/family|marriage|husband|wife|leave.*(father|mother)|cleave|one flesh/, [
+          ['Genesis 2:24', 'A man leaves his parents and is united to his wife'],
+          ['Ephesians 5:25', 'Husbands, love your wives as Christ loved the church'],
+          ['Ephesians 5:31', 'The two will become one flesh'],
+          ['Proverbs 18:22', 'He who finds a wife finds a good thing'],
+          ['Matthew 19:5-6', 'What God has joined together, let no one separate'],
+          ['Colossians 3:18-19', 'Wives submit; husbands love and do not be harsh'],
+        ]],
+        [/hope|hopeful|future/, [
+          ['Jeremiah 29:11', 'Plans to prosper you and give you a future and a hope'],
+          ['Romans 15:13', 'May the God of hope fill you with all joy and peace'],
+          ['Hebrews 11:1', 'Faith is the assurance of things hoped for'],
+          ['Psalm 42:11', 'Put your hope in God'],
+          ['Romans 5:5', 'Hope does not put us to shame'],
+        ]],
+        [/love|loving|charity/, [
+          ['1 Corinthians 13:4-7', 'Love is patient, love is kind'],
+          ['John 3:16', 'For God so loved the world'],
+          ['1 John 4:7-8', 'Love is from God; God is love'],
+          ['Romans 8:38-39', 'Nothing can separate us from the love of God'],
+          ['John 15:13', 'Greater love has no one than this'],
+        ]],
+        [/faith|believe|belief/, [
+          ['Hebrews 11:1', 'Faith is the assurance of things hoped for'],
+          ['Hebrews 11:6', 'Without faith it is impossible to please God'],
+          ['Romans 10:17', 'Faith comes from hearing the word of Christ'],
+          ['Mark 11:22-24', 'Have faith in God'],
+          ['2 Corinthians 5:7', 'We walk by faith, not by sight'],
+        ]],
+        [/peace|anxiety|worry|afraid|fear/, [
+          ['Philippians 4:6-7', 'Do not be anxious; the peace of God will guard you'],
+          ['John 14:27', 'Peace I leave with you; my peace I give you'],
+          ['Isaiah 26:3', 'You keep in perfect peace those whose minds are stayed on you'],
+          ['Psalm 23:4', 'I will fear no evil, for you are with me'],
+          ['2 Timothy 1:7', 'God gave us a spirit not of fear but of power'],
+        ]],
+        [/strength|strong|weak|weary/, [
+          ['Philippians 4:13', 'I can do all things through him who strengthens me'],
+          ['Isaiah 40:31', 'Those who wait for the Lord shall renew their strength'],
+          ['2 Corinthians 12:9', 'My grace is sufficient; power is made perfect in weakness'],
+          ['Psalm 46:1', 'God is our refuge and strength'],
+          ['Ephesians 6:10', 'Be strong in the Lord and in the strength of his might'],
+        ]],
+        [/wisdom|wise|understanding|knowledge/, [
+          ['Proverbs 3:5-6', 'Trust in the Lord with all your heart'],
+          ['James 1:5', 'If any of you lacks wisdom, ask God'],
+          ['Proverbs 9:10', 'The fear of the Lord is the beginning of wisdom'],
+          ['Proverbs 4:7', 'The beginning of wisdom is this: get wisdom'],
+        ]],
+        [/prayer|pray|praying/, [
+          ['Matthew 6:9-13', 'The Lord’s Prayer'],
+          ['Philippians 4:6', 'In everything by prayer and supplication'],
+          ['1 Thessalonians 5:17', 'Pray without ceasing'],
+          ['James 5:16', 'The prayer of a righteous person has great power'],
+        ]],
+        [/forgiveness|forgive|forgiving|mercy/, [
+          ['Matthew 6:14-15', 'If you forgive others, your heavenly Father will also forgive you'],
+          ['Ephesians 4:32', 'Be kind, forgiving one another as God in Christ forgave you'],
+          ['1 John 1:9', 'If we confess our sins, he is faithful to forgive'],
+          ['Colossians 3:13', 'Forgive as the Lord has forgiven you'],
+        ]],
+        [/salvation|saved|save|gospel|cross/, [
+          ['John 3:16', 'For God so loved the world that he gave his only Son'],
+          ['Romans 10:9-10', 'If you confess with your mouth and believe in your heart'],
+          ['Ephesians 2:8-9', 'By grace you have been saved through faith'],
+          ['Acts 4:12', 'There is no other name under heaven by which we must be saved'],
+        ]],
+        [/creation|beginning|genesis|created/, [
+          ['Genesis 1:1', 'In the beginning, God created the heavens and the earth'],
+          ['Genesis 1:27', 'God created man in his own image'],
+          ['John 1:1-3', 'In the beginning was the Word'],
+          ['Colossians 1:16', 'All things were created through him and for him'],
+        ]],
+        [/shepherd|psalm 23|green pastures/, [
+          ['Psalm 23:1-6', 'The Lord is my shepherd'],
+          ['John 10:11', 'I am the good shepherd'],
+          ['Isaiah 40:11', 'He will tend his flock like a shepherd'],
+        ]],
+      ];
+      for (const [re, list] of TOPIC) {
+        if (re.test(q)) return list.map(([ref, why]) => `${ref} | ${why}`).join('\n');
+      }
+      // Phrase-ish query: point to a few classic matches when keywords appear
+      if (q.length > 24 || /\b(leave|mother|father|wife|husband|flesh|united|joined)\b/.test(q)) {
+        return [
+          'Genesis 2:24 | A man shall leave his father and his mother and hold fast to his wife',
+          'Matthew 19:5 | For this reason a man shall leave his father and mother',
+          'Mark 10:7-8 | The two shall become one flesh',
+          'Ephesians 5:31 | Therefore a man shall leave his father and mother',
+        ].join('\n');
+      }
+      return [
+        'John 3:16 | For God so loved the world',
+        'Psalm 23:1 | The Lord is my shepherd',
+        'Romans 8:28 | All things work together for good',
+        'Philippians 4:13 | I can do all things through him who strengthens me',
+        'Try a reference like "John 3:16" or a topic like "hope", "family", "peace".',
+      ].slice(0, 4).join('\n');
+    }
     default:
       return lines.length ? `Here is what I found in the session:\n${lines.slice(-4).map((l) => `- ${l}`).join('\n')}` : 'I do not have enough context yet. Ask again once the session has a transcript.';
   }
@@ -143,9 +244,9 @@ module.exports = {
     { role: 'user', content: `Session context:\n${clip(context, 16000)}\n\nQuestion: ${question}` },
   ]),
   scripture: (query, translation) => chat('scripture', [
-    { role: 'system', content: 'You help find Bible passages. Reply with up to 6 references, one per line as "Book C:V(-V) | one-line why". No other text.' },
+    { role: 'system', content: 'You help find Bible passages for topics, themes, and approximate quotes. Reply with up to 6 references, one per line as "Book C:V(-V) | short reason or matching phrase". Prefer well-known public-domain wording. No other text, no preamble.' },
     { role: 'user', content: `Find passages for: ${query} (translation preference ${translation || 'KJV'})` },
-  ], { maxTokens: 300 }),
+  ], { maxTokens: 400 }),
   translate: (text, lang) => chat('translate', [
     { role: 'system', content: 'Translate the user text. Output only the translation.' },
     { role: 'user', content: `Translate to ${lang}:\n${String(text).slice(0, 2000)}` },

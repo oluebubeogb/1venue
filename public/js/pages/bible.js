@@ -37,7 +37,7 @@ export async function mount(view, params) {
   const { books } = await bibleMeta();
   let tr = params.t || state.prefs.bibleTranslation || state.config?.bible?.defaultTranslation || 'eng_kjv';
   let book = 'JHN', chapter = 1, highlight = [];
-  const refIn = h('input', { class: 'input', placeholder: 'Go to… John 3:16, Ps 23, Rom 8:28-39', 'aria-label': 'Reference' });
+  const refIn = h('input', { class: 'input', placeholder: 'John 3:16, family, hope, “a man shall leave…”', 'aria-label': 'Reference or topic' });
   const bookSel = h('select', { class: 'input', 'aria-label': 'Book' }, h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))), h('optgroup', { label: 'New Testament' }, books.filter((b) => b.testament === 'NT').map((b) => h('option', { value: b.id }, b.name))));
   const chSel = h('select', { class: 'input', 'aria-label': 'Chapter' });
   const trSel = translationSelect(tr, (v) => { tr = v; setPrefs({ bibleTranslation: v }); load(); }, { compact: true });
@@ -65,7 +65,14 @@ export async function mount(view, params) {
       if (highlight.length) setTimeout(() => body.querySelector('.verse.sel')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80);
     } catch (e) { body.innerHTML = ''; body.append(h('p', { class: 'muted' }, e.message || 'Could not load this chapter')); }
   }
-  function selectedText() { return cur.verses.filter((v) => highlight.includes(v.v)).map((v) => String(v.text).replace(/^¶\s*/, '')).join(' '); }
+  /** Plain text with inline verse numbers, e.g. "1 In the beginning… 2 And the earth…" */
+  function numberedText(verses) {
+    return (verses || []).map((v) => `${v.v} ${String(v.text).replace(/^¶\s*/, '').trim()}`).join(' ');
+  }
+  function selectedText() {
+    const vs = cur.verses.filter((v) => highlight.includes(v.v));
+    return numberedText(vs);
+  }
   function paintSel() {
     selBar.classList.toggle('hidden', !highlight.length);
     if (!highlight.length) return;
@@ -149,18 +156,106 @@ export async function mount(view, params) {
       );
     } catch (e) { s.body.innerHTML = ''; s.body.append(h('p', { class: 'muted' }, e.message)); }
   }
-  async function goRef(ref) {
-    try { const p = await api(`/api/bible/passage?ref=${encodeURIComponent(ref)}&t=${tr}`); book = p.book; chapter = p.chapter; highlight = p.selected || []; bookSel.value = book; fillCh(); load(); }
-    catch (e) {
-      try { const r = await api('/api/ai/scripture', { method: 'POST', body: { query: ref, translation: tr } }); if (r.refs?.length) return goRef(r.refs[0].reference); } catch { /* ignore */ }
-      toastErr(e);
+  function resultCard(item) {
+    const text = item.text || item.excerpt || '';
+    const passage = {
+      reference: item.reference,
+      text: text || item.why || '',
+      translation: item.translation || tr,
+      short: item.short || (TR.find((x) => x.id === (item.translation || tr))?.short) || '',
+    };
+    const open = () => goRef(item.reference, { forcePassage: true });
+    const acts = h('div', { class: 'row gap-s', style: { marginTop: '.55rem', flexWrap: 'wrap' } },
+      h('button', { class: 'btn sm primary', type: 'button', onclick: open, html: icon('bookOpen', { size: 14 }) + ' Open' }),
+      h('button', {
+        class: 'icon-btn has-bg sm', type: 'button',
+        'data-tip': 'Copy', 'aria-label': 'Copy',
+        'data-group': 'content',
+        html: icon('copy', { size: 16 }),
+        onclick: () => copy(`“${passage.text}” — ${passage.reference}${passage.short ? ` (${passage.short})` : ''}`, 'Verse copied'),
+      }),
+      h('button', {
+        class: 'icon-btn has-bg sm', type: 'button',
+        'data-tip': 'Post to feed', 'aria-label': 'Post to feed',
+        'data-group': 'social',
+        html: icon('feed', { size: 16 }),
+        onclick: () => sharePassageToFeed(passage),
+      }),
+      h('button', {
+        class: 'icon-btn has-bg sm', type: 'button',
+        'data-tip': 'Share', 'aria-label': 'Share externally',
+        'data-group': 'social',
+        html: icon('share', { size: 16 }),
+        onclick: async () => {
+          const url = `${location.origin}/bible?ref=${encodeURIComponent(passage.reference)}${passage.translation ? `&t=${encodeURIComponent(passage.translation)}` : ''}`;
+          const shareText = `${passage.reference}\n\n“${passage.text}”`;
+          if (navigator.share) {
+            try { await navigator.share({ title: passage.reference, text: shareText, url }); return; } catch { /* cancelled */ }
+          }
+          await shareLink(url, passage.reference);
+        },
+      }),
+    );
+    return h('article', { class: 'bible-hit card pad layer' },
+      h('div', { class: 'row between wrap', style: { gap: '.4rem', alignItems: 'baseline' } },
+        h('button', { class: 'bible-hit-ref', type: 'button', onclick: open }, item.reference),
+        item.short ? h('span', { class: 'chip', 'data-group': 'faith' }, item.short) : null),
+      item.why ? h('p', { class: 'tiny muted', style: { margin: '.2rem 0 .35rem' } }, item.why) : null,
+      text ? h('blockquote', { class: 'bible-hit-text' }, text) : null,
+      acts);
+  }
+
+  async function showSearchResults(query, refs) {
+    body.innerHTML = '';
+    selBar.classList.add('hidden');
+    history.replaceState({}, '', `/bible?q=${encodeURIComponent(query)}&t=${tr}`);
+    body.append(
+      h('div', { class: 'row between wrap', style: { marginBottom: '.75rem', gap: '.5rem' } },
+        h('div', null,
+          h('h2', { class: 'bible-title', style: { fontSize: '1.15rem' } }, 'Matches'),
+          h('p', { class: 'tiny muted' }, `Topic & phrase suggestions for “${query}”`)),
+        h('button', { class: 'btn sm ghost', type: 'button', onclick: () => load() }, 'Back to reading')),
+      h('div', { class: 'bible-hits col', style: { gap: '.75rem' } }, ...refs.map(resultCard)),
+    );
+  }
+
+  async function goRef(ref, { forcePassage = false } = {}) {
+    const q = String(ref || '').trim();
+    if (!q) return;
+    // Direct chapter load when it looks like a reference, or when forced from a result card
+    const looksLikeRef = forcePassage || /^[\w\s.]+\s+\d{1,3}(:[\d,\-–—]+)?$/i.test(q) || /^[1-3]?\s?[A-Za-z]+\.?\s+\d/i.test(q);
+    if (looksLikeRef) {
+      body.innerHTML = '<div class="skel" style="height:300px"></div>';
+      try {
+        const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${tr}`);
+        book = p.book; chapter = p.chapter; highlight = p.selected || [];
+        bookSel.value = book; fillCh(); load();
+        return;
+      } catch (e) {
+        if (forcePassage) { toastErr(e); return; }
+        // fall through to smart search
+      }
     }
+    body.innerHTML = '<div class="skel" style="height:180px"></div>';
+    selBar.classList.add('hidden');
+    try {
+      const r = await api('/api/ai/scripture', { method: 'POST', body: { query: q, translation: tr } });
+      if (r.refs?.length) {
+        // Single high-confidence direct match → open it; otherwise show the guide
+        if (r.refs.length === 1 && looksLikeRef) return goRef(r.refs[0].reference, { forcePassage: true });
+        return showSearchResults(q, r.refs);
+      }
+      body.innerHTML = '';
+      body.append(h('p', { class: 'muted' }, 'No matching passages found. Try a reference like “John 3:16” or a topic like “family”, “hope”, “peace”.'));
+    } catch (e) { toastErr(e); body.innerHTML = ''; body.append(h('p', { class: 'muted' }, e.message || 'Search failed')); }
   }
   refIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && refIn.value.trim()) goRef(refIn.value.trim()); });
   view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('bookOpen', { size: 28 }) + 'Bible' })),
     h('div', { class: 'bible-tools card layer' }, h('span', { class: 'bt-ic', html: icon('search', { size: 16 }) }), refIn, bookSel, chSel, trSel), body, selBar);
   bookSel.value = book; fillCh();
-  if (params.ref) goRef(params.ref); else load();
+  if (params.ref) goRef(params.ref);
+  else if (params.q) { refIn.value = params.q; goRef(params.q); }
+  else load();
   registerCommands('page', [
     { id: 'bible-next', label: 'Next chapter', icon: 'chevronRight', group: 'faith', run: () => step(1) },
     { id: 'bible-prev', label: 'Previous chapter', icon: 'chevronLeft', group: 'faith', run: () => step(-1) },

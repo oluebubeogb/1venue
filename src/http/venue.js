@@ -506,12 +506,38 @@ route('POST', '/api/ai/title', async (ctx) => {
 route('POST', '/api/ai/scripture', async (ctx) => {
   await aiGuard(ctx);
   const b = await ctx.body();
-  const r = await ai().scripture(String(b.query || '').slice(0, 300), b.translation);
-  const refs = String(r.text).split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+  const query = String(b.query || '').slice(0, 300);
+  const translation = b.translation || null;
+  const r = await ai().scripture(query, translation);
+  const parsed = String(r.text).split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
     const [ref, why] = l.replace(/^[-*\d.\s]+/, '').split('|').map((x) => (x || '').trim());
     return bible().parseReference(ref) ? { reference: ref, why: why || '' } : null;
   }).filter(Boolean).slice(0, 6);
-  return { refs, provider: r.provider, mock: !!r.mock };
+
+  // Hydrate each suggestion with real verse text (numbered) so the UI can show
+  // excerpts and support copy / post / share without an extra round-trip.
+  const refs = [];
+  for (const item of parsed) {
+    try {
+      const p = await bible().passage(item.reference, translation);
+      const text = (p.verses || []).map((v) => `${v.v} ${String(v.text).replace(/^¶\s*/, '').trim()}`).join(' ');
+      const excerpt = text.length > 220 ? text.slice(0, 220).trim() + '…' : text;
+      refs.push({
+        reference: p.reference || item.reference,
+        why: item.why,
+        text,
+        excerpt,
+        translation: p.translation?.id || translation,
+        short: p.translation?.short || '',
+        book: p.book,
+        chapter: p.chapter,
+        selected: p.selected || null,
+      });
+    } catch {
+      refs.push({ reference: item.reference, why: item.why, text: '', excerpt: item.why || '' });
+    }
+  }
+  return { refs, query, provider: r.provider, mock: !!r.mock };
 });
 
 // ------------------------------------------------------------ personal whiteboards

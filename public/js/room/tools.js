@@ -159,7 +159,7 @@ export function buildTools(R) {
       const box = h('div', { class: 'scr-tool' });
       const canShow = R.canScripture();
       const shared = R.scripture;
-      const ref = h('input', { class: 'input sm grow', placeholder: 'John 3:16, Psalm 23 … or “hope”', value: R.scriptureDraft || '', 'aria-label': 'Verse', oninput: (e) => { R.scriptureDraft = e.target.value; } });
+      const ref = h('input', { class: 'input sm grow', placeholder: 'John 3:16, family, hope, “a man shall leave…”', value: R.scriptureDraft || '', 'aria-label': 'Verse or topic', oninput: (e) => { R.scriptureDraft = e.target.value; } });
       const tr = translationSelect(shared ? R.scrTr() : R.bibleTr(), (v) => {
         if (shared && canShow) R.showScripture(shared.reference, { translation: v }); // live: everyone follows
         else if (shared) { R.scrOwnTr = true; R.setBibleTr(v); R.panel.refresh('tools'); }
@@ -168,14 +168,44 @@ export function buildTools(R) {
       const ib = (ic, label, run, cls = '') => h('button', { class: `scr-ib ${cls}`, type: 'button', title: label, 'data-tip': label, 'aria-label': label, onclick: run, html: icon(ic, { size: 15 }) });
       const out = h('div', { class: 'scripture-preview scr-read' });
       const showNow = () => { const q = ref.value.trim() || shared?.reference; if (q) R.showScripture(q, { translation: R.bibleTr(), mode: shared?.mode || 'side' }); };
+      function openHit(x) {
+        ref.value = x.reference || x; R.scriptureDraft = ref.value; preview();
+      }
+      function hitRow(x) {
+        const text = x.excerpt || x.text || x.why || '';
+        return h('div', { class: 'scr-hit' },
+          h('button', { class: 'scr-hit-ref', type: 'button', onclick: () => openHit(x) }, x.reference || x),
+          x.why ? h('div', { class: 'tiny muted' }, x.why) : null,
+          text ? h('div', { class: 'scr-hit-text' }, text) : null,
+          h('div', { class: 'row gap-xs', style: { marginTop: '.25rem' } },
+            h('button', { class: 'btn sm', type: 'button', onclick: () => openHit(x), html: icon('bookOpen', { size: 13 }) + ' Open' }),
+            canShow ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => { ref.value = x.reference; R.scriptureDraft = ref.value; R.showScripture(x.reference, { translation: R.bibleTr(), mode: shared?.mode || 'side' }); }, html: icon('presentation', { size: 13 }) + ' Show' }) : null,
+            h('button', {
+              class: 'icon-btn has-bg sm', type: 'button',
+              'data-tip': 'Copy', 'aria-label': 'Copy',
+              html: icon('copy', { size: 14 }),
+              onclick: () => copy(`“${x.text || text}” — ${x.reference}${x.short ? ` (${x.short})` : ''}`, 'Verse copied'),
+            }),
+          ));
+      }
       async function preview() {
         const q = ref.value.trim(); if (!q) return;
         if (shared && canShow) return showNow(); // while sharing, previewing a new chapter re-broadcasts it
         out.replaceChildren(h('div', { class: 'skel', style: { height: '80px' } }));
-        try { const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${R.bibleTr()}`); out.replaceChildren(h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`), versesEl(p, { selectable: false })); }
-        catch {
-          try { const r = await api('/api/ai/scripture', { method: 'POST', headers: R.headers(), body: { query: q, translation: R.bibleTr() } });
-            out.replaceChildren(h('div', { class: 'tiny muted' }, 'Suggested passages'), h('div', { class: 'chips' }, (r.refs || []).map((x) => h('button', { class: 'chip', onclick: () => { ref.value = x.reference || x; R.scriptureDraft = ref.value; preview(); } }, x.reference || x))));
+        try {
+          const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${R.bibleTr()}`);
+          out.replaceChildren(h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`), versesEl(p, { selectable: false }));
+        } catch {
+          try {
+            const r = await api('/api/ai/scripture', { method: 'POST', headers: R.headers(), body: { query: q, translation: R.bibleTr() } });
+            if (!(r.refs || []).length) {
+              out.replaceChildren(h('p', { class: 'muted small' }, 'No matching passages. Try a reference or topic like “family”, “hope”.'));
+              return;
+            }
+            out.replaceChildren(
+              h('div', { class: 'tiny muted', style: { marginBottom: '.35rem' } }, 'Topic & phrase matches'),
+              h('div', { class: 'scr-hits col', style: { gap: '.55rem' } }, ...(r.refs || []).map(hitRow)),
+            );
           } catch (e) { out.replaceChildren(h('p', { class: 'muted small' }, 'Couldn’t find that passage.')); }
         }
       }
