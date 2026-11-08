@@ -406,6 +406,19 @@ button.list-item:hover { background: var(--s2); }
 .page-head h1 { display: flex; align-items: center; gap: .5rem; font-size: clamp(1.25rem, 2.4vw, 1.45rem); }
 .page-head h1 .ic { width: 22px; height: 22px; }
 .page-head h1 .ic { color: var(--accent); }
+
+/* Venues list header: icon+title left, New venue right */
+.venues-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; width: 100%; margin-bottom: .25rem;
+}
+.venues-head h1 {
+  display: flex; align-items: center; gap: .5rem; margin: 0;
+  font-size: clamp(1.25rem, 2.4vw, 1.45rem); font-weight: 600;
+}
+.venues-head h1 .ico-tile { flex: none; }
+.venues-head .btn { flex: none; margin-left: auto; }
+
 .auth-wrap { min-height: 70dvh; display: grid; place-items: center; padding: 1rem; }
 .auth-card { width: min(440px, 100%); box-shadow: var(--shadow-3); }
 .auth-logo { color: var(--accent); display: flex; justify-content: center; margin-bottom: .5rem; }

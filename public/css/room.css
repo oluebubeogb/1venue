@@ -214,6 +214,18 @@ body.in-room .cmdbar { bottom: calc(10px + var(--safe-b)); width: min(1100px, ca
 .shade { --g: var(--accent); padding: .75rem; border-radius: 16px; background: color-mix(in srgb, var(--g) 6%, var(--s1)); border: 1px solid color-mix(in srgb, var(--g) 18%, transparent); display: flex; flex-direction: column; gap: .5rem; }
 .sec-h { display: flex; align-items: center; gap: .45rem; } .sec-h .i { color: var(--g); display: flex; }
 .sec-sub { font-size: .72rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: .2rem; }
+
+/* Compact waiting-room strip in People panel */
+.shade.wait-box { padding: .45rem .55rem; border-radius: 12px; gap: .2rem; }
+.wait-box .wait-head { gap: .35rem; flex-wrap: wrap; }
+.wait-box .wait-head b { font-size: .82rem; font-weight: 700; }
+.wait-box .wait-head .btn.xs { padding: .2rem .45rem; font-size: .72rem; border-radius: 8px; gap: .25rem; }
+.wait-box .wait-head .btn.xs .ic { width: 13px; height: 13px; }
+.wait-box .wait-row { padding: .2rem .25rem; gap: .4rem; border-radius: 8px; min-height: 0; }
+.wait-box .wait-row .icon-btn,
+.wait-box .wait-row .icon-btn.sm { width: 26px; height: 26px; border-radius: 8px; }
+.wait-box .wait-row .icon-btn .ic { width: 14px; height: 14px; }
+.wait-box .wait-row b { font-size: .84rem; font-weight: 650; }
 .seats { display: flex; flex-wrap: wrap; gap: 6px; }
 .seat { width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center; border: 1.5px dashed color-mix(in srgb, var(--g) 45%, transparent); color: var(--g); }
 .seat.taken { border-style: solid; background: color-mix(in srgb, var(--g) 12%, transparent); }

@@ -142,6 +142,37 @@ route('GET', '/api/venues/plan', async (ctx) => {
   const u = await requireUser(ctx.req, ctx.res);
   return { plan: await data.getUserPlan(u.id), plans: codes.PLANS };
 });
+
+// Admins & audit — registered before /api/venues/:slug so "admins"/"audit" are not treated as slugs
+async function requireVenueOwnerBySlug(ctx, slug) {
+  const u = await requireUser(ctx.req, ctx.res);
+  const v = await data.getVenueBySlug(String(slug || '').toLowerCase());
+  if (!v || v.ownerUserId !== u.id) throw httpError(404, 'Venue not found');
+  return { u, v };
+}
+route('GET', '/api/venues/admins', async (ctx) => {
+  const slug = ctx.url.searchParams.get('slug') || '';
+  const { v } = await requireVenueOwnerBySlug(ctx, slug);
+  return { admins: await data.listVenueAdmins(v.id) };
+});
+route('POST', '/api/venues/admins', async (ctx) => {
+  const b = await ctx.body();
+  const { u, v } = await requireVenueOwnerBySlug(ctx, b.slug);
+  return data.addVenueAdmins(v.id, u.id, b.usernames || b.names || '');
+});
+route('DELETE', '/api/venues/admins', async (ctx) => {
+  const b = await ctx.body();
+  const { u, v } = await requireVenueOwnerBySlug(ctx, b.slug);
+  const ok = await data.removeVenueAdmin(v.id, u.id, int(b.userId));
+  if (!ok) throw httpError(404, 'Admin not found');
+  return { ok: true };
+});
+route('GET', '/api/venues/audit', async (ctx) => {
+  const slug = ctx.url.searchParams.get('slug') || '';
+  const { v } = await requireVenueOwnerBySlug(ctx, slug);
+  return { audit: await data.getVenueAudit(v.id) };
+});
+
 route('GET', `/api/venues/${SLUG}`, async (ctx, [slug]) => {
   const v = await data.getVenueBySlug(slug.toLowerCase());
   if (!v) throw httpError(404, 'Venue not found');

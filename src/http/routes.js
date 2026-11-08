@@ -739,7 +739,14 @@ function createRequestHandler() {
         if (!isOwner && !isAdmin) return sendJSON(res, 403, { error: 'Only the venue owner or an admin can open it', code: venue.code });
         if (meetings.has(normCode(venue.code))) return sendJSON(res, 409, { error: 'This venue is already open', code: venue.code });
         code = normCode(venue.code); // forced: client-sent code is ignored for venues
-        await vdata.logVenueAudit(venue.id, authUser.id, authUser.displayName || authUser.username, 'open', isAdmin ? 'opened by admin' : 'opened by owner');
+        const activity = String(body.name || '').trim().slice(0, 80);
+        await vdata.logVenueAudit(
+          venue.id,
+          authUser.id,
+          authUser.displayName || authUser.username,
+          'open',
+          (activity && activity !== venue.name ? activity : null) || (isAdmin ? 'opened by admin' : 'opened by owner')
+        );
       }
       const codeSource = venue ? 'venue' : event ? 'event' : 'generated';
       res.setHeader('X-1venue-Code-Source', codeSource);

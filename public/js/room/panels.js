@@ -241,10 +241,19 @@ export function createPanel(R) {
       }
       wrap.append(sec);
     }
-    // waiting room
+    // waiting room — compact strip so it doesn’t dominate the people panel
     if (mod && R.waiting.length) {
-      wrap.append(h('section', { class: 'shade', 'data-group': 'people' }, h('div', { class: 'sec-h' }, I('door'), h('b', { class: 'grow' }, `Waiting room (${R.waiting.length})`), btn('check', 'Admit all', () => R.send('admit-all', {}), { cls: 'xs', group: 'people' }), btn('x', 'Decline all', () => R.send('decline-all', {}), { cls: 'xs ghost', group: 'admin' })),
-        ...R.waiting.map((w) => h('div', { class: 'person' }, avatar(w.name, null, 'sm'), h('b', { class: 'grow' }, w.name), ibtn('check', 'Admit', () => R.send('admit-participant', { targetId: w.id }), { group: 'people' }), ibtn('x', 'Decline', () => R.send('decline-participant', { targetId: w.id }), { group: 'admin' })))));
+      wrap.append(h('section', { class: 'shade wait-box', 'data-group': 'people' },
+        h('div', { class: 'sec-h wait-head' },
+          I('door', 16),
+          h('b', { class: 'grow' }, `Waiting (${R.waiting.length})`),
+          h('button', { class: 'btn xs', type: 'button', 'data-group': 'people', onclick: () => R.send('admit-all', {}), html: icon('check', { size: 13 }) + 'Admit all' }),
+          h('button', { class: 'btn xs ghost', type: 'button', 'data-group': 'admin', onclick: () => R.send('decline-all', {}), html: icon('x', { size: 13 }) + 'Decline' })),
+        ...R.waiting.map((w) => h('div', { class: 'person wait-row' },
+          avatar(w.name, null, 'xs'),
+          h('b', { class: 'grow ellipsis' }, w.name),
+          ibtn('check', 'Admit', () => R.send('admit-participant', { targetId: w.id }), { group: 'people', cls: 'sm' }),
+          ibtn('x', 'Decline', () => R.send('decline-participant', { targetId: w.id }), { group: 'admin', cls: 'sm' })))));
     }
     if (R.hands.length) {
       wrap.append(h('section', { class: 'shade', 'data-group': 'engage' }, h('div', { class: 'sec-h' }, h('span', null, '✋'), h('b', { class: 'grow' }, `Raised hands (${R.hands.length})`)),

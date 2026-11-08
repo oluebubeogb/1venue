@@ -66,8 +66,9 @@ export async function mount(view, params) {
 }
 export function unmount() { clearTimeout(timer); }
 
-function open(v, meetingName) {
-  sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, venue: v.slug, name: meetingName || v.name, waitingRoom: true, code: v.code }));
+function open(v, activityName) {
+  const name = (activityName && String(activityName).trim()) || v.name;
+  sessionStorage.setItem('venue.intent', JSON.stringify({ create: true, venue: v.slug, name, waitingRoom: true, code: v.code }));
   navigate('/' + fmtCode(v.code));
 }
 
@@ -83,14 +84,19 @@ async function list(view) {
       try { await api('/api/venues', { method: 'POST', body: r }); paint(); } catch (e) { toastErr(e); }
     } });
     wrap.replaceChildren(
-      h('div', { class: 'row between wrap page-head', style: { gap: '10px', marginBottom: 0 } }, h('h1', { style: { display: 'flex', alignItems: 'center', gap: '.5rem', margin: 0 }, html: `<span class="ico-tile" data-group="media">${icon('door', { size: 20 })}</span> Venues` }), create),
+      h('div', { class: 'venues-head' },
+        h('h1', { html: `<span class="ico-tile" data-group="media">${icon('door', { size: 20 })}</span> Venues` }),
+        create),
       venues.length ? h('div', { class: 'col', style: { gap: '8px' } }, ...venues.map((v) => h('div', { class: 'card pad row wrap venue-row', style: { gap: '10px' } },
         h('span', { class: 'ico-tile', 'data-group': 'media', html: icon('door', { size: 20 }) }),
         h('div', { class: 'grow' }, h('div', null, h('strong', null, v.name), v.live ? h('span', { class: 'chip tiny', style: { marginLeft: '6px' } }, '● Open') : null),
           h('div', { class: 'tiny muted' }, `/v/${v.slug} · ${v.meetings || 0} meetings${v.lastHeld ? ' · last ' + timeAgo(v.lastHeld) : ''}`)),
         h('button', { class: 'btn sm ghost', 'data-tip': 'Copy link', html: icon('link', { size: 15 }), onclick: () => copy(vlink(v.slug), 'Venue link copied') }),
         h('a', { class: 'btn sm', href: `/v/${v.slug}`, 'data-link': '' }, 'Manage'),
-        h('button', { class: 'btn sm primary', onclick: () => (v.live ? navigate('/' + fmtCode(v.code)) : open(v)) }, v.live ? 'Rejoin' : 'Open')))) :
+        h('button', { class: 'btn sm primary', onclick: () => {
+          if (v.live) return navigate('/' + fmtCode(v.code));
+          navigate(`/v/${v.slug}`); // open from venue page so activity name can be set
+        } }, v.live ? 'Rejoin' : 'Open')))) :
         empty('door', 'No venues yet', 'Create one to get a short link like /v/ydtd89r that you can reuse forever.'));
   };
   paint();
@@ -160,11 +166,12 @@ async function door(view, slug) {
 }
 
 async function ownerView(wrap, v) {
-  const name = h('input', { class: 'input', placeholder: 'Meeting name', maxlength: 60, value: `${v.name} · ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` });
+  // Activity name is what shows on the session (e.g. "Youth Day") — venue name stays the permanent place name
+  const name = h('input', { class: 'input', placeholder: 'e.g. Youth Day, Palm Sunday, Choir rehearsal', maxlength: 80, value: '' });
   const hist = h('div', { class: 'col', style: { gap: '6px' } }, h('div', { class: 'tiny muted' }, 'Loading meetings…'));
   const adminsBox = h('div', { class: 'col', style: { gap: '.5rem' } });
   const auditBox = h('div', { class: 'col', style: { gap: '.4rem' } });
-  const adminInput = h('input', { class: 'input', placeholder: 'usernames, comma separated', style: { flex: 1 } });
+  const adminInput = h('input', { class: 'input', placeholder: '@username, comma separated', style: { flex: 1 } });
   const loadAdmins = async () => {
     try {
       const { admins } = await api('/api/venues/admins?slug=' + encodeURIComponent(v.slug));
@@ -217,12 +224,27 @@ async function ownerView(wrap, v) {
         } }))),
     planNote(v.plan || myPlan()),
     v.live
-      ? h('div', { class: 'card pad row wrap', style: { gap: '10px' } }, h('div', { class: 'grow' }, h('strong', null, 'Open now: '), v.live.meetingName), h('button', { class: 'btn primary', onclick: () => navigate('/' + fmtCode(v.code)) }, 'Rejoin'))
-      : h('div', { class: 'card pad col', style: { gap: '10px' } }, h('div', { class: 'small muted' }, 'Meeting name (separate from the venue name)'), h('div', { class: 'row', style: { gap: '8px' } }, name, h('button', { class: 'btn primary', html: icon('video', { size: 16 }) + 'Open venue', onclick: () => open(v, name.value.trim()) }))),
-    h('h3', null, 'Meetings held here'), hist,
+      ? h('div', { class: 'card pad row wrap', style: { gap: '10px' } }, h('div', { class: 'grow' }, h('strong', null, 'Open now: '), v.live.meetingName || v.name), h('button', { class: 'btn primary', onclick: () => navigate('/' + fmtCode(v.code)) }, 'Rejoin'))
+      : h('div', { class: 'card pad col', style: { gap: '10px' } },
+          h('div', null,
+            h('strong', null, 'Activity name'),
+            h('div', { class: 'small muted', style: { marginTop: '.2rem' } }, `What is happening at ${v.name} today? This labels the session — the venue link stays the same.`)),
+          h('div', { class: 'row wrap', style: { gap: '8px' } },
+            name,
+            h('button', { class: 'btn primary', html: icon('video', { size: 16 }) + 'Open venue', onclick: () => {
+              const activity = name.value.trim();
+              if (!activity) return toast('Name this activity (e.g. Youth Day)', { icon: 'info' });
+              open(v, activity);
+            } })),
+          h('div', { class: 'row wrap', style: { gap: '.35rem' } },
+            ...['Youth Day', 'Fathers Day', 'Palm Sunday', 'Choir rehearsal', 'Bible study'].map((s) =>
+              h('button', { type: 'button', class: 'chip sm', onclick: () => { name.value = s; name.focus(); } }, s)))),
+    h('h3', null, 'Sessions held here'), hist,
     h('h3', { style: { marginTop: '1.2rem' } }, 'Admins'),
+    h('p', { class: 'tiny muted', style: { marginTop: '-.3rem' } }, 'Admins can open this venue and manage the room.'),
     adminsBox,
     h('h3', { style: { marginTop: '1.2rem' } }, 'Audit'),
+    h('p', { class: 'tiny muted', style: { marginTop: '-.3rem' } }, 'Who opened the venue, added admins, and other changes.'),
     auditBox);
   try {
     const { meetings } = await api(`/api/venues/${v.slug}/meetings`);
