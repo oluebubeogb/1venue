@@ -35,9 +35,20 @@ export const refLabel = (bookName, ch, vs) => `${bookName} ${ch}${vs && vs.lengt
 
 export async function mount(view, params) {
   const { books } = await bibleMeta();
-  let tr = params.t || state.prefs.bibleTranslation || state.config?.bible?.defaultTranslation || 'eng_kjv';
-  let book = 'JHN', chapter = 1, highlight = [];
-  const refIn = h('input', { class: 'input', placeholder: 'John 3:16, family, hope, “a man shall leave…”', 'aria-label': 'Reference or topic' });
+  const corpus = (params.corpus || '').toLowerCase() === 'quran' ? 'quran' : 'bible';
+  let tr = params.t
+    || (corpus === 'quran' ? (state.prefs.quranTranslation || 'quran_en_sahih') : null)
+    || state.prefs.bibleTranslation
+    || state.config?.bible?.defaultTranslation
+    || 'eng_kjv';
+  if (corpus === 'quran' && !/^quran_/i.test(tr)) tr = 'quran_en_sahih';
+  if (corpus === 'bible' && /^quran_/i.test(tr)) tr = state.config?.bible?.defaultTranslation || 'eng_kjv';
+  let book = corpus === 'quran' ? 'Q001' : 'JHN', chapter = 1, highlight = [];
+  const refIn = h('input', {
+    class: 'input',
+    placeholder: corpus === 'quran' ? 'Al-Ikhlas, Al-Fatihah 1, 2:255, family…' : 'John 3:16, family, hope, “a man shall leave…”',
+    'aria-label': 'Reference or topic',
+  });
   const bookSel = h('select', { class: 'input', 'aria-label': 'Book' },
     h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))),
     h('optgroup', { label: 'Deuterocanonical' }, books.filter((b) => b.testament === 'DC').map((b) => h('option', { value: b.id }, b.name))),
@@ -48,14 +59,40 @@ export async function mount(view, params) {
   const trSel = translationSelect(tr, (v) => { tr = v; setPrefs({ bibleTranslation: v }); load(); }, { compact: true });
   const body = h('div', { class: 'card pad-lg bible-page' });
   const selBar = h('div', { class: 'sel-bar hidden' });
-  const fillCh = () => { const b = books.find((x) => x.id === book); chSel.innerHTML = ''; for (let i = 1; i <= (b?.chapters || 1); i++) chSel.append(h('option', { value: i }, `Ch ${i}`)); chSel.value = chapter; };
-  bookSel.onchange = () => { book = bookSel.value; chapter = 1; highlight = []; fillCh(); load(); };
+  const isQuranTr = (id) => /^(quran_)/i.test(id || '');
+  const defaultBibleTr = () => state.prefs.bibleTranslation && !isQuranTr(state.prefs.bibleTranslation)
+    ? state.prefs.bibleTranslation
+    : (state.config?.bible?.defaultTranslation || 'eng_kjv');
+  const defaultQuranTr = () => state.prefs.quranTranslation || 'quran_en_sahih';
+  const ensureCorpus = (b) => {
+    const meta = books.find((x) => x.id === b) || {};
+    if (meta.testament === 'Quran' && !isQuranTr(tr)) {
+      tr = defaultQuranTr(); trSel.value = tr; setPrefs({ bibleTranslation: tr, quranTranslation: tr });
+    } else if (meta.testament !== 'Quran' && isQuranTr(tr)) {
+      tr = defaultBibleTr(); trSel.value = tr; setPrefs({ bibleTranslation: tr });
+    }
+  };
+  const fillCh = () => {
+    const b = books.find((x) => x.id === book);
+    const isQ = b?.testament === 'Quran';
+    chSel.innerHTML = '';
+    for (let i = 1; i <= (b?.chapters || 1); i++) chSel.append(h('option', { value: i }, isQ ? (b.chapters === 1 ? 'Full surah' : `Ayah set ${i}`) : `Ch ${i}`));
+    chSel.value = chapter;
+  };
+  bookSel.onchange = () => { book = bookSel.value; chapter = 1; highlight = []; ensureCorpus(book); fillCh(); load(); };
   chSel.onchange = () => { chapter = Number(chSel.value); highlight = []; load(); };
-  const step = (d) => { const b = books.find((x) => x.id === book); let i = books.indexOf(b); chapter += d; if (chapter < 1) { i = Math.max(0, i - 1); book = books[i].id; chapter = books[i].chapters; } else if (chapter > b.chapters) { i = Math.min(books.length - 1, i + 1); book = books[i].id; chapter = 1; } bookSel.value = book; fillCh(); highlight = []; load(); };
+  const step = (d) => {
+    const b = books.find((x) => x.id === book); let i = books.indexOf(b);
+    chapter += d;
+    if (chapter < 1) { i = Math.max(0, i - 1); book = books[i].id; chapter = books[i].chapters; }
+    else if (chapter > b.chapters) { i = Math.min(books.length - 1, i + 1); book = books[i].id; chapter = 1; }
+    bookSel.value = book; ensureCorpus(book); fillCh(); highlight = []; load();
+  };
   let cur = null;
   async function load() {
     body.innerHTML = '<div class="skel" style="height:300px"></div>'; selBar.classList.add('hidden');
     try {
+      ensureCorpus(book);
       cur = await api(`/api/bible/${tr}/${book}/${chapter}`);
       const t = TR.find((x) => x.id === tr);
       history.replaceState({}, '', `/bible?ref=${encodeURIComponent(`${cur.bookName} ${chapter}`)}&t=${tr}`);
@@ -235,11 +272,28 @@ export async function mount(view, params) {
     const q = String(ref || '').trim();
     if (!q) return;
     // Direct chapter load when it looks like a reference, or when forced from a result card
-    const looksLikeRef = forcePassage || /^[\w\s.]+\s+\d{1,3}(:[\d,\-–—]+)?$/i.test(q) || /^[1-3]?\s?[A-Za-z]+\.?\s+\d/i.test(q);
+    // Allow hyphens / apostrophes (Al-Ikhlas, Ali 'Imran, Song of Songs)
+    const looksLikeRef = forcePassage
+      || /^(surah|sura)\s+/i.test(q)
+      || /^[\w\s.'\u2019\-–—]+\s+\d{1,3}(:[\d,\-–—]+)?$/i.test(q)
+      || /^[1-3]?\s?[A-Za-z][\w.'\u2019\-]*\.?\s+\d/i.test(q)
+      || /^al[- ]?[a-z]/i.test(q);
     if (looksLikeRef) {
       body.innerHTML = '<div class="skel" style="height:300px"></div>';
       try {
-        const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${tr}`);
+        // If query looks Qur’anic and translation is a Bible one, try Qur’an edition
+        let tryTr = tr;
+        if (!isQuranTr(tr) && /^(surah|sura|al[- ]|q\d)/i.test(q)) tryTr = defaultQuranTr();
+        let p;
+        try {
+          p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${tryTr}`);
+        } catch (first) {
+          if (tryTr !== tr) throw first;
+          // Retry with Qur’an edition if Bible translation failed on a possible surah
+          p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${defaultQuranTr()}`);
+          tryTr = defaultQuranTr();
+        }
+        tr = tryTr; trSel.value = tr; setPrefs({ bibleTranslation: tr, ...(isQuranTr(tr) ? { quranTranslation: tr } : {}) });
         book = p.book; chapter = p.chapter; highlight = p.selected || [];
         bookSel.value = book; fillCh(); load();
         return;
@@ -262,7 +316,7 @@ export async function mount(view, params) {
     } catch (e) { toastErr(e); body.innerHTML = ''; body.append(h('p', { class: 'muted' }, e.message || 'Search failed')); }
   }
   refIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && refIn.value.trim()) goRef(refIn.value.trim()); });
-  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('bookOpen', { size: 28 }) + 'Bible' })),
+  view.append(h('div', { class: 'page-head' }, h('h1', { html: icon('bookOpen', { size: 28 }) + (corpus === 'quran' ? 'Qur’an' : 'Bible') })),
     h('div', { class: 'bible-tools card layer' }, h('span', { class: 'bt-ic', html: icon('search', { size: 16 }) }), refIn, bookSel, chSel, trSel), body, selBar);
   bookSel.value = book; fillCh();
   if (params.ref) goRef(params.ref);

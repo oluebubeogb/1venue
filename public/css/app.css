@@ -165,10 +165,36 @@ p { margin: 0; }
 }
 .brand { display: flex; align-items: center; gap: .55rem; font-weight: 800; font-size: 1.15rem; letter-spacing: -.03em; color: var(--text); }
 .brand .logo { color: var(--accent); }
-.topnav { display: flex; gap: .25rem; margin-left: .5rem; }
-.topnav a { padding: .5rem .85rem; border-radius: var(--r-pill); font-weight: 600; color: var(--muted); display: flex; gap: .45rem; align-items: center; transition: all .2s; }
-.topnav a:hover { color: var(--text); background: var(--s2); }
-.topnav a.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.topnav { display: flex; gap: .25rem; margin-left: .5rem; align-items: center; }
+.topnav a, .topnav-books {
+  padding: .5rem .85rem; border-radius: var(--r-pill); font-weight: 600; color: var(--muted);
+  display: flex; gap: .45rem; align-items: center; transition: all .2s;
+  border: 0; background: transparent; cursor: pointer; font: inherit;
+}
+.topnav a:hover, .topnav-books:hover { color: var(--text); background: var(--s2); }
+.topnav a.on, .topnav-books.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* Books → Bible / Qur’an horizontal picker (clamped to viewport) */
+.books-picker {
+  position: fixed; z-index: 1200; display: flex; flex-direction: row; gap: .4rem;
+  padding: .4rem; border-radius: 16px; background: var(--s1); border: 1px solid var(--line);
+  box-shadow: 0 16px 40px -12px rgba(0,0,0,.28);
+  opacity: 0; transform: translateY(6px) scale(.96);
+  transition: opacity .18s ease, transform .22s cubic-bezier(.2,.9,.2,1);
+  max-width: calc(100vw - 16px); flex-wrap: nowrap;
+}
+.books-picker.show { opacity: 1; transform: none; }
+.books-picker.out { opacity: 0; transform: translateY(4px) scale(.97); }
+.books-opt {
+  display: flex; align-items: center; gap: .45rem; padding: .55rem .95rem;
+  border: 0; border-radius: 12px; background: transparent; color: var(--text);
+  font: inherit; font-weight: 650; cursor: pointer; white-space: nowrap;
+  transition: background .15s, transform .15s;
+}
+.books-opt:hover { background: color-mix(in srgb, var(--g-faith, var(--accent)) 12%, var(--s2)); }
+.books-opt:active { transform: scale(.96); }
+.books-opt-ic { display: inline-grid; color: var(--g-faith, var(--accent)); }
+
 .main { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 1.25rem max(1rem, var(--safe-r)) calc(var(--cmd-h) + 2.5rem + var(--safe-b)) max(1rem, var(--safe-l)); }
 .page-enter { animation: pageIn .42s var(--ease) both; }
 @keyframes pageIn { from { opacity: 0; transform: translateY(10px); } }

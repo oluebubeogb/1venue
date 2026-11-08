@@ -119,33 +119,75 @@ const ALIASES = {
   tobit: 'TOB', tob: 'TOB', judith: 'JDT', jdt: 'JDT', wisdom: 'WIS', wis: 'WIS', wisdomofsolomon: 'WIS',
   sirach: 'SIR', sir: 'SIR', ecclesiasticus: 'SIR', baruch: 'BAR', bar: 'BAR',
   '1maccabees': '1MA', '1macc': '1MA', '2maccabees': '2MA', '2macc': '2MA',
-  // Qur’an common aliases
-  fatihah: 'Q001', 'alfatihah': 'Q001', baqarah: 'Q002', 'albaqarah': 'Q002',
-  ikhlas: 'Q112', 'alikhlas': 'Q112', nas: 'Q114', 'annas': 'Q114',
+  // Qur’an common aliases (normalized keys without hyphens/spaces also matched in findBook)
+  fatihah: 'Q001', alfatihah: 'Q001', 'al-fatihah': 'Q001',
+  baqarah: 'Q002', albaqarah: 'Q002', 'al-baqarah': 'Q002',
+  ikhlas: 'Q112', alikhlas: 'Q112', 'al-ikhlas': 'Q112',
+  falaq: 'Q113', alfalaq: 'Q113', 'al-falaq': 'Q113',
+  nas: 'Q114', annas: 'Q114', 'an-nas': 'Q114',
+  yasin: 'Q036', 'ya-sin': 'Q036', mulk: 'Q067', almulk: 'Q067',
+  kahf: 'Q018', alkahf: 'Q018', 'al-kahf': 'Q018',
+  maryam: 'Q019', rahman: 'Q055', arrahman: 'Q055',
 };
+function normBookKey(s) {
+  return String(s || '').toLowerCase()
+    .replace(/['’`]/g, '')
+    .replace(/[-–—_./]/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
 function findBook(raw) {
   let s = String(raw || '').toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
   s = s.replace(/^(first|i)\s+/, '1 ').replace(/^(second|ii)\s+/, '2 ').replace(/^(third|iii)\s+/, '3 ');
+  // Strip leading "surah/sura/al " for Qur’an lookups
+  s = s.replace(/^(surah|sura|soorah)\s+/i, '');
   const compact = s.replace(/\s/g, '');
+  const key = normBookKey(s);
   const num = (compact.match(/^[123]/) || [''])[0];
   const rest = compact.slice(num.length);
   if (ALIASES[compact]) return BOOKS.find((b) => b.id === ALIASES[compact]);
-  const exact = BOOKS.find((b) => b.id.toLowerCase() === compact || b.name.toLowerCase().replace(/\s/g, '') === compact);
+  if (ALIASES[key]) return BOOKS.find((b) => b.id === ALIASES[key]);
+  // Exact id / name (ignore spaces, hyphens, apostrophes)
+  const exact = BOOKS.find((b) => {
+    const id = b.id.toLowerCase();
+    const nm = normBookKey(b.name);
+    return id === compact || id === key || nm === compact || nm === key
+      || normBookKey(b.name.replace(/^al[- ]?/i, '')) === key.replace(/^al/, '');
+  });
   if (exact) return exact;
+  // Qur’an: "112" or "Q112"
+  const qn = key.match(/^q?0*(\d{1,3})$/);
+  if (qn) {
+    const n = parseInt(qn[1], 10);
+    if (n >= 1 && n <= 114) return BOOKS.find((b) => b.surah === n);
+  }
   if (rest.length >= 2) {
     const cands = BOOKS.filter((b) => {
-      const bn = b.name.toLowerCase().replace(/\s/g, '');
-      return (num ? bn.startsWith(num) : !/^[123]/.test(bn)) && bn.slice(num.length).startsWith(rest);
+      const bn = normBookKey(b.name);
+      const r = normBookKey(rest);
+      return (num ? bn.startsWith(num) : !/^[123]/.test(bn)) && (bn.slice(num.length).startsWith(r) || bn.includes(r));
     });
-    if (cands.length) return cands[0];
+    if (cands.length === 1) return cands[0];
+    if (cands.length > 1) {
+      // Prefer shortest name match (e.g. "John" → JHN not 1JN)
+      cands.sort((a, b) => a.name.length - b.name.length);
+      return cands[0];
+    }
     if (!num && ALIASES[rest]) return BOOKS.find((b) => b.id === ALIASES[rest]);
   }
   return null;
 }
-/** Parse "John 3:16-18", "1 Cor 13", "Ps 23:1,4", "Romans 8:28–39". */
+/** Parse "John 3:16-18", "1 Cor 13", "Al-Ikhlas 1", "Surah Al-Baqarah 1:255". */
 function parseReference(ref) {
-  const m = String(ref || '').trim().match(/^((?:[123]|i{1,3}|first|second|third)?\s*[a-zA-Z][a-zA-Z .]*?)\s*(\d{1,3})(?:\s*[:.]\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?((?:\s*,\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?)*))?\s*$/i);
-  if (!m) return null;
+  const raw = String(ref || '').trim();
+  // Allow hyphens / apostrophes in book names (Al-Ikhlas, Ali 'Imran, Song of Songs)
+  const m = raw.match(/^((?:[123]|i{1,3}|first|second|third)?\s*[a-zA-Z][a-zA-Z0-9 .'\-’]*?)\s+(\d{1,3})(?:\s*[:.]\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?((?:\s*,\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?)*))?\s*$/i);
+  if (!m) {
+    // Bare surah name with no chapter (e.g. "Al-Ikhlas") → whole surah chapter 1
+    const only = findBook(raw);
+    if (only && only.testament === 'Quran') return { book: only.id, bookName: only.name, chapter: 1, verses: null };
+    return null;
+  }
   const book = findBook(m[1]);
   if (!book) return null;
   const chapter = parseInt(m[2], 10);

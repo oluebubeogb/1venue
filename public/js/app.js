@@ -179,13 +179,64 @@ export function setRoomMode(on) {
 
 /* ---------- shell ---------- */
 const NAV = [
-  ['/', 'home', 'Home'], ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/dashboard', 'dashboard', 'Dashboard'], ['/bible', 'bookOpen', 'Bible'],
+  ['/', 'home', 'Home'], ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/dashboard', 'dashboard', 'Dashboard'],
 ];
 function highlightNav(path) {
   document.querySelectorAll('[data-nav]').forEach((a) => {
     const p = a.getAttribute('data-nav');
     a.classList.toggle('on', p === '/' ? path === '/' : path.startsWith(p));
   });
+  // Books is active for /bible
+  document.querySelectorAll('[data-nav-books]').forEach((a) => {
+    a.classList.toggle('on', path.startsWith('/bible'));
+  });
+}
+function openBooksPicker(anchor) {
+  // Close any existing
+  document.getElementById('books-picker')?.remove();
+  const rect = anchor.getBoundingClientRect();
+  const picker = h('div', {
+    id: 'books-picker',
+    class: 'books-picker',
+    role: 'menu',
+    'aria-label': 'Choose scripture',
+  });
+  const go = (corpus) => {
+    picker.classList.add('out');
+    setTimeout(() => picker.remove(), 180);
+    navigate(corpus === 'quran' ? '/bible?corpus=quran' : '/bible?corpus=bible');
+  };
+  picker.append(
+    h('button', { class: 'books-opt', type: 'button', role: 'menuitem', onclick: () => go('bible') },
+      h('span', { class: 'books-opt-ic', html: icon('bookOpen', { size: 18 }) }),
+      h('span', null, 'Bible')),
+    h('button', { class: 'books-opt', type: 'button', role: 'menuitem', onclick: () => go('quran') },
+      h('span', { class: 'books-opt-ic', html: icon('book', { size: 18 }) }),
+      h('span', null, 'Qur’an')),
+  );
+  document.body.append(picker);
+  // Position: prefer under the anchor, keep fully on-screen horizontally
+  const pad = 8;
+  const pw = picker.offsetWidth || 220;
+  let left = rect.left + rect.width / 2 - pw / 2;
+  left = Math.max(pad, Math.min(left, window.innerWidth - pw - pad));
+  let top = rect.bottom + 8;
+  if (top + picker.offsetHeight > window.innerHeight - pad) top = Math.max(pad, rect.top - picker.offsetHeight - 8);
+  picker.style.left = `${left}px`;
+  picker.style.top = `${top}px`;
+  requestAnimationFrame(() => picker.classList.add('show'));
+  const close = (e) => {
+    if (e && picker.contains(e.target)) return;
+    picker.classList.add('out');
+    setTimeout(() => picker.remove(), 180);
+    document.removeEventListener('pointerdown', close, true);
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  setTimeout(() => {
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', onKey, true);
+  }, 0);
 }
 function renderUserSlot() {
   const slot = $('#userslot'); if (!slot) return;
@@ -214,9 +265,20 @@ const frag = (s) => document.createRange().createContextualFragment(s);
 function buildShell() {
   const app = $('#app'); app.innerHTML = '';
   const themeBtn = h('button', { class: 'icon-btn', 'data-group': 'settings', 'data-tip': 'Toggle light / dark', 'aria-label': 'Toggle theme', onclick: toggleTheme, html: icon('moon') });
+  const booksBtn = h('button', {
+    class: 'topnav-books',
+    type: 'button',
+    'data-nav-books': '',
+    'aria-haspopup': 'menu',
+    'aria-label': 'Books — Bible and Qur’an',
+    html: icon('bookOpen', { size: 18 }) + 'Books',
+  });
+  booksBtn.onclick = (e) => { e.preventDefault(); openBooksPicker(booksBtn); };
   const top = h('header', { class: 'topbar' },
     h('a', { class: 'brand', href: '/', 'data-link': '', html: LOGO(30) + '<span>1venue</span>' }),
-    h('nav', { class: 'topnav', 'aria-label': 'Primary' }, NAV.map(([p, ic, l]) => h('a', { href: p, 'data-link': '', 'data-nav': p, html: icon(ic, { size: 18 }) + l }))),
+    h('nav', { class: 'topnav', 'aria-label': 'Primary' },
+      ...NAV.map(([p, ic, l]) => h('a', { href: p, 'data-link': '', 'data-nav': p, html: icon(ic, { size: 18 }) + l })),
+      booksBtn),
     h('div', { class: 'grow' }),
     h('a', { class: 'btn sm primary top-desktop', href: '/create', 'data-link': '', html: icon('plus', { size: 16 }) + 'Create' }),
     h('div', { class: 'row', 'data-group': 'nav', style: { gap: '2px' } },
@@ -291,7 +353,8 @@ function registerGlobal() {
     { id: 'people', label: 'Find people', icon: 'users', group: 'people', keywords: ['follow', 'friends', 'search users'], run: go('/search?tab=people') },
     { id: 'my-events', label: 'My events', icon: 'calendar', group: 'engage', keywords: ['hosting', 'scheduled', 'upcoming'], run: go('/dashboard#hosting') },
     { id: 'sessions', label: 'Past sessions & transcripts', short: 'Sessions', icon: 'history', group: 'content', keywords: ['history', 'transcripts', 'summaries', 'recordings'], run: go('/sessions') },
-    { id: 'bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: ['scripture', 'read', 'verse'], run: go('/bible') },
+    { id: 'bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: ['scripture', 'read', 'verse', 'books'], run: go('/bible?corpus=bible') },
+    { id: 'quran', label: 'Qur’an', icon: 'book', group: 'faith', keywords: ['quran', 'koran', 'surah', 'ayah', 'islam', 'books'], run: go('/bible?corpus=quran') },
     { id: 'bible-tr', label: 'Bible translation', icon: 'languages', group: 'faith', keywords: ['kjv', 'web', 'yoruba', 'version'], run: go('/settings#bible') },
     { id: 'whiteboard', label: 'My whiteboards', short: 'Whiteboard', icon: 'board', group: 'content', keywords: ['draw', 'sketch', 'personal', 'saved boards'], when: () => !state.inRoom, run: go('/whiteboard') },
     { id: 'qr', label: 'Make a QR code', icon: 'qr', group: 'content', keywords: ['invite', 'poster'], run: () => import('./pages/event.js').then((m) => m.qrMaker()) },
