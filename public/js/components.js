@@ -7,8 +7,9 @@ import { passageCard } from './passage.js';
 
 function linkify(s) {
   return String(s || '')
-    .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
-    .replace(/(https?:\/\/[^\s<]+|\/a\/[a-f0-9]{32,})/g, (m) => `<a href="${m}" data-link>${m}</a>`);
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/(https?:\/\/[^\s<]+|\/a\/[a-f0-9]{32,})/g, (m) =>
+      `<a class="feed-link-chip" href="${m}" data-link><span class="feed-link-ic">${icon('link', { size: 13 })}</span><span class="feed-link-url">${m}</span></a>`);
 }
 
 export const CAT = {
@@ -58,34 +59,100 @@ export function personRow(u, { follow = true } = {}) {
     follow && state.user && state.user.id !== u.id ? followBtn(u) : null);
 }
 
-const POST_KIND = { event_scheduled: ['scheduled an event', 'calendar'], event_live: ['is live now', 'radio'], event_ended: ['wrapped up', 'check'], summary: ['shared a session summary', 'sparkles'] };
+const POST_KIND = {
+  event_scheduled: ['scheduled an event', 'calendar'],
+  event_live: ['is live now', 'radio'],
+  event_ended: ['wrapped up', 'check'],
+  summary: ['shared a session summary', 'sparkles'],
+};
+
+function feedEventBlock(ev) {
+  if (!ev) return null;
+  const [cl, ci, cc] = catOf(ev.category);
+  const live = ev.status === 'live' || ev.live;
+  const c1 = ev.theme?.accent || cc;
+  const c2 = ev.theme?.accent2 || 'var(--accent-2)';
+  const dateLabel = live ? 'LIVE' : (ev.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null);
+  return h('div', { class: 'feed-event' },
+    h('div', { class: 'feed-event-cover', style: { '--c1': c1, '--c2': c2 } },
+      ev.coverUrl
+        ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' })
+        : h('div', { class: 'feed-event-art', html: LOGO_ART }),
+      dateLabel ? h('span', { class: `feed-event-pill${live ? ' live' : ''}`, html: (live ? '' : icon('calendar', { size: 12 })) + esc(dateLabel) }) : null),
+    h('div', { class: 'feed-event-body' },
+      h('span', { class: 'feed-event-cat', style: { '--g': cc }, html: icon(ci, { size: 12 }) + esc(cl.toUpperCase()) }),
+      h('div', { class: 'feed-event-title' }, ev.title)));
+}
+
 export function postCard(p, { onDelete } = {}) {
   const kind = POST_KIND[p.kind];
   const likeBtn = h('button', { class: `act${p.liked ? ' liked' : ''}`, 'data-group': 'engage', 'data-tip': 'Like', html: icon('heart', { size: 18 }) + `<span>${fmtNum(p.likeCount)}</span>` });
   likeBtn.onclick = async () => {
     if (!requireLogin('Sign in to like posts')) return;
-    p.liked = !p.liked; p.likeCount += p.liked ? 1 : -1; likeBtn.classList.toggle('liked', p.liked); likeBtn.lastChild.textContent = fmtNum(p.likeCount);
-    try { const r = await api(`/api/posts/${p.id}/like`, { method: 'POST' }); if (r && r.likeCount != null) likeBtn.lastChild.textContent = fmtNum(r.likeCount); } catch (e) { toastErr(e); }
+    p.liked = !p.liked; p.likeCount += p.liked ? 1 : -1;
+    likeBtn.classList.toggle('liked', p.liked);
+    likeBtn.lastChild.textContent = fmtNum(p.likeCount);
+    try {
+      const r = await api(`/api/posts/${p.id}/like`, { method: 'POST' });
+      if (r && r.likeCount != null) likeBtn.lastChild.textContent = fmtNum(r.likeCount);
+    } catch (e) { toastErr(e); }
   };
-  const thread = h('div');
+  const thread = h('div', { class: 'feed-thread' });
   const cBtn = h('button', { class: 'act', 'data-group': 'social', 'data-tip': 'Comments', html: icon('chat', { size: 18 }) + `<span>${fmtNum(p.commentCount)}</span>` });
-  cBtn.onclick = () => { if (thread.firstChild) { thread.innerHTML = ''; return; } thread.append(commentThread('posts', p.id, { compact: true })); };
+  cBtn.onclick = () => {
+    if (thread.firstChild) { thread.innerHTML = ''; return; }
+    thread.append(commentThread('posts', p.id, { compact: true }));
+  };
   const shareBtn = h('button', { class: 'act', 'data-group': 'content', 'data-tip': 'Share', html: icon('share', { size: 18 }) });
-  shareBtn.onclick = () => shareLink(p.event ? `${location.origin}/e/${p.event.slug}` : `${location.origin}${profilePath(p.author)}`, p.event?.title || '1venue');
+  shareBtn.onclick = () => shareLink(
+    p.event ? `${location.origin}/e/${p.event.slug}` : `${location.origin}${profilePath(p.author)}`,
+    p.event?.title || '1venue',
+  );
+  const bookmarkBtn = h('button', { class: 'act', 'data-group': 'content', 'data-tip': 'Save', html: icon('bookmark', { size: 18 }) });
+  bookmarkBtn.onclick = () => toast('Saved for later', { icon: 'bookmark', group: 'content' });
+
   const mine = state.user && p.author && state.user.id === p.author.id;
-  const el = h('article', { class: 'card post' },
-    h('a', { href: profilePath(p.author), 'data-link': '' }, avatar(p.author.name, p.author.avatarUrl)),
-    h('div', { class: 'grow', style: { minWidth: 0 } },
-      h('div', { class: 'head' }, h('a', { class: 'name', href: profilePath(p.author), 'data-link': '' }, p.author.name),
-        kind ? h('span', { class: 'muted small', html: icon(kind[1], { size: 14, cls: 'inline' }) + ' ' + kind[0] }) : null,
-        h('span', { class: 'faint small' }, '· ' + timeAgo(p.createdAt))),
-      p.body && p.kind === 'post' ? h('div', { class: 'text', html: linkify(p.body) }) : p.body && p.kind === 'summary' ? h('div', { class: 'text prose small' }, p.body.slice(0, 600)) : null,
-      (p.media || []).filter((m) => m.type === 'passage').slice(0, 1).map((m) => passageCard(m)),
-      (p.media || []).filter((m) => m.type !== 'passage' && /^image\//.test(m.mime || 'image/')).slice(0, 4).map((m) => h('img', { src: m.url, alt: '', loading: 'lazy', style: { borderRadius: '14px', marginTop: '.6rem', maxHeight: '420px', objectFit: 'cover', width: '100%' } })),
-      p.event ? h('div', { style: { marginTop: '.7rem', maxWidth: '420px' } }, eventCard(p.event, { compact: true })) : null,
-      h('div', { class: 'acts' }, likeBtn, cBtn, shareBtn,
-        mine ? h('button', { class: 'act', 'data-group': 'admin', 'data-tip': 'Delete', html: icon('trash', { size: 16 }), onclick: async () => { if (await confirmDlg('Delete this post?', { ok: 'Delete', danger: true })) { await api(`/api/posts/${p.id}`, { method: 'DELETE' }).catch(toastErr); el.remove(); onDelete && onDelete(); } } }) : null),
-      thread));
+  const menuBtn = h('button', {
+    class: 'icon-btn sm feed-more', type: 'button',
+    'data-tip': 'More', 'aria-label': 'More',
+    html: icon('moreHorizontal', { size: 18 }),
+    onclick: async (e) => {
+      e.stopPropagation();
+      if (!mine) return toast('More actions coming soon', { icon: 'info' });
+      if (await confirmDlg('Delete this post?', { ok: 'Delete', danger: true })) {
+        await api(`/api/posts/${p.id}`, { method: 'DELETE' }).catch(toastErr);
+        el.remove();
+        onDelete && onDelete();
+      }
+    },
+  });
+
+  const isEventPost = !!(p.event && (p.kind === 'event_scheduled' || p.kind === 'event_live' || p.kind === 'event_ended' || !p.body));
+  const el = h('article', { class: `card feed-post${isEventPost ? ' is-event' : ''}` },
+    h('div', { class: 'feed-post-head' },
+      h('a', { class: 'feed-post-av', href: profilePath(p.author), 'data-link': '' }, avatar(p.author.name, p.author.avatarUrl)),
+      h('div', { class: 'feed-post-meta grow' },
+        h('a', { class: 'name', href: profilePath(p.author), 'data-link': '' }, p.author.name),
+        kind
+          ? h('span', { class: 'feed-post-kind muted small', html: icon(kind[1], { size: 13, cls: 'inline' }) + ' ' + kind[0] })
+          : null,
+        h('span', { class: 'faint small' }, (kind ? ' · ' : '') + timeAgo(p.createdAt))),
+      menuBtn),
+    p.body && (p.kind === 'post' || !p.kind)
+      ? h('div', { class: 'feed-post-text', html: linkify(p.body) })
+      : p.body && p.kind === 'summary'
+        ? h('div', { class: 'feed-post-text prose small' }, p.body.slice(0, 600))
+        : null,
+    ...(p.media || []).filter((m) => m.type === 'passage').slice(0, 1).map((m) => passageCard(m)),
+    ...(p.media || []).filter((m) => m.type !== 'passage' && /^image\//.test(m.mime || 'image/')).slice(0, 4).map((m) =>
+      h('img', { class: 'feed-post-img', src: m.url, alt: '', loading: 'lazy' })),
+    p.event ? feedEventBlock(p.event) : null,
+    h('div', { class: 'feed-post-foot' },
+      h('div', { class: 'acts' }, likeBtn, cBtn, shareBtn, bookmarkBtn),
+      p.event
+        ? h('a', { class: 'btn sm feed-view-event', href: `/e/${p.event.slug}`, 'data-link': '', html: 'View Event ' + icon('arrowRight', { size: 14 }) })
+        : null),
+    thread);
   return el;
 }
 export async function shareLink(url, title = '1venue') {
