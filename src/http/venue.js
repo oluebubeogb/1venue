@@ -508,18 +508,43 @@ route('POST', '/api/ai/scripture', async (ctx) => {
   await aiGuard(ctx);
   const b = await ctx.body();
   const query = String(b.query || '').slice(0, 300);
-  const translation = b.translation || null;
-  const r = await ai().scripture(query, translation);
+  const corpus = String(b.corpus || 'bible').toLowerCase() === 'quran' ? 'quran' : 'bible';
+  let translation = b.translation || null;
+  // Keep hydration inside the active corpus
+  if (corpus === 'quran' && !/^quran_/i.test(translation || '')) translation = 'quran_en_sahih';
+  if (corpus === 'bible' && /^quran_/i.test(translation || '')) translation = config.BIBLE?.defaultTranslation || 'eng_kjv';
+
+  const r = await ai().scripture(query, translation, corpus);
   const parsed = String(r.text).split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
     const [ref, why] = l.replace(/^[-*\d.\s]+/, '').split('|').map((x) => (x || '').trim());
     return bible().parseReference(ref) ? { reference: ref, why: why || '' } : null;
   }).filter(Boolean).slice(0, 6);
 
-  // Hydrate with verse objects so the UI can use the same superscript style as the reader.
+  // Drop cross-corpus accidents (e.g. Bible refs while in Qur’an mode)
+  const filtered = parsed.filter((item) => {
+    const p = bible().parseReference(item.reference);
+    if (!p) return false;
+    const book = bible().BOOKS.find((x) => x.id === p.book);
+    const isQ = book && book.testament === 'Quran';
+    return corpus === 'quran' ? isQ : !isQ;
+  });
+
   const refs = [];
-  for (const item of parsed) {
+  for (const item of filtered) {
     try {
-      const p = await bible().passage(item.reference, translation);
+      let tryTr = translation;
+      let p;
+      try {
+        p = await bible().passage(item.reference, tryTr);
+      } catch (err) {
+        // Deuterocanonical hits when the active translation lacks them → load via WEBc
+        const parsedRef = bible().parseReference(item.reference);
+        const book = parsedRef && bible().BOOKS.find((x) => x.id === parsedRef.book);
+        if (corpus === 'bible' && book && book.testament === 'DC') {
+          tryTr = 'eng_webc';
+          p = await bible().passage(item.reference, tryTr);
+        } else throw err;
+      }
       const verses = (p.verses || []).map((v) => ({
         v: v.v,
         text: String(v.text).replace(/^¶\s*/, '').trim(),
@@ -530,17 +555,18 @@ route('POST', '/api/ai/scripture', async (ctx) => {
         why: item.why,
         text,
         verses: verses.slice(0, 8),
-        translation: p.translation?.id || translation,
+        translation: p.translation?.id || tryTr,
         short: p.translation?.short || '',
         book: p.book,
         chapter: p.chapter,
         selected: p.selected || null,
+        deuterocanon: !!(bible().BOOKS.find((x) => x.id === p.book)?.testament === 'DC'),
       });
     } catch {
       refs.push({ reference: item.reference, why: item.why, text: '', verses: [] });
     }
   }
-  return { refs, query, provider: r.provider, mock: !!r.mock };
+  return { refs, query, corpus, provider: r.provider, mock: !!r.mock };
 });
 
 // ------------------------------------------------------------ personal whiteboards

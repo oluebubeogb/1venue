@@ -673,6 +673,12 @@ button.list-item:hover { background: var(--s2); }
 .bible-tools { position: sticky; top: calc(var(--top-h) + 8px); z-index: 5; display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
 .bible-page { min-height: 50vh; }
 .bible-title { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 1.7rem; }
+.bible-title-block { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.surah-meaning {
+  font-size: .78rem; font-weight: 650; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+  font-family: Inter, system-ui, sans-serif;
+}
 .verse-wrap { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 1.15rem; line-height: 1.75; margin-top: 1rem; }
 .verse-wrap .v { cursor: pointer; border-radius: 6px; transition: background .15s; }
 .verse-wrap .v:hover { background: color-mix(in srgb, var(--g-faith) 8%, transparent); }

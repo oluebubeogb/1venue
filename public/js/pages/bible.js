@@ -53,7 +53,13 @@ export function versesEl(p, { selectable = true, onSelect, compact = false } = {
   });
   return wrap;
 }
-export const refLabel = (bookName, ch, vs) => `${bookName} ${ch}${vs && vs.length ? ':' + (vs.length > 1 && vs[vs.length - 1] - vs[0] === vs.length - 1 ? `${vs[0]}-${vs[vs.length - 1]}` : vs.join(',')) : ''}`;
+export const refLabel = (bookName, ch, vs, { quran = false } = {}) => {
+  const range = vs && vs.length
+    ? (vs.length > 1 && vs[vs.length - 1] - vs[0] === vs.length - 1 ? `${vs[0]}-${vs[vs.length - 1]}` : vs.join(','))
+    : '';
+  if (quran) return range ? `${bookName} ${range}` : bookName;
+  return `${bookName} ${ch}${range ? ':' + range : ''}`;
+};
 
 export async function mount(view, params) {
   const { books } = await bibleMeta();
@@ -71,8 +77,10 @@ export async function mount(view, params) {
     placeholder: corpus === 'quran' ? 'Al-Ikhlas, Al-Fatihah 1, 2:255, family…' : 'John 3:16, family, hope, “a man shall leave…”',
     'aria-label': 'Reference or topic',
   });
+  const isQuranTr = (id) => /^(quran_)/i.test(id || '');
   const bookGroups = corpus === 'quran'
-    ? [h('optgroup', { label: 'Qur’an' }, books.filter((b) => b.testament === 'Quran').map((b) => h('option', { value: b.id }, b.name)))]
+    ? [h('optgroup', { label: 'Surahs' }, books.filter((b) => b.testament === 'Quran').map((b) =>
+        h('option', { value: b.id }, `${b.surah} ${b.name}`)))]
     : [
       h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))),
       h('optgroup', { label: 'Deuterocanonical' }, books.filter((b) => b.testament === 'DC').map((b) => h('option', { value: b.id }, b.name))),
@@ -80,6 +88,7 @@ export async function mount(view, params) {
     ];
   const bookSel = h('select', { class: 'input', 'aria-label': corpus === 'quran' ? 'Surah' : 'Book' }, ...bookGroups);
   const chSel = h('select', { class: 'input', 'aria-label': 'Chapter' });
+  if (corpus === 'quran') chSel.hidden = true;
   const trSel = translationSelect(tr, (v) => {
     tr = v;
     setPrefs({ bibleTranslation: v, ...(isQuranTr(v) ? { quranTranslation: v } : {}) });
@@ -87,7 +96,6 @@ export async function mount(view, params) {
   }, { compact: true, corpus });
   const body = h('div', { class: 'card pad-lg bible-page' });
   const selBar = h('div', { class: 'sel-bar hidden' });
-  const isQuranTr = (id) => /^(quran_)/i.test(id || '');
   const defaultBibleTr = () => state.prefs.bibleTranslation && !isQuranTr(state.prefs.bibleTranslation)
     ? state.prefs.bibleTranslation
     : (state.config?.bible?.defaultTranslation || 'eng_kjv');
@@ -110,10 +118,22 @@ export async function mount(view, params) {
   bookSel.onchange = () => { book = bookSel.value; chapter = 1; highlight = []; ensureCorpus(book); fillCh(); load(); };
   chSel.onchange = () => { chapter = Number(chSel.value); highlight = []; load(); };
   const step = (d) => {
-    const b = books.find((x) => x.id === book); let i = books.indexOf(b);
-    chapter += d;
-    if (chapter < 1) { i = Math.max(0, i - 1); book = books[i].id; chapter = books[i].chapters; }
-    else if (chapter > b.chapters) { i = Math.min(books.length - 1, i + 1); book = books[i].id; chapter = 1; }
+    const pool = corpus === 'quran'
+      ? books.filter((x) => x.testament === 'Quran')
+      : books.filter((x) => x.testament !== 'Quran');
+    const b = pool.find((x) => x.id === book) || pool[0];
+    let i = pool.indexOf(b);
+    if (corpus === 'quran') {
+      // Surahs have no multi-chapter structure — step moves to neighbouring surah
+      i = Math.max(0, Math.min(pool.length - 1, i + d));
+      book = pool[i].id;
+      chapter = 1;
+    } else {
+      chapter += d;
+      if (chapter < 1) { i = Math.max(0, i - 1); book = pool[i].id; chapter = pool[i].chapters; }
+      else if (chapter > b.chapters) { i = Math.min(pool.length - 1, i + 1); book = pool[i].id; chapter = 1; }
+      else book = b.id;
+    }
     bookSel.value = book; ensureCorpus(book); fillCh(); highlight = []; load();
   };
   let cur = null;
@@ -123,13 +143,28 @@ export async function mount(view, params) {
       ensureCorpus(book);
       cur = await api(`/api/bible/${tr}/${book}/${chapter}`);
       const t = TR.find((x) => x.id === tr);
-      history.replaceState({}, '', `/bible?ref=${encodeURIComponent(`${cur.bookName} ${chapter}`)}&t=${tr}`);
+      const meta = books.find((x) => x.id === book) || {};
+      const isQuran = corpus === 'quran' || meta.testament === 'Quran' || !!cur.surah;
+      const meaning = cur.meaning || cur.headings?.[0] || meta.meaning || '';
+      const titleMain = isQuran
+        ? (cur.surah ? `${cur.surah}. ${cur.bookName}` : cur.bookName)
+        : `${cur.bookName} ${chapter}`;
+      const histRef = isQuran ? cur.bookName : `${cur.bookName} ${chapter}`;
+      history.replaceState({}, '', `/bible?ref=${encodeURIComponent(histRef)}&t=${tr}${corpus === 'quran' ? '&corpus=quran' : ''}`);
       body.innerHTML = '';
-      body.append(h('div', { class: 'row between wrap' }, h('h2', { class: 'bible-title' }, `${cur.bookName} ${chapter}`), h('span', { class: 'chip', 'data-group': 'faith', 'data-tip': t?.license || '' }, t?.short || tr)),
+      const titleBlock = h('div', { class: 'bible-title-block' },
+        h('h2', { class: 'bible-title' }, titleMain),
+        isQuran && meaning
+          ? h('div', { class: 'surah-meaning' }, meaning)
+          : null);
+      body.append(
+        h('div', { class: 'row between wrap', style: { alignItems: 'flex-start' } },
+          titleBlock,
+          h('span', { class: 'chip', 'data-group': 'faith', 'data-tip': t?.license || '' }, t?.short || tr)),
         versesEl({ ...cur, selected: highlight, translation: t }, { onSelect: (vs) => { highlight = vs; paintSel(); } }),
         h('div', { class: 'row between', style: { marginTop: '1.5rem' } },
-          h('button', { class: 'btn', html: icon('chevronLeft', { size: 18 }) + 'Previous', onclick: () => step(-1) }),
-          h('button', { class: 'btn', html: 'Next' + icon('chevronRight', { size: 18 }), onclick: () => step(1) })),
+          h('button', { class: 'btn', html: icon('chevronLeft', { size: 18 }) + (isQuran ? 'Previous surah' : 'Previous'), onclick: () => step(-1) }),
+          h('button', { class: 'btn', html: (isQuran ? 'Next surah' : 'Next') + icon('chevronRight', { size: 18 }), onclick: () => step(1) })),
         h('p', { class: 'tiny faint', style: { marginTop: '1rem' } }, `${t?.name || tr} · ${t?.license || ''}`));
       paintSel();
       if (highlight.length) setTimeout(() => body.querySelector('.verse.sel')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80);
@@ -146,7 +181,7 @@ export async function mount(view, params) {
   function paintSel() {
     selBar.classList.toggle('hidden', !highlight.length);
     if (!highlight.length) return;
-    const ref = refLabel(cur.bookName, chapter, highlight);
+    const ref = refLabel(cur.bookName, chapter, highlight, { quran: corpus === 'quran' || !!cur.surah });
     const t = TR.find((x) => x.id === tr);
     selBar.innerHTML = '';
     const selVerses = cur.verses.filter((v) => highlight.includes(v.v)).map((v) => ({ v: v.v, text: String(v.text).replace(/^¶\s*/, '').trim() }));
@@ -276,7 +311,9 @@ export async function mount(view, params) {
     return h('article', { class: 'bible-hit card pad layer' },
       h('div', { class: 'row between wrap', style: { gap: '.4rem', alignItems: 'baseline' } },
         h('button', { class: 'bible-hit-ref', type: 'button', onclick: open }, item.reference),
-        item.short ? h('span', { class: 'chip', 'data-group': 'faith' }, item.short) : null),
+        h('div', { class: 'row', style: { gap: '.35rem' } },
+          item.deuterocanon ? h('span', { class: 'chip', 'data-group': 'faith', 'data-tip': 'Deuterocanonical' }, 'Deut.') : null,
+          item.short ? h('span', { class: 'chip', 'data-group': 'faith' }, item.short) : null)),
       item.why ? h('p', { class: 'tiny muted', style: { margin: '.2rem 0 .35rem' } }, item.why) : null,
       bodyEl,
       acts);
@@ -285,12 +322,12 @@ export async function mount(view, params) {
   async function showSearchResults(query, refs) {
     body.innerHTML = '';
     selBar.classList.add('hidden');
-    history.replaceState({}, '', `/bible?q=${encodeURIComponent(query)}&t=${tr}`);
+    history.replaceState({}, '', `/bible?q=${encodeURIComponent(query)}&t=${tr}${corpus === 'quran' ? '&corpus=quran' : ''}`);
     body.append(
       h('div', { class: 'row between wrap', style: { marginBottom: '.75rem', gap: '.5rem' } },
         h('div', null,
           h('h2', { class: 'bible-title', style: { fontSize: '1.15rem' } }, 'Matches'),
-          h('p', { class: 'tiny muted' }, `Topic & phrase suggestions for “${query}”`)),
+          h('p', { class: 'tiny muted' }, `${corpus === 'quran' ? 'Qur’an' : 'Bible'} suggestions for “${query}”`)),
         h('button', { class: 'btn sm ghost', type: 'button', onclick: () => load() }, 'Back to reading')),
       h('div', { class: 'bible-hits col', style: { gap: '.75rem' } }, ...refs.map(resultCard)),
     );
@@ -333,7 +370,7 @@ export async function mount(view, params) {
     body.innerHTML = '<div class="skel" style="height:180px"></div>';
     selBar.classList.add('hidden');
     try {
-      const r = await api('/api/ai/scripture', { method: 'POST', body: { query: q, translation: tr } });
+      const r = await api('/api/ai/scripture', { method: 'POST', body: { query: q, translation: tr, corpus } });
       if (r.refs?.length) {
         // Single high-confidence direct match → open it; otherwise show the guide
         if (r.refs.length === 1 && looksLikeRef) return goRef(r.refs[0].reference, { forcePassage: true });
