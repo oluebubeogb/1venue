@@ -508,6 +508,29 @@ button.list-item:hover { background: var(--s2); }
 .split { display: grid; gap: 1.2rem; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
 @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
 .sticky { position: sticky; top: calc(var(--top-h) + 1rem); }
+
+/* Dashboard vertical rhythm */
+.dash-activity { margin-top: 1.15rem; }
+.dash-split { margin-top: 1.35rem; gap: 1.5rem; }
+.dash-main-col { gap: 1.5rem !important; }
+.dash-side-col { gap: 1.15rem !important; }
+.dash-block { display: flex; flex-direction: column; gap: .65rem; }
+.dash-block .section-h { margin-top: 0; margin-bottom: .35rem; }
+.dash-block + .dash-block { margin-top: .25rem; }
+
+/* Create page preview label */
+.preview-label {
+  display: flex; align-items: center; gap: .45rem;
+  font-size: .8rem; font-weight: 650; color: var(--muted);
+  margin-bottom: .35rem;
+}
+.preview-eye {
+  width: 28px; height: 28px; border-radius: 9px;
+  display: inline-grid; place-items: center; flex: none;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.preview-eye .ic { width: 14px; height: 14px; }
 .kbd { font: 600 .75rem ui-monospace, monospace; padding: .1rem .4rem; border: 1px solid var(--line-2); border-radius: 6px; background: var(--s2); }
 .code-big { font: 800 1.4rem ui-monospace, SFMono-Regular, monospace; letter-spacing: .12em; }
 

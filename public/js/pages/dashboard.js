@@ -59,16 +59,18 @@ export async function mount(view) {
       stat('clock', 'media', 'Live time (30d)', fmtDur(Number(s.seconds30))),
       stat('eye', 'social', 'Total audience', fmtNum(s.audience), `Peak ${fmtNum(s.peak)} live`),
       stat('captions', 'ai', 'Transcript lines', fmtNum(s.transcriptLines || s.captions || 0))),
-    d.activity?.length ? h('div', { class: 'card pad layer', style: { marginTop: '1rem' } }, h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Activity · 14 days'), spark) : null,
+    d.activity?.length ? h('div', { class: 'card pad layer dash-activity' }, h('div', { class: 'tiny muted', style: { marginBottom: '.4rem' } }, 'Activity · 14 days'), spark) : null,
     inlineBanner('dashboard') || '',
-    d.live?.length ? h('div', null, sectionHead('Live now', 'radio', h('a', { class: 'btn sm ghost', href: '/discover?status=live', 'data-link': '' }, 'All')), h('div', { class: 'hscroll cards-row' }, d.live.map((e) => eventCard(e)))) : '',
-    h('div', { class: 'split' },
-      h('div', { class: 'col', style: { gap: '.4rem' } },
-        h('div', { id: 'hosting' }, sectionHead('Your events', 'calendar', h('a', { class: 'btn sm', href: '/create', 'data-link': '', html: icon('plus', { size: 15 }) + 'New' })),
+    d.live?.length ? h('div', { class: 'dash-block' }, sectionHead('Live now', 'radio', h('a', { class: 'btn sm ghost', href: '/discover?status=live', 'data-link': '' }, 'All')), h('div', { class: 'hscroll cards-row' }, d.live.map((e) => eventCard(e)))) : '',
+    h('div', { class: 'split dash-split' },
+      h('div', { class: 'col dash-main-col' },
+        h('div', { id: 'hosting', class: 'dash-block' }, sectionHead('Your events', 'calendar', h('a', { class: 'btn sm', href: '/create', 'data-link': '', html: icon('plus', { size: 15 }) + 'New' })),
           d.hosting.length ? h('div', { class: 'grid-cards' }, d.hosting.map((e) => eventCard(e))) : empty('calendar', 'You haven’t hosted yet', 'Your talk shows, seminars and services will live here.')),
-        sectionHead('Going', 'ticket'),
-        d.going.length ? h('div', { class: 'grid-cards' }, d.going.map((e) => eventCard(e))) : empty('ticket', 'No RSVPs yet', 'Tap RSVP on any event to save it here.', h('a', { class: 'btn', href: '/discover', 'data-link': '' }, 'Discover'))),
-      h('aside', { class: 'col', style: { gap: '1rem' } },
+        h('div', { class: 'dash-block' },
+          sectionHead('Going', 'ticket'),
+          d.going.length ? h('div', { class: 'grid-cards' }, d.going.map((e) => eventCard(e))) : empty('ticket', 'No RSVPs yet', 'Tap RSVP on any event to save it here.', h('a', { class: 'btn', href: '/discover', 'data-link': '' }, 'Discover'))),
+      ),
+      h('aside', { class: 'col dash-side-col' },
         h('div', { class: 'card pad layer' },
           dashHead('history', 'Recent sessions', h('a', { class: 'tiny', href: '/sessions', 'data-link': '' }, 'All')),
           d.history.length
@@ -143,7 +145,7 @@ export async function mount(view) {
         more.onclick = () => { stack.replaceChildren(...lists.map(renderRow)); more.remove(); };
         stack.append(more);
       }
-      view.append(h('div', { class: 'card pad layer', style: { marginTop: '1rem' } },
+      view.append(h('div', { class: 'card pad layer dash-block' },
         dashHead('users', 'Attendance lists'),
         stack));
     }

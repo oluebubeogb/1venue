@@ -219,7 +219,10 @@ export async function mount(view, params) {
   view.append(
     h('div', { class: 'page-head' }, h('h1', { html: icon(editing ? 'pen' : 'calendarPlus', { size: 28 }) + (editing ? 'Edit event' : 'Create an event') })),
     h('div', { class: 'split' }, form, h('aside', { class: 'sticky col' },
-      h('div', { class: 'tiny muted', html: icon('eye', { size: 14 }) + ' Preview' }), prev,
+      h('div', { class: 'preview-label' },
+        h('span', { class: 'preview-eye', html: icon('eye', { size: 14 }) }),
+        h('span', null, 'Preview')),
+      prev,
       h('div', { class: 'card pad layer small muted' }, h('strong', null, 'Just need a quick call? '), h('a', { href: '/create?instant=1', 'data-link': '', style: { color: '#2563eb', fontWeight: '700' } }, 'Start an instant meeting')))));
 }
 
