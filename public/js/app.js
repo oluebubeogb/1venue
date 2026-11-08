@@ -104,6 +104,8 @@ const ROUTES = [
   [/^\/u\/([\w-]+)\/?$/, () => import('./pages/profile.js'), 'id'],
   [/^\/me\/?$/, () => import('./pages/profile.js'), { me: true }],
   [/^\/settings\/?$/, () => import('./pages/settings.js')],
+  [/^\/books\/?$/, () => import('./pages/bible.js')],
+  // Legacy /bible → /books (same page; Qur’an is a first-class peer, not an afterthought)
   [/^\/bible\/?$/, () => import('./pages/bible.js')],
   [/^\/sessions\/?$/, () => import('./pages/session.js'), { list: true }],
   [/^\/session\/(\d+)\/?$/, () => import('./pages/session.js'), 'id'],
@@ -186,9 +188,9 @@ function highlightNav(path) {
     const p = a.getAttribute('data-nav');
     a.classList.toggle('on', p === '/' ? path === '/' : path.startsWith(p));
   });
-  // Books is active for /bible
+  // Books is active for /books (and legacy /bible)
   document.querySelectorAll('[data-nav-books]').forEach((a) => {
-    a.classList.toggle('on', path.startsWith('/bible'));
+    a.classList.toggle('on', path.startsWith('/books') || path.startsWith('/bible'));
   });
 }
 function openBooksPicker(anchor) {
@@ -204,7 +206,7 @@ function openBooksPicker(anchor) {
   const go = (corpus) => {
     picker.classList.add('out');
     setTimeout(() => picker.remove(), 180);
-    navigate(corpus === 'quran' ? '/bible?corpus=quran' : '/bible?corpus=bible');
+    navigate(corpus === 'quran' ? '/books?corpus=quran' : '/books?corpus=bible');
   };
   picker.append(
     h('button', { class: 'books-opt', type: 'button', role: 'menuitem', onclick: () => go('bible') },
@@ -322,7 +324,7 @@ export function globalBarContext(pinnedOverride) {
       const c = /\d/.test(q) ? parseCode(q) : null;
       if (c) out.push({ id: 'dyn-join', label: `Join ${c}`, icon: 'login', group: 'people', run: () => navigate(`/${c}`) });
       const b = q.match(BIBLE_REF);
-      if (b && b[1].length > 1) out.push({ id: 'dyn-bible', label: `Open ${q.trim()}`, icon: 'bookOpen', group: 'faith', run: () => navigate('/bible?ref=' + encodeURIComponent(q.trim())) });
+      if (b && b[1].length > 1) out.push({ id: 'dyn-bible', label: `Open ${q.trim()}`, icon: 'bookOpen', group: 'faith', run: () => navigate('/books?ref=' + encodeURIComponent(q.trim())) });
       out.push({ id: 'dyn-search', label: `Search “${q.trim().slice(0, 24)}”`, short: 'Search all', icon: 'search', group: 'nav', tail: true, run: () => navigate('/search?q=' + encodeURIComponent(q.trim())) });
       return out;
     },
@@ -353,8 +355,8 @@ function registerGlobal() {
     { id: 'people', label: 'Find people', icon: 'users', group: 'people', keywords: ['follow', 'friends', 'search users'], run: go('/search?tab=people') },
     { id: 'my-events', label: 'My events', icon: 'calendar', group: 'engage', keywords: ['hosting', 'scheduled', 'upcoming'], run: go('/dashboard#hosting') },
     { id: 'sessions', label: 'Past sessions & transcripts', short: 'Sessions', icon: 'history', group: 'content', keywords: ['history', 'transcripts', 'summaries', 'recordings'], run: go('/sessions') },
-    { id: 'bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: ['scripture', 'read', 'verse', 'books'], run: go('/bible?corpus=bible') },
-    { id: 'quran', label: 'Qur’an', icon: 'book', group: 'faith', keywords: ['quran', 'koran', 'surah', 'ayah', 'islam', 'books'], run: go('/bible?corpus=quran') },
+    { id: 'bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: ['scripture', 'read', 'verse', 'books'], run: go('/books?corpus=bible') },
+    { id: 'quran', label: 'Qur’an', icon: 'book', group: 'faith', keywords: ['quran', 'koran', 'surah', 'ayah', 'islam', 'books'], run: go('/books?corpus=quran') },
     { id: 'bible-tr', label: 'Bible translation', icon: 'languages', group: 'faith', keywords: ['kjv', 'web', 'yoruba', 'version'], run: go('/settings#bible') },
     { id: 'whiteboard', label: 'My whiteboards', short: 'Whiteboard', icon: 'board', group: 'content', keywords: ['draw', 'sketch', 'personal', 'saved boards'], when: () => !state.inRoom, run: go('/whiteboard') },
     { id: 'qr', label: 'Make a QR code', icon: 'qr', group: 'content', keywords: ['invite', 'poster'], run: () => import('./pages/event.js').then((m) => m.qrMaker()) },

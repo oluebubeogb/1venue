@@ -2,7 +2,11 @@
 import { icon } from './icons.js';
 import { h, sheet } from './ui.js';
 
-export const passageUrl = (p) => `/bible?ref=${encodeURIComponent(p.reference)}${p.translation ? `&t=${encodeURIComponent(p.translation)}` : ''}`;
+export const passageUrl = (p) => {
+  const t = p.translation || '';
+  const corpus = /^quran_/i.test(t) ? '&corpus=quran' : '';
+  return `/books?ref=${encodeURIComponent(p.reference)}${t ? `&t=${encodeURIComponent(t)}` : ''}${corpus}`;
+};
 
 /** Card element for a passage {reference, text, translation, short}. `onRemove` adds an × (composer preview). */
 export function passageCard(p, { onRemove, compact = false } = {}) {

@@ -106,6 +106,11 @@ export const refLabel = (bookName, ch, vs, { quran = false } = {}) => {
 };
 
 export async function mount(view, params) {
+  // Canonical path is /books (legacy /bible still works and is rewritten)
+  if (location.pathname.startsWith('/bible')) {
+    const qs = location.search || '';
+    history.replaceState({}, '', `/books${qs}`);
+  }
   const { books } = await bibleMeta();
   const corpus = (params.corpus || '').toLowerCase() === 'quran' ? 'quran' : 'bible';
   let tr = params.t
@@ -194,7 +199,7 @@ export async function mount(view, params) {
         ? (cur.surah ? `${cur.surah}. ${cur.bookName}` : cur.bookName)
         : `${cur.bookName} ${chapter}`;
       const histRef = isQuran ? cur.bookName : `${cur.bookName} ${chapter}`;
-      history.replaceState({}, '', `/bible?ref=${encodeURIComponent(histRef)}&t=${tr}${corpus === 'quran' ? '&corpus=quran' : ''}`);
+      history.replaceState({}, '', `/books?ref=${encodeURIComponent(histRef)}&t=${tr}${corpus === 'quran' ? '&corpus=quran' : ''}`);
       body.innerHTML = '';
       const titleBlock = h('div', { class: 'bible-title-block' },
         h('h2', { class: 'bible-title' }, titleMain),
@@ -287,7 +292,7 @@ export async function mount(view, params) {
           'data-group': 'social',
           html: icon('share', { size: 18 }),
           onclick: async () => {
-            const shareUrl = `${location.origin}/bible?ref=${encodeURIComponent(ref)}${tr ? `&t=${encodeURIComponent(tr)}` : ''}`;
+            const shareUrl = `${location.origin}/books?ref=${encodeURIComponent(ref)}${tr ? `&t=${encodeURIComponent(tr)}` : ''}${corpus === 'quran' || isQuranTr(tr) ? '&corpus=quran' : ''}`;
             if (navigator.share) {
               try {
                 await navigator.share({ title: ref, text: fullShare, url: shareUrl });
@@ -355,7 +360,7 @@ export async function mount(view, params) {
         'data-group': 'social',
         html: icon('share', { size: 16 }),
         onclick: async () => {
-          const url = `${location.origin}/bible?ref=${encodeURIComponent(passage.reference)}${passage.translation ? `&t=${encodeURIComponent(passage.translation)}` : ''}`;
+          const url = `${location.origin}/books?ref=${encodeURIComponent(passage.reference)}${passage.translation ? `&t=${encodeURIComponent(passage.translation)}` : ''}${/^quran_/i.test(passage.translation || '') || corpus === 'quran' ? '&corpus=quran' : ''}`;
           const shareText = `${passage.reference}\n\n“${passage.text}”`;
           if (navigator.share) {
             try { await navigator.share({ title: passage.reference, text: shareText, url }); return; } catch { /* cancelled */ }
@@ -382,7 +387,7 @@ export async function mount(view, params) {
   async function showSearchResults(query, refs) {
     body.innerHTML = '';
     selBar.classList.add('hidden');
-    history.replaceState({}, '', `/bible?q=${encodeURIComponent(query)}&t=${tr}${corpus === 'quran' ? '&corpus=quran' : ''}`);
+    history.replaceState({}, '', `/books?q=${encodeURIComponent(query)}&t=${tr}${corpus === 'quran' ? '&corpus=quran' : ''}`);
     body.append(
       h('div', { class: 'row between wrap', style: { marginBottom: '.75rem', gap: '.5rem' } },
         h('div', null,
@@ -398,26 +403,26 @@ export async function mount(view, params) {
     if (!q) return;
     // Direct chapter load when it looks like a reference, or when forced from a result card
     // Allow hyphens / apostrophes (Al-Ikhlas, Ali 'Imran, Song of Songs)
+    const looksQuranic = /^(surah|sura|soorah)\s+/i.test(q)
+      || /^al[- ]?[a-z]/i.test(q)
+      || /^q\d{1,3}\b/i.test(q)
+      || /\b(ayah|ayat)\b/i.test(q);
     const looksLikeRef = forcePassage
-      || /^(surah|sura)\s+/i.test(q)
+      || looksQuranic
       || /^[\w\s.'\u2019\-–—]+\s+\d{1,3}(:[\d,\-–—]+)?$/i.test(q)
-      || /^[1-3]?\s?[A-Za-z][\w.'\u2019\-]*\.?\s+\d/i.test(q)
-      || /^al[- ]?[a-z]/i.test(q);
+      || /^[1-3]?\s?[A-Za-z][\w.'\u2019\-]*\.?\s+\d/i.test(q);
     if (looksLikeRef) {
       body.innerHTML = '<div class="skel" style="height:300px"></div>';
       try {
-        // If query looks Qur’anic and translation is a Bible one, try Qur’an edition
+        // Stay inside the active corpus. Never blind-retry the other library —
+        // that caused “Unknown surah” / “Unknown chapter” cross-contamination.
         let tryTr = tr;
-        if (!isQuranTr(tr) && /^(surah|sura|al[- ]|q\d)/i.test(q)) tryTr = defaultQuranTr();
-        let p;
-        try {
-          p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${tryTr}`);
-        } catch (first) {
-          if (tryTr !== tr) throw first;
-          // Retry with Qur’an edition if Bible translation failed on a possible surah
-          p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${defaultQuranTr()}`);
-          tryTr = defaultQuranTr();
-        }
+        if (corpus === 'quran' && !isQuranTr(tr)) tryTr = defaultQuranTr();
+        if (corpus === 'bible' && isQuranTr(tr)) tryTr = defaultBibleTr();
+        // Explicit Qur’anic query while on the Bible page → use a Qur’an edition
+        if (corpus === 'bible' && looksQuranic && !isQuranTr(tryTr)) tryTr = defaultQuranTr();
+
+        const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${tryTr}`);
         tr = tryTr; trSel.value = tr; setPrefs({ bibleTranslation: tr, ...(isQuranTr(tr) ? { quranTranslation: tr } : {}) });
         book = p.book; chapter = p.chapter; highlight = p.selected || [];
         bookSel.value = book; fillCh(); load();

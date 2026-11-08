@@ -329,17 +329,26 @@ async function chapter(translationId, bookId, ch) {
   const t = resolveTranslation(translationId);
   const book = BOOKS.find((b) => b.id === String(bookId).toUpperCase()) || findBook(bookId);
   if (!book) { const e = new Error('Unknown book'); e.status = 400; throw e; }
+  const isQuranBook = book.testament === 'Quran';
+  const isQuranTr = t.corpus === 'quran';
+
+  // Keep Bible and Qur’an fully isolated — never mix translation corpus with the other library
+  if (isQuranTr && !isQuranBook) {
+    const e = new Error('That reference is not a Qur’an surah. Switch to a Bible translation, or open the Bible reader.');
+    e.status = 400; throw e;
+  }
+  if (!isQuranTr && isQuranBook) {
+    const e = new Error('That reference is a Qur’an surah. Switch to a Qur’an edition, or open the Qur’an reader.');
+    e.status = 400; throw e;
+  }
+
   const c = Math.max(1, Math.min(book.chapters, parseInt(ch, 10) || 1));
   const key = `${t.id}|${book.id}|${c}`;
   const hit = memGet(key);
   if (hit) return hit;
 
   // Qur’an editions use a different upstream
-  if (t.corpus === 'quran' || book.testament === 'Quran') {
-    if (t.corpus !== 'quran') {
-      const e = new Error('This translation does not include the Qur’an. Choose a Qur’an edition.');
-      e.status = 400; throw e;
-    }
+  if (isQuranTr) {
     const out = await chapterQuran(t, book, c);
     memSet(key, out);
     return out;

@@ -720,7 +720,7 @@ function normalizePostMedia(list) {
       const reference = str(m.reference, 80), text = str(m.text, 1500);
       if (!reference || !text) continue;
       const translation = str(m.translation, 40).replace(/[^\w-]/g, '');
-      out.push({ type: 'passage', reference, text, translation, short: str(m.short, 16), url: `/bible?ref=${encodeURIComponent(reference)}${translation ? `&t=${translation}` : ''}` });
+      out.push({ type: 'passage', reference, text, translation, short: str(m.short, 16), url: `/books?ref=${encodeURIComponent(reference)}${translation ? `&t=${translation}` : ''}${/^quran_/i.test(translation || '') ? '&corpus=quran' : ''}` });
     } else if (typeof m.url === 'string' && /^\/files\/|^https:\/\//.test(m.url)) out.push({ url: m.url.slice(0, 500), mime: str(m.mime, 80) });
   }
   return out.slice(0, 4);

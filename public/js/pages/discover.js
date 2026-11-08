@@ -40,8 +40,8 @@ export async function mount(view, params) {
         node = r.users.length ? h('div', { class: 'card layer', style: { padding: '.4rem' } }, r.users.map((u) => personRow(u))) : empty('users', 'No people found', 'Try a different name or handle.');
       } else if (isSearch && tab === 'scripture') {
         const r = q.length >= 2 ? await api('/api/search?q=' + encodeURIComponent(q)) : {};
-        node = r.scripture ? h('a', { class: 'card hover pad row', href: '/bible?ref=' + encodeURIComponent(r.scripture.reference), 'data-link': '', 'data-group': 'faith' }, h('span', { class: 'ico-tile', html: icon('bookOpen', { size: 22 }) }), h('div', { class: 'grow' }, h('strong', null, r.scripture.reference), h('div', { class: 'muted small' }, 'Open in the Bible reader')), frag(icon('chevronRight')))
-          : empty('bookOpen', 'Type a reference', 'Try “John 3:16”, “Psalm 23” or “Rom 8:28-39”.', h('a', { class: 'btn', href: '/bible', 'data-link': '' }, 'Open Bible'));
+        node = r.scripture ? h('a', { class: 'card hover pad row', href: '/books?ref=' + encodeURIComponent(r.scripture.reference), 'data-link': '', 'data-group': 'faith' }, h('span', { class: 'ico-tile', html: icon('bookOpen', { size: 22 }) }), h('div', { class: 'grow' }, h('strong', null, r.scripture.reference), h('div', { class: 'muted small' }, 'Open in Books')), frag(icon('chevronRight')))
+          : empty('bookOpen', 'Type a reference', 'Try “John 3:16”, “Psalm 23” or “Rom 8:28-39”.', h('a', { class: 'btn', href: '/books', 'data-link': '' }, 'Open Books'));
       } else {
         const sp = new URLSearchParams({ limit: '30' }); if (q) sp.set('q', q); if (category) sp.set('category', category); if (status) sp.set('status', status);
         const r = await api('/api/discover?' + sp);

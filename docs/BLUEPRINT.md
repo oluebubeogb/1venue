@@ -41,7 +41,7 @@ flowchart LR
   stt["STT sidecar<br/>N-ATLaS, optional profile"]
   wh["Whisper endpoint<br/>STT fallback"]
   st["Storage<br/>VPS disk or S3"]
-  bib["Bible APIs<br/>helloao + fallback"]
+  bib["Books APIs<br/>helloao + fallback"]
 
   pwa -->|HTTPS + WebSocket| app
   pwa -->|WebRTC media| lk
@@ -71,7 +71,7 @@ If both server STT engines fail, the browser's Web Speech API captures captions 
 | `/feed` | Feed | Posts and event activity from people you follow |
 | `/me`, `/u/:id` | Profile | Timeline, follows, hosted events |
 | `/sessions`, `/session/:id` | Sessions | Transcript, AI summary, downloads |
-| `/bible` | Bible | Reader, translations, share a verse |
+|  `/books` | Books | Reader, translations, share a verse |
 | `/whiteboard` | Whiteboard | Personal board |
 | `/settings` | Settings | Theme, accent, font size, motion, devices, translation |
 | `/login` | Login | SSO redirect or local sign-in |
@@ -116,7 +116,7 @@ If both server STT engines fail, the browser's Web Speech API captures captions 
 | Stage & speaker seats | Limited speaker seats with audience mode | Partial | Violet (people) | `src/venue/stage.js`; audience flow not run end to end |
 | Stage & speaker seats | Request-to-speak queue, promote and demote | Partial | Violet (people) | Built; untested with a real audience |
 | Stage & speaker seats | Speaker cards on event pages | Done | Violet (people) | Event page renders speakers |
-| Scripture | Bible reader with 18 open translations | Done | Gold (faith) | Page verified; Postgres cache |
+| Scripture | Books reader with 18 open translations | Done | Gold (faith) | Page verified; Postgres cache |
 | Scripture | Host-synced verses, each user in their own translation | Done | Gold (faith) | `john 3:16` shown in room via command bar |
 | Notes & transcripts | Live captions in `Name: text` format | Partial | Purple (AI) | Formatting unit-tested; server STT untested without a model |
 | Notes & transcripts | Saved transcripts and session history | Done | Purple (AI) | Sessions page renders; downloads as `.txt` |
@@ -154,7 +154,7 @@ Partial mostly means built but not run against a real service: there was no Live
 | Engage | `--g-engage` | Pink #db2777 | Polls, Q&A, reactions, create |
 | Content | `--g-content` | Teal #0d9488 | Present, whiteboard, timeline, QR |
 | AI | `--g-ai` | Purple #9333ea | Summaries, captions, assistant |
-| Faith | `--g-faith` | Gold #b7791f | Scripture and Bible |
+| Faith | `--g-faith` | Gold #b7791f | Scripture and Books |
 | Admin / danger | `--g-admin` | Red #dc2626 | Security, lock, leave, end |
 | Social | `--g-social` | Orange #ea580c | Chat, feed, comments |
 | Nav | `--g-nav` | Slate #475569 | Navigation, activity |
@@ -182,7 +182,7 @@ Partial mostly means built but not run against a real service: there was no Live
 | **Matching** | Every typed word must match: label prefix 6, exact keyword 5, prefix 4, substring 2.5, one edit or swap 2, subsequence 1 |
 | **Synonyms** | 33 synonym groups, e.g. mic = microphone, audio, mute; share = screen, present, slides |
 | **Free text** | In a room, a weak match defers to Send to chat; Enter sends the line |
-| **Dynamic** | Bible references (john 3:16), Message &lt;person&gt;, join codes |
+| **Dynamic** | Books references (john 3:16), Message &lt;person&gt;, join codes |
 | **Coverage** | 39 global commands and 49 room commands; every page, panel and tool is reachable |
 | **Keys** | `/` focuses, arrows move, Enter runs, Esc clears; room keys M V S H C P E T G F I |
 | **Tests** | Typo, keyword, string keyword, synonym and no-match cases in `test/unit.test.js` |
@@ -219,7 +219,7 @@ Partial mostly means built but not run against a real service: there was no Live
 | `bible_cache` | translation, book, chapter, payload | Cache, no FK |
 | `whiteboards` | title, data | user_id → users (personal) |
 
-`001_meet_baseline.sql` carries Meet's 15 tables unchanged; `002_venue_core.sql` adds the venue tables for events, social, engagement, transcripts, AI, files, Bible cache and whiteboards.
+`001_meet_baseline.sql` carries Meet's 15 tables unchanged; `002_venue_core.sql` adds the venue tables for events, social, engagement, transcripts, AI, files, Books cache and whiteboards.
 
 ## 8. AI, speech-to-text and Bibles
 
@@ -253,14 +253,14 @@ Partial mostly means built but not run against a real service: there was no Live
 
 > ⚠️ **Licence check:** N-ATLaS models are gated under Awarri's Open-Source Research and Innovation License, which is not OSI-approved. Confirm commercial terms before production.
 
-### Bible translations
+### Books translations
 
 | Licence | Translations |
 |---|---|
 | Public domain | KJV, WEB (WEBP), BSB, ASV, BBE, YLT, Darby, French LSG, Spanish R09, Portuguese, German L12, Arabic Van Dyck |
-| CC BY-SA | Free Bible Version (FBV), Literal Standard Version (LSV) |
+| CC BY-SA | Free Books Version (FBV), Literal Standard Version (LSV) |
 | eBible.org terms | Yoruba, Igbo, Hausa, Swahili |
-| Excluded | Good News (GNT), copyright American Bible Society |
+| Excluded | Good News (GNT), copyright American Books Society |
 
 ## 9. Deployment
 
