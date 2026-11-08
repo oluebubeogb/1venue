@@ -505,18 +505,40 @@ button.list-item:hover { background: var(--s2); }
 .ai-box { --g: var(--g-ai); border-radius: var(--r-md); padding: 1rem; background: linear-gradient(135deg, color-mix(in srgb, #7c3aed 9%, var(--s1)), color-mix(in srgb, #db2777 7%, var(--s1))); border: 1px solid color-mix(in srgb, #7c3aed 22%, transparent); }
 .ai-box .tag { display: inline-flex; gap: .3rem; align-items: center; font-size: .72rem; font-weight: 800; color: #9333ea; text-transform: uppercase; letter-spacing: .06em; }
 
+/* Icon buttons with soft background (used on AI explain actions) */
+.icon-btn.has-bg {
+  background: color-mix(in srgb, var(--g, var(--accent)) 11%, var(--s2));
+  border: 1px solid color-mix(in srgb, var(--g, var(--accent)) 18%, var(--line));
+  border-radius: 14px;
+}
+.icon-btn.has-bg:hover {
+  background: color-mix(in srgb, var(--g, var(--accent)) 18%, var(--s2));
+  color: var(--g, var(--accent));
+}
+.ai-explain-acts .icon-btn.has-bg { width: 44px; height: 44px; }
+.ai-verse-card { margin: 0 0 .25rem; max-width: 100%; }
+.ai-verse-card .pc-text {
+  font-size: clamp(.95rem, 2.4vw, 1.05rem);
+  line-height: 1.55;
+  max-height: 9.5em;
+  overflow: hidden;
+}
+
 .split { display: grid; gap: 1.2rem; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
 @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
 .sticky { position: sticky; top: calc(var(--top-h) + 1rem); }
 
-/* Dashboard vertical rhythm */
-.dash-activity { margin-top: 1.15rem; }
-.dash-split { margin-top: 1.35rem; gap: 1.5rem; }
-.dash-main-col { gap: 1.5rem !important; }
-.dash-side-col { gap: 1.15rem !important; }
-.dash-block { display: flex; flex-direction: column; gap: .65rem; }
-.dash-block .section-h { margin-top: 0; margin-bottom: .35rem; }
-.dash-block + .dash-block { margin-top: .25rem; }
+/* Dashboard vertical rhythm — extra spacing to avoid jagged stacked sections */
+.dash-activity { margin-top: 1.35rem; }
+.dash-split { margin-top: 1.75rem; gap: 1.85rem; }
+.dash-main-col { gap: 1.85rem !important; }
+.dash-side-col { gap: 1.5rem !important; }
+.dash-block { display: flex; flex-direction: column; gap: .85rem; }
+.dash-block .section-h { margin-top: 0; margin-bottom: .55rem; }
+.dash-block + .dash-block { margin-top: .55rem; }
+.stats { gap: 1rem; }
+.dash-hero { margin-bottom: .25rem; }
+.dash-list-head { margin-bottom: .15rem; }
 
 /* Create page preview label */
 .preview-label {

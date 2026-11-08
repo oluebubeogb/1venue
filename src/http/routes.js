@@ -1485,7 +1485,7 @@ function createRequestHandler() {
     const url = `${config.PUBLIC_URL || ''}/a/${share.token}`;
     const post = await require('../venue/data').createPost(user.id, {
       kind: 'post',
-      body: `Attendance list for "${meeting.name}": ${url}`,
+      body: `Attendance list for ${meeting.name} ${url}`,
     });
     return sendJSON(res, 200, { ok: true, postId: post.id, url });
   }

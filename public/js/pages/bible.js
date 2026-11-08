@@ -3,6 +3,7 @@ import { h, api, esc, toast, toastErr, copy, sheet, md, debounce } from '../ui.j
 import { state, setPrefs, navigate } from '../app.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { sharePassageToFeed } from '../passage.js';
+import { shareLink } from '../components.js';
 
 let TR = null, BOOKS = null;
 export async function bibleMeta() {
@@ -80,13 +81,70 @@ export async function mount(view, params) {
   }
   async function explain(ref, text) {
     if (!state.user) return toast('Sign in to use AI', { icon: 'login' });
-    const s = sheet({ title: `Explain ${ref}`, icon: 'sparkles', group: 'ai' });
+    const t = TR.find((x) => x.id === tr);
+    const passage = { reference: ref, text, translation: tr, short: t?.short || '' };
+    // Keep verse display sleek: soft max length so cards stay tidy on small screens
+    const MAX_VERSE_CHARS = 320;
+    const displayText = text.length > MAX_VERSE_CHARS ? text.slice(0, MAX_VERSE_CHARS).trim() + '…' : text;
+    const s = sheet({ title: ref, icon: 'sparkles', group: 'ai' });
     s.body.append(h('div', { class: 'skel', style: { height: '120px' } }));
     try {
       const r = await api('/api/ai/ask', { method: 'POST', body: { question: `Briefly explain the meaning and context of ${ref}: "${text}"` } });
       s.body.innerHTML = '';
+      const explanation = r.text || '';
+      const fullShare = `${ref}\n\n“${text}”\n\n${explanation}`.trim();
+      const postBody = `${ref}\n\n${explanation}`.trim();
+
+      const acts = h('div', { class: 'row gap-s ai-explain-acts', style: { marginTop: '1.1rem', flexWrap: 'wrap' } },
+        h('button', {
+          class: 'icon-btn has-bg', type: 'button',
+          'data-tip': 'Copy', 'aria-label': 'Copy',
+          'data-group': 'content',
+          html: icon('copy', { size: 18 }),
+          onclick: () => copy(fullShare, 'Explanation copied'),
+        }),
+        h('button', {
+          class: 'icon-btn has-bg', type: 'button',
+          'data-tip': 'Post to feed', 'aria-label': 'Post to feed',
+          'data-group': 'social',
+          html: icon('feed', { size: 18 }),
+          onclick: async () => {
+            try {
+              const { composer } = await import('../pages/feed.js');
+              const ps = sheet({ title: 'Post to feed', icon: 'feed', group: 'social' });
+              // Start with the reference only — never "Explain …"
+              ps.body.append(composer(() => ps.close(), { autofocus: true, prefill: postBody, passage }));
+            } catch (e) { toastErr(e); }
+          },
+        }),
+        h('button', {
+          class: 'icon-btn has-bg', type: 'button',
+          'data-tip': 'Share', 'aria-label': 'Share externally',
+          'data-group': 'social',
+          html: icon('share', { size: 18 }),
+          onclick: async () => {
+            const shareUrl = `${location.origin}/bible?ref=${encodeURIComponent(ref)}${tr ? `&t=${encodeURIComponent(tr)}` : ''}`;
+            if (navigator.share) {
+              try {
+                await navigator.share({ title: ref, text: fullShare, url: shareUrl });
+                return;
+              } catch { /* cancelled or unsupported payload */ }
+            }
+            await shareLink(shareUrl, ref);
+          },
+        }),
+      );
+
       s.body.append(
-        h('div', { class: 'ai-box prose', html: md(r.text) }),
+        // Sleek verse “card” (visual block, truncated for device-friendly layout)
+        h('figure', { class: 'passage-card ai-verse-card', 'data-group': 'faith' },
+          h('figcaption', { class: 'pc-head' },
+            h('span', { class: 'pc-ic', html: icon('bookOpen', { size: 14 }) }),
+            h('span', { class: 'pc-ref' }, ref),
+            t?.short ? h('span', { class: 'pc-tr' }, t.short) : null),
+          h('blockquote', { class: 'pc-text' }, displayText)),
+        h('div', { class: 'ai-box prose', style: { marginTop: '1rem' }, html: md(explanation) }),
+        acts,
         h('p', { class: 'tiny faint', style: { marginTop: '1rem' } }, r.mock ? 'Demo AI response — configure AI_PRIMARY_* for real answers.' : 'Venue AI'),
       );
     } catch (e) { s.body.innerHTML = ''; s.body.append(h('p', { class: 'muted' }, e.message)); }
