@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy, debounce, uploadFile } from '../ui.js';
+import { h, api, esc, frag, fmtDate, fmtNum, toast, toastErr, sheet, confirmDlg, avatar, md, download, copy, debounce, uploadFile, profilePath } from '../ui.js';
 import { state, navigate, requireLogin } from '../app.js';
 import { catOf, commentThread, shareLink, sectionHead, empty, followBtn } from '../components.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
@@ -81,7 +81,7 @@ export async function mount(view, { slug }) {
           live ? h('span', { class: 'pill live static' }, `LIVE · ${fmtNum(ev.live?.viewers || ev.liveViewers || 0)} watching`) : ev.status === 'ended' ? h('span', { class: 'pill static' }, 'Ended') : null),
         h('h1', null, ev.title),
         h('div', { class: 'row wrap ev-meta' },
-          h('a', { class: 'row', href: `/u/${ev.host.id}`, 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name)),
+          h('a', { class: 'row', href: profilePath(ev.host), 'data-link': '' }, avatar(ev.host.name, ev.host.avatarUrl, 'sm ring'), h('strong', null, ev.host.name)),
           ev.startsAt ? h('span', { html: icon('calendar', { size: 16 }) + esc(fmtDate(ev.startsAt)) }) : null,
           h('span', { html: icon('ticket', { size: 16 }) + fmtNum(ev.rsvps || 0) + ' going' }),
           ev.category !== 'meeting' ? h('span', { html: icon('stage', { size: 16 }) + `${ev.speakerSeats} speaker seats` }) : null),
@@ -95,7 +95,7 @@ export async function mount(view, { slug }) {
         hostMenu,
         ev.description ? h('div', { class: 'card pad prose', html: md(ev.description) }) : null,
         ev.tags?.length ? h('div', { class: 'chips' }, ev.tags.map((t) => h('a', { class: 'chip', href: `/discover?q=${encodeURIComponent(t)}`, 'data-link': '' }, '#' + t))) : null,
-        speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards hscroll' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? `/u/${sp.userId}` : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
+        speakers.length ? h('div', null, sectionHead('Speakers', 'stage'), h('div', { class: 'speaker-cards hscroll' }, speakers.map((sp) => h(sp.userId ? 'a' : 'div', { class: 'card speaker-card', href: sp.userId ? profilePath({ username: sp.username, id: sp.userId }) : null, 'data-link': sp.userId ? '' : null, style: { '--c1': c1, '--c2': c2 } },
           h('div', { class: 'band' }), avatar(sp.name, sp.avatarUrl, 'xl ring'), h('strong', null, sp.name), h('span', { class: 'muted small' }, sp.headline || 'Speaker'))))) : null,
         h('div', null, sectionHead('Conversation', 'chats'), commentThread('events', ev.id, { isHost: ev.isHost }))),
       h('aside', { class: 'col sticky', style: { gap: '1rem' } },

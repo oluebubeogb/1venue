@@ -788,6 +788,7 @@ function createRequestHandler() {
         name: hostName,
         role: 'host',
         userId: authUser ? authUser.id : null,
+        username: authUser ? authUser.username : null,
         device: body.device || 'desktop',
         status: 'ACTIVE',
       });
@@ -993,6 +994,7 @@ function createRequestHandler() {
           ? rejoinCandidate.role
           : role,
         userId: authUser ? authUser.id : null,
+        username: authUser ? authUser.username : null,
         device: body.device || 'desktop',
         status,
       });

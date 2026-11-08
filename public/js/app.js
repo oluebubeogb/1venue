@@ -254,7 +254,7 @@ export const parseCode = (v) => { const m = String(v || '').match(CODE_RE); retu
 export function globalBarContext(pinnedOverride) {
   return {
     placeholders: ['Search events, people, verses…', 'Try “go live”', 'Try “John 3:16”', 'Try “dark mode”', 'Join with a code: y5yi87', 'Try “bigger text”', 'Try “sermons live now”', 'Try “my whiteboard”'],
-    pinned: () => pinnedOverride ? pinnedOverride() : ['create', 'join', 'discover', 'live', 'feed', 'bible', 'dashboard', 'whiteboard', 'theme', 'settings'].map(cmdById),
+    pinned: () => pinnedOverride ? pinnedOverride() : ['create', 'join', 'discover', 'live', 'feed', 'bible', 'dashboard', 'materials', 'whiteboard', 'theme', 'settings'].map(cmdById),
     dynamic: (q) => {
       const out = [];
       const c = /\d/.test(q) ? parseCode(q) : null;
@@ -285,6 +285,7 @@ function registerGlobal() {
     { id: 'feed', label: 'Social feed', short: 'Feed', icon: 'feed', group: 'social', keywords: ['timeline', 'posts'], run: go('/feed') },
     { id: 'post', label: 'New post', icon: 'pen', group: 'social', keywords: ['write', 'share update', 'status'], run: go('/feed?compose=1') },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'nav', keywords: ['stats', 'analytics'], run: go('/dashboard') },
+    { id: 'materials', label: 'Materials library', short: 'Materials', icon: 'folder', group: 'content', keywords: ['decks', 'slides', 'pdf', 'pptx', 'present', 'library', 'uploads'], when: () => !!state.user, run: go('/materials') },
     { id: 'profile', label: 'My profile', icon: 'user', group: 'people', keywords: ['me', 'account', 'timeline'], run: go('/me') },
     { id: 'edit-profile', label: 'Edit profile', icon: 'pen', group: 'people', keywords: ['bio', 'avatar', 'name', 'handle'], run: go('/me?edit=1') },
     { id: 'people', label: 'Find people', icon: 'users', group: 'people', keywords: ['follow', 'friends', 'search users'], run: go('/search?tab=people') },

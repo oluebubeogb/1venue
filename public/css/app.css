@@ -257,10 +257,10 @@ p { margin: 0; }
 .hscroll { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 300px); gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .4rem; scrollbar-width: thin; }
 .hscroll > * { scroll-snap-align: start; }
 
-/* hero — full-bleed under nav */
+/* hero — full-bleed under nav; top pad keeps eyebrow clear of sticky nav */
 .hero {
   position: relative; border-radius: 0; margin: 0 calc(50% - 50vw); width: 100vw; max-width: 100vw;
-  padding: clamp(5.5rem, 12vw, 7rem) clamp(1.2rem, 5vw, 3.4rem) clamp(1.6rem, 4vw, 3rem);
+  padding: clamp(3.3rem, 7.2vw, 4.2rem) clamp(1.2rem, 5vw, 3.4rem) clamp(1.6rem, 4vw, 3rem);
   overflow: hidden; color: #fff;
   background: radial-gradient(60rem 30rem at 0% 0%, color-mix(in srgb, var(--accent) 95%, #000), transparent),
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, #0b1020), color-mix(in srgb, var(--accent-2) 75%, #0b1020));
@@ -271,9 +271,9 @@ p { margin: 0; }
   width: min(280px, 38vw); height: min(280px, 38vw); opacity: .22; pointer-events: none;
 }
 .hero .hero-art svg { width: 100%; height: 100%; }
-.hero .eyebrow { margin-bottom: .85rem; }
-.hero h1 { margin-top: .15rem; }
-.hero p { opacity: .88; max-width: 38rem; margin-top: 1.15rem; font-size: 1.08rem; }
+.hero .eyebrow { margin-bottom: .65rem; }
+.hero h1 { margin-top: .1rem; }
+.hero p { opacity: .88; max-width: 38rem; margin-top: 1rem; font-size: 1.08rem; }
 .hero .btn:not(.primary) { --b: rgba(255,255,255,.14); --bt: #fff; border-color: rgba(255,255,255,.22); }
 .hero .btn.primary { --b: #fff; --bt: #0b1020; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); }
 .join-box { display: flex; gap: .5rem; margin-top: 1.4rem; max-width: 520px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); padding: 6px; border-radius: var(--r-pill); backdrop-filter: blur(10px); }
@@ -698,10 +698,20 @@ select.tr-select:focus { outline: none; border-color: var(--accent); box-shadow:
   from { opacity: 0; transform: translateY(18px) scale(.96); }
   to { opacity: 1; transform: none; }
 }
+.feat-stagger .card {
+  transition: transform .28s var(--ease), box-shadow .28s var(--ease);
+  will-change: transform;
+}
 .feat-stagger .card:hover {
-  transform: translateY(-3px);
-  transition: transform .25s var(--ease), box-shadow .25s;
-  box-shadow: 0 12px 28px -16px color-mix(in srgb, var(--accent) 35%, transparent);
+  transform: scale(1.04);
+  box-shadow: 0 16px 36px -14px color-mix(in srgb, var(--accent) 40%, transparent);
+  z-index: 1;
+}
+.feat-stagger .card .ico-tile {
+  transition: transform .35s var(--spring);
+}
+.feat-stagger .card:hover .ico-tile {
+  transform: rotate(-8deg) scale(1.08);
 }
 
 /* themed section icons */
@@ -709,15 +719,21 @@ select.tr-select:focus { outline: none; border-color: var(--accent); box-shadow:
 .home-band .ico-tile { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 
 /* create page field rows: icon + label on one line */
-.field-row { display: flex; flex-direction: column; gap: .45rem; }
+.field-row { display: flex; flex-direction: column; gap: .45rem; width: 100%; }
 .field-row .field-lab {
   display: flex; align-items: center; gap: .45rem; font-weight: 650; font-size: .88rem;
+  width: 100%;
 }
 .field-row .field-lab .ico-lab {
   width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
   background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent);
 }
 .field-row .field-lab .ico-lab .ic { width: 15px; height: 15px; }
+.field-row .field-lab .lab-actions { margin-left: auto; display: flex; align-items: center; gap: .4rem; }
+.field-row > .input,
+.field-row > .textarea,
+.field-row > .cat-select,
+.field-row > .seg { width: 100%; }
 
 /* rich category select */
 .cat-select {
@@ -742,7 +758,7 @@ select.tr-select:focus { outline: none; border-color: var(--accent); box-shadow:
   width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: var(--s2); flex-shrink: 0;
 }
 .mat-thumb {
-  width: 56px; height: 40px; border-radius: 8px; object-fit: cover; background: var(--s2); flex-shrink: 0;
+  width: 48px; height: 34px; max-width: 100px; max-height: 100px; border-radius: 6px; object-fit: cover; background: var(--s2); flex-shrink: 0;
 }
 .dash-list-head {
   display: flex; align-items: center; gap: .5rem; margin-bottom: .55rem;

@@ -1,6 +1,6 @@
 // Shared building blocks: event cards, posts, comment threads, people rows.
 import { icon } from './icons.js';
-import { h, api, avatar, timeAgo, fmtDate, fmtNum, toast, toastErr, esc, confirmDlg, frag } from './ui.js';
+import { h, api, avatar, timeAgo, fmtDate, fmtNum, toast, toastErr, esc, confirmDlg, frag, profilePath } from './ui.js';
 import { state, navigate, requireLogin } from './app.js';
 import { pillComposer } from './composer.js';
 import { passageCard } from './passage.js';
@@ -53,8 +53,8 @@ export function followBtn(user, onChange) {
   return b;
 }
 export function personRow(u, { follow = true } = {}) {
-  return h('a', { class: 'list-item', href: `/u/${u.id}`, 'data-link': '' }, avatar(u.name, u.avatarUrl),
-    h('div', { class: 'grow' }, h('div', { style: { fontWeight: 700 }, class: 'ellipsis' }, u.name), h('div', { class: 'tiny muted ellipsis' }, u.handle ? '@' + u.handle : '', u.followers != null ? ` · ${fmtNum(u.followers)} followers` : '')),
+  return h('a', { class: 'list-item', href: profilePath(u), 'data-link': '' }, avatar(u.name, u.avatarUrl),
+    h('div', { class: 'grow' }, h('div', { style: { fontWeight: 700 }, class: 'ellipsis' }, u.name), h('div', { class: 'tiny muted ellipsis' }, u.handle ? '@' + u.handle : (u.username ? '@' + u.username : ''), u.followers != null ? ` · ${fmtNum(u.followers)} followers` : '')),
     follow && state.user && state.user.id !== u.id ? followBtn(u) : null);
 }
 
@@ -71,12 +71,12 @@ export function postCard(p, { onDelete } = {}) {
   const cBtn = h('button', { class: 'act', 'data-group': 'social', 'data-tip': 'Comments', html: icon('chat', { size: 18 }) + `<span>${fmtNum(p.commentCount)}</span>` });
   cBtn.onclick = () => { if (thread.firstChild) { thread.innerHTML = ''; return; } thread.append(commentThread('posts', p.id, { compact: true })); };
   const shareBtn = h('button', { class: 'act', 'data-group': 'content', 'data-tip': 'Share', html: icon('share', { size: 18 }) });
-  shareBtn.onclick = () => shareLink(p.event ? `${location.origin}/e/${p.event.slug}` : `${location.origin}/u/${p.author.id}`, p.event?.title || '1venue');
+  shareBtn.onclick = () => shareLink(p.event ? `${location.origin}/e/${p.event.slug}` : `${location.origin}${profilePath(p.author)}`, p.event?.title || '1venue');
   const mine = state.user && p.author && state.user.id === p.author.id;
   const el = h('article', { class: 'card post' },
-    h('a', { href: `/u/${p.author.id}`, 'data-link': '' }, avatar(p.author.name, p.author.avatarUrl)),
+    h('a', { href: profilePath(p.author), 'data-link': '' }, avatar(p.author.name, p.author.avatarUrl)),
     h('div', { class: 'grow', style: { minWidth: 0 } },
-      h('div', { class: 'head' }, h('a', { class: 'name', href: `/u/${p.author.id}`, 'data-link': '' }, p.author.name),
+      h('div', { class: 'head' }, h('a', { class: 'name', href: profilePath(p.author), 'data-link': '' }, p.author.name),
         kind ? h('span', { class: 'muted small', html: icon(kind[1], { size: 14, cls: 'inline' }) + ' ' + kind[0] }) : null,
         h('span', { class: 'faint small' }, '· ' + timeAgo(p.createdAt))),
       p.body && p.kind === 'post' ? h('div', { class: 'text', html: linkify(p.body) }) : p.body && p.kind === 'summary' ? h('div', { class: 'text prose small' }, p.body.slice(0, 600)) : null,
@@ -121,7 +121,7 @@ export function commentThread(kind, id, { compact = false, isHost = false } = {}
     if (more) more.onclick = async () => { more.remove(); try { const r = await api(`/api/comments/${c.id}/replies`); r.replies.forEach((x) => replies.append(commentEl(x, 1))); } catch (e) { toastErr(e); } };
     const canHide = c.mine || isHost;
     const el = h('div', { class: 'post', style: { padding: '.55rem .3rem' } },
-      c.userId ? h('a', { href: `/u/${c.userId}`, 'data-link': '' }, avatar(c.authorName, c.avatarUrl, depth ? 'sm' : '')) : avatar(c.authorName, c.avatarUrl, depth ? 'sm' : ''),
+      c.userId ? h('a', { href: profilePath({ username: c.username, id: c.userId }), 'data-link': '' }, avatar(c.authorName, c.avatarUrl, depth ? 'sm' : '')) : avatar(c.authorName, c.avatarUrl, depth ? 'sm' : ''),
       h('div', { class: 'grow', style: { minWidth: 0 } },
         h('div', { class: 'head' }, h('span', { class: 'name small' }, c.authorName), h('span', { class: 'faint tiny' }, timeAgo(c.createdAt))),
         h('div', { class: 'text small' }, c.body),

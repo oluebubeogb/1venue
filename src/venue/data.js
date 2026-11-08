@@ -42,7 +42,10 @@ async function setPrefs(userId, p = {}) {
 function userCard(r) {
   if (!r) return null;
   return {
-    id: r.id, name: r.display_name || (r.email ? r.email.split('@')[0] : r.username), handle: r.handle || null,
+    id: r.id,
+    username: r.username || null,
+    name: r.display_name || (r.email ? r.email.split('@')[0] : r.username),
+    handle: r.handle || null,
     avatarUrl: r.avatar_url || null, bio: r.bio || null,
     followers: r.followers != null ? Number(r.followers) : undefined,
     following: r.following != null ? Number(r.following) : undefined,
@@ -93,14 +96,14 @@ function eventOut(r) {
     startsAt: r.starts_at, endsAt: r.ends_at, startedAt: r.started_at, endedAt: r.ended_at,
     coverUrl: r.cover_url, theme: r.theme || {}, speakerSeats: r.speaker_seats, settings: r.settings || {},
     templateSlug: r.template_slug, liveViewers: r.live_viewers, peakViewers: r.peak_viewers, totalJoins: r.total_joins,
-    host: { id: r.host_user_id, name: r.host_name, avatarUrl: r.host_avatar || null },
+    host: { id: r.host_user_id, username: r.host_username || null, name: r.host_name, avatarUrl: r.host_avatar || null },
     rsvps: r.rsvps != null ? Number(r.rsvps) : undefined,
     rsvped: r.rsvped != null ? !!r.rsvped : undefined,
     historyId: r.meeting_history_id || null,
     createdAt: r.created_at,
   };
 }
-const EVENT_SELECT = (viewer = '0') => `SELECT e.*, u.avatar_url AS host_avatar,
+const EVENT_SELECT = (viewer = '0') => `SELECT e.*, u.avatar_url AS host_avatar, u.username AS host_username,
   (SELECT COUNT(*) FROM event_rsvps WHERE event_id=e.id) AS rsvps,
   EXISTS(SELECT 1 FROM event_rsvps WHERE event_id=e.id AND user_id=${viewer}) AS rsvped
   FROM events e JOIN users u ON u.id=e.host_user_id`;
@@ -233,8 +236,10 @@ async function updateViewers(eventId, live, joinedDelta = 0) {
   await q(`UPDATE events SET live_viewers=$2, peak_viewers=GREATEST(peak_viewers,$2), total_joins=total_joins+$3 WHERE id=$1`, [eventId, live, joinedDelta]);
 }
 async function listSpeakers(eventId) {
-  return (await many('SELECT * FROM event_speakers WHERE event_id=$1 ORDER BY sort_order, id', [eventId]))
-    .map((r) => ({ id: Number(r.id), userId: r.user_id, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null }));
+  return (await many(`SELECT es.*, u.username
+    FROM event_speakers es LEFT JOIN users u ON u.id=es.user_id
+    WHERE es.event_id=$1 ORDER BY es.sort_order, es.id`, [eventId]))
+    .map((r) => ({ id: Number(r.id), userId: r.user_id, username: r.username || null, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null }));
 }
 async function setSpeakers(eventId, list) {
   return tx(async (c) => {
@@ -266,11 +271,11 @@ function postOut(r) {
   return {
     id: Number(r.id), kind: r.kind, body: r.body, media: r.media || [], likeCount: r.like_count, commentCount: r.comment_count,
     liked: !!r.liked, createdAt: r.created_at,
-    author: { id: r.user_id, name: r.author_name, avatarUrl: r.author_avatar, handle: r.author_handle },
+    author: { id: r.user_id, username: r.author_username || null, name: r.author_name, avatarUrl: r.author_avatar, handle: r.author_handle },
     event: r.event_id ? { id: Number(r.event_id), slug: r.ev_slug, title: r.ev_title, status: r.ev_status, category: r.ev_category, startsAt: r.ev_starts_at, theme: r.ev_theme || {}, coverUrl: r.ev_cover_url || null } : null,
   };
 }
-const POST_SELECT = `SELECT p.*, COALESCE(u.display_name, split_part(u.email,'@',1), u.username) AS author_name, u.avatar_url AS author_avatar, u.handle AS author_handle,
+const POST_SELECT = `SELECT p.*, COALESCE(u.display_name, split_part(u.email,'@',1), u.username) AS author_name, u.avatar_url AS author_avatar, u.handle AS author_handle, u.username AS author_username,
   e.slug AS ev_slug, e.title AS ev_title, e.status AS ev_status, e.category AS ev_category, e.starts_at AS ev_starts_at, e.theme AS ev_theme, e.cover_url AS ev_cover_url,
   EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id=p.id AND l.user_id=$1) AS liked
   FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN events e ON e.id=p.event_id`;
@@ -314,13 +319,13 @@ async function deletePost(postId, userId) {
 function commentOut(r, viewerKey) {
   return {
     id: Number(r.id), parentId: r.parent_id ? Number(r.parent_id) : null, authorKey: r.author_key, authorName: r.author_name,
-    userId: r.user_id, avatarUrl: r.avatar_url || null, body: r.status === 'hidden' ? '' : r.body, status: r.status,
+    userId: r.user_id, username: r.username || null, avatarUrl: r.avatar_url || null, body: r.status === 'hidden' ? '' : r.body, status: r.status,
     likeCount: r.like_count, replyCount: r.reply_count, liked: !!r.liked, createdAt: r.created_at,
     mine: viewerKey ? r.author_key === viewerKey : false,
   };
 }
 async function listComments(targetType, targetKey, { parentId = null, viewerKey = '', limit = 50, before } = {}) {
-  const rows = await many(`SELECT c.*, u.avatar_url, EXISTS(SELECT 1 FROM comment_likes l WHERE l.comment_id=c.id AND l.liker_key=$3) AS liked
+  const rows = await many(`SELECT c.*, u.avatar_url, u.username, EXISTS(SELECT 1 FROM comment_likes l WHERE l.comment_id=c.id AND l.liker_key=$3) AS liked
     FROM comments c LEFT JOIN users u ON u.id=c.user_id
     WHERE c.target_type=$1 AND c.target_key=$2 AND (CASE WHEN $4::bigint = 0 THEN c.parent_id IS NULL ELSE c.parent_id=$4 END) AND c.status <> 'hidden'
       AND ($5::timestamptz IS NULL OR c.created_at < $5)

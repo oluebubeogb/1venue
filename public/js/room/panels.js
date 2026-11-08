@@ -1,6 +1,6 @@
 // Room side panel: Chat (everyone / direct / groups), People (stage, waiting, hands, roster + moderation),
 // Engage (polls, Q&A, comments) and Tools (scripture, captions, AI, boards, content, breakouts, …).
-import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet } from '../ui.js';
+import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, profilePath } from '../ui.js';
 import { icon } from '../icons.js';
 import { pillComposer } from '../composer.js';
 import { searchSounds } from './sounds.js';
@@ -170,7 +170,7 @@ export function createPanel(R) {
     menu(anchor, [
       !self && { label: 'Message privately', icon: 'chat', group: 'social', run: () => { sub.chat = 'dm'; R.dmWith = p.id; R.focusNext = true; open('chat'); } },
       { label: R.pinned === p.id ? 'Unpin' : 'Pin to spotlight', icon: 'spotlight', group: 'media', run: () => R.pin(R.pinned === p.id ? null : p.id) },
-      p.userId && { label: 'View profile', icon: 'user', run: () => window.open('/u/' + p.userId, '_blank') },
+      p.userId && { label: 'View profile', icon: 'user', run: () => window.open(profilePath({ username: p.username, id: p.userId }), '_blank') },
       mod && !self && '-',
       mod && !self && !p.mutedByHost && { label: 'Mute', icon: 'micOff', group: 'admin', run: () => R.send('mute-participant', { targetId: p.id }) },
       mod && !self && { label: 'Ask to unmute', icon: 'mic', group: 'media', run: () => R.send('ask-unmute', { targetId: p.id }) },

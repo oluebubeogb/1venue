@@ -5,6 +5,14 @@ export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/** Canonical profile path: prefer collab username, then handle, then numeric id. */
+export function profilePath(u) {
+  if (u == null) return '/me';
+  if (typeof u === 'string' || typeof u === 'number') return `/u/${u}`;
+  const key = u.username || u.handle || u.id;
+  return key != null ? `/u/${key}` : '/me';
+}
+
 export function h(tag, props, ...kids) {
   const el = document.createElement(tag);
   if (props) for (const [k, v] of Object.entries(props)) {

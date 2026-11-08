@@ -1,4 +1,4 @@
-import { h, api, esc, avatar, fmtDur } from '../ui.js';
+import { h, api, esc, avatar, fmtDur, profilePath } from '../ui.js';
 import { icon } from '../icons.js';
 import { state, navigate } from '../app.js';
 
@@ -31,7 +31,7 @@ export async function mount(view, params) {
 
   const nameLink = (a) => {
     if (!a.userId) return esc(a.name);
-    return h('a', { href: `/u/${a.username || a.userId}`, 'data-link': '' }, esc(a.name));
+    return h('a', { href: profilePath({ username: a.username, id: a.userId }), 'data-link': '' }, esc(a.name));
   };
 
   const row = (a, role) => h('tr', null,

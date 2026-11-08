@@ -696,6 +696,12 @@ Object.assign(Room.prototype, {
       { id: 'r-engage', label: 'Polls, Q&A & comments', short: () => 'Engage' + (R.unread.engage ? ` ·${R.unread.engage}` : ''), icon: 'poll', group: 'engage', kbd: 'E', active: () => R.panel.tab === 'engage', keywords: 'engage engagement poll vote question qa comments feed', run: () => R.panel.toggle('engage') },
       { id: 'r-tools', label: 'Tools', short: 'Tools', icon: 'wand', group: 'content', kbd: 'T', active: () => R.panel.tab === 'tools', keywords: 'tools bible scripture captions ai board record more', run: () => R.panel.toggle('tools') },
       { id: 'r-layout', label: 'Change layout', short: () => ({ grid: 'Grid', spotlight: 'Spotlight', speaker: 'Speaker' }[R.layout]), icon: () => ({ grid: 'grid', spotlight: 'spotlight', speaker: 'speaker' }[R.layout]), group: 'media', kbd: 'G', keywords: 'view layout grid spotlight speaker gallery tiles', run: () => R.cycleLayout(1) },
+      { id: 'r-force-view', label: () => (R.security?.forceLayout ? 'Stop forcing audience view' : 'Force audience view'), short: () => (R.security?.forceLayout ? 'Unforce view' : 'Force view'), icon: 'lock', group: 'admin', keywords: 'force audience view layout lock grid speaker screenshare everyone follows host forced view', when: () => mod(), active: () => !!R.security?.forceLayout, run: () => {
+        const on = !R.security?.forceLayout;
+        R.send('update-security', { settings: { forceLayout: on } });
+        if (on) R.send('force-layout', { layout: R.layout, presentKey: R.stageR?.presentKey || null, pick: R.stageR?.pick || null });
+        toast(on ? 'Audience view locked to yours' : 'Audience can choose their own view', { icon: 'lock', group: 'admin' });
+      } },
       { id: 'r-more', label: 'More', short: 'More', icon: 'more', group: 'nav', keywords: 'more menu options', run: () => R.moreMenu() },
       { id: 'r-leave', label: 'Leave room', short: 'Leave', icon: 'phoneOff', group: 'danger', keywords: 'leave exit hang up quit end', run: () => R.leaveMenu() },
       // searchable

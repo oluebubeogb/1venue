@@ -3,8 +3,11 @@ import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce } from '../u
 import { state, navigate, requireLogin, CATS, ACCENTS } from '../app.js';
 import { catOf } from '../components.js';
 
-const field = (label, ic, el) => h('div', { class: 'field-row' },
-  h('div', { class: 'field-lab', html: `<span class="ico-lab">${icon(ic, { size: 15 })}</span><span>${esc(label)}</span>` }),
+const field = (label, ic, el, actions) => h('div', { class: 'field-row' },
+  h('div', { class: 'field-lab' },
+    h('span', { class: 'ico-lab', html: icon(ic, { size: 15 }) }),
+    h('span', null, label),
+    actions ? h('span', { class: 'lab-actions' }, actions) : null),
   el);
 
 export async function mount(view, params) {
@@ -191,9 +194,8 @@ export async function mount(view, params) {
 
   const form = h('form', { class: 'col', style: { gap: '1.1rem' }, onsubmit: (e) => { e.preventDefault(); save(false); } },
     h('div', { class: 'card pad layer col', style: { gap: '1rem' } },
-      field('Title', 'type', title),
-      h('div', { class: 'row between' }, field('Description', 'notes', desc), null),
-      h('div', { class: 'row', style: { justifyContent: 'flex-end' } }, aiBtn),
+      field('Title', 'type', title, aiBtn),
+      field('Description', 'notes', desc),
       field('Category', 'tag', catSel),
       field('Tags', 'hash', tags)),
     h('div', { class: 'card pad layer col has-suggest', style: { gap: '1rem' } },

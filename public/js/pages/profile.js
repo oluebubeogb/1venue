@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { h, api, toast, toastErr, avatar, fmtNum, sheet, uploadFile } from '../ui.js';
+import { h, api, toast, toastErr, avatar, fmtNum, sheet, uploadFile, profilePath } from '../ui.js';
 import { state, navigate, requireLogin, refreshSession } from '../app.js';
 import { postCard, eventCard, empty, followBtn, shareLink } from '../components.js';
 import { composer } from './feed.js';
@@ -27,7 +27,7 @@ export async function mount(view, params) {
         h('div', { class: 'row wrap small', style: { gap: '1.1rem', marginTop: '.6rem' } }, h('span', null, h('strong', null, fmtNum(u.followers)), ' followers'), h('span', null, h('strong', null, fmtNum(u.following)), ' following'), h('span', null, h('strong', null, fmtNum(u.events)), ' events'))),
       h('div', { class: 'row', style: { gap: '.4rem' } },
         u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
-        h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Share profile', 'aria-label': 'Share', html: icon('share'), onclick: () => shareLink(`${location.origin}/u/${u.username || u.id}`, u.name) })))),
+        h('button', { class: 'icon-btn', 'data-group': 'content', 'data-tip': 'Share profile', 'aria-label': 'Share', html: icon('share'), onclick: () => shareLink(`${location.origin}${profilePath(u)}`, u.name) })))),
   tabs, body);
   paintTabs(); load();
   if (params.edit && u.isMe) edit(u);

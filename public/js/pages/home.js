@@ -40,13 +40,14 @@ export async function mount(view) {
     const [, , c] = catOf(k);
     return h('a', { class: 'chip', href: `/discover?category=${k}`, 'data-link': '', style: { '--g': c, color: c }, html: icon(ic, { size: 16 }) + esc(l) });
   }));
+  // Essence of Venue — Nike-style, not a feature checklist
   const feats = [
-    ['stage', 'Speaker seats', 'Limited seats with a request-to-speak queue the host approves.', 'people'],
-    ['bookOpen', 'Live scripture', '18 open Bible translations, synced to every screen.', 'faith'],
-    ['captions', 'Nigerian STT', 'N-ATLaS transcripts in English, Yorùbá, Igbo, Hausa & Pidgin.', 'ai'],
-    ['sparkles', 'AI summaries', 'Summaries, action items and catch-me-up in one tap.', 'ai'],
-    ['poll', 'Polls & Q&A', 'Upvoted questions, live polls, reactions and comments.', 'engage'],
-    ['board', 'Personal whiteboard', 'Your own board — share it view-only when you choose.', 'content'],
+    ['stage', 'Own the room', 'When you speak, the room leans in. Seats are earned, not assumed.', 'people'],
+    ['bookOpen', 'Word that travels', 'Scripture lands on every screen at the same moment — one voice, many places.', 'faith'],
+    ['captions', 'Every tongue heard', 'What is said is seen — in the languages your people actually speak.', 'ai'],
+    ['sparkles', 'Leave nothing behind', 'Walk away with the thread. Action items and catch-up, ready when you are.', 'ai'],
+    ['poll', 'The room talks back', 'Questions rise. Votes land. The conversation stays alive.', 'engage'],
+    ['board', 'Think out loud', 'Sketch the idea. Share only when it is ready.', 'content'],
   ];
 
   view.append(
@@ -62,7 +63,7 @@ export async function mount(view) {
       sectionHead('Coming up', 'calendar', h('a', { class: 'btn sm ghost', href: '/discover', 'data-link': '', html: 'Discover' + icon('chevronRight', { size: 16 }) })),
       upWrap),
     band('band-d',
-      sectionHead('Built for gatherings', 'zap'),
+      sectionHead('Why Venue', 'zap'),
       h('div', { class: 'grid-cards stagger feat-stagger' }, feats.map(([ic, t, d, g]) => h('div', { class: 'card pad group-tint', 'data-group': g },
         h('div', { class: 'row' }, h('span', { class: 'ico-tile', style: { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, transparent)' }, html: icon(ic, { size: 22 }) }), h('strong', null, t)),
         h('p', { class: 'muted small', style: { marginTop: '.5rem' } }, d))))),
