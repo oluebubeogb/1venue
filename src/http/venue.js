@@ -451,7 +451,8 @@ route('GET', '/api/bible/passage', async (ctx) => {
   if (!rateLimit(`b:${clientIp(ctx.req)}`, 120)) throw httpError(429, 'Too many requests');
   return bible().passage(ctx.url.searchParams.get('ref'), ctx.url.searchParams.get('t'));
 });
-route('GET', '/api/bible/([\\w]+)/([\\w]{3})/(\\d{1,3})', async (ctx, [t, b, c]) => {
+// Book ids: 3-letter USFM (GEN, JHN) or Qur’an Q001–Q114
+route('GET', '/api/bible/([\\w.-]+)/([\\w]{2,8})/(\\d{1,3})', async (ctx, [t, b, c]) => {
   if (!rateLimit(`b:${clientIp(ctx.req)}`, 120)) throw httpError(429, 'Too many requests');
   return { ...(await bible().chapter(t, b, c)), _cache: true };
 });

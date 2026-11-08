@@ -10,13 +10,35 @@ export async function bibleMeta() {
   if (!TR) [TR, BOOKS] = await Promise.all([api('/api/bible/translations').then((r) => r.translations), api('/api/bible/books').then((r) => r.books)]);
   return { translations: TR, books: BOOKS };
 }
-export function translationSelect(value, onChange, { compact = false } = {}) {
-  const sel = h('select', { class: `input tr-select${compact ? ' sm' : ''}`, 'aria-label': 'Bible translation' });
+export function translationSelect(value, onChange, { compact = false, corpus = 'all' } = {}) {
+  const isQuran = (t) => t.corpus === 'quran' || /^quran_/i.test(t.id);
+  const label = corpus === 'quran' ? 'Qur’an translation' : corpus === 'bible' ? 'Bible translation' : 'Translation';
+  const sel = h('select', { class: `input tr-select${compact ? ' sm' : ''}`, 'aria-label': label });
   bibleMeta().then(({ translations }) => {
-    const byLang = {};
-    translations.forEach((t) => (byLang[t.language] ||= []).push(t));
-    Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`)))));
-    sel.value = value;
+    let filtered = translations;
+    if (corpus === 'quran') filtered = translations.filter(isQuran);
+    else if (corpus === 'bible') filtered = translations.filter((t) => !isQuran(t));
+    // When showing all, group Qur’an editions under their own optgroup label
+    if (corpus === 'all') {
+      const bible = filtered.filter((t) => !isQuran(t));
+      const quran = filtered.filter(isQuran);
+      const byLang = {};
+      bible.forEach((t) => (byLang[t.language] ||= []).push(t));
+      Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`)))));
+      if (quran.length) {
+        sel.append(h('optgroup', { label: 'Qur’an' }, quran.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`))));
+      }
+    } else {
+      const byLang = {};
+      filtered.forEach((t) => (byLang[t.language] ||= []).push(t));
+      Object.entries(byLang).forEach(([lang, list]) => sel.append(h('optgroup', { label: lang }, list.map((t) => h('option', { value: t.id, selected: t.id === value, title: t.name }, compact ? t.short : `${t.short} — ${t.name}`)))));
+    }
+    if (!filtered.some((t) => t.id === value) && filtered[0]) {
+      sel.value = filtered[0].id;
+      onChange && onChange(filtered[0].id);
+    } else {
+      sel.value = value;
+    }
   });
   sel.onchange = () => onChange(sel.value);
   return sel;
@@ -49,14 +71,20 @@ export async function mount(view, params) {
     placeholder: corpus === 'quran' ? 'Al-Ikhlas, Al-Fatihah 1, 2:255, family…' : 'John 3:16, family, hope, “a man shall leave…”',
     'aria-label': 'Reference or topic',
   });
-  const bookSel = h('select', { class: 'input', 'aria-label': 'Book' },
-    h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))),
-    h('optgroup', { label: 'Deuterocanonical' }, books.filter((b) => b.testament === 'DC').map((b) => h('option', { value: b.id }, b.name))),
-    h('optgroup', { label: 'New Testament' }, books.filter((b) => b.testament === 'NT').map((b) => h('option', { value: b.id }, b.name))),
-    h('optgroup', { label: 'Qur’an' }, books.filter((b) => b.testament === 'Quran').map((b) => h('option', { value: b.id }, b.name))),
-  );
+  const bookGroups = corpus === 'quran'
+    ? [h('optgroup', { label: 'Qur’an' }, books.filter((b) => b.testament === 'Quran').map((b) => h('option', { value: b.id }, b.name)))]
+    : [
+      h('optgroup', { label: 'Old Testament' }, books.filter((b) => b.testament === 'OT').map((b) => h('option', { value: b.id }, b.name))),
+      h('optgroup', { label: 'Deuterocanonical' }, books.filter((b) => b.testament === 'DC').map((b) => h('option', { value: b.id }, b.name))),
+      h('optgroup', { label: 'New Testament' }, books.filter((b) => b.testament === 'NT').map((b) => h('option', { value: b.id }, b.name))),
+    ];
+  const bookSel = h('select', { class: 'input', 'aria-label': corpus === 'quran' ? 'Surah' : 'Book' }, ...bookGroups);
   const chSel = h('select', { class: 'input', 'aria-label': 'Chapter' });
-  const trSel = translationSelect(tr, (v) => { tr = v; setPrefs({ bibleTranslation: v }); load(); }, { compact: true });
+  const trSel = translationSelect(tr, (v) => {
+    tr = v;
+    setPrefs({ bibleTranslation: v, ...(isQuranTr(v) ? { quranTranslation: v } : {}) });
+    load();
+  }, { compact: true, corpus });
   const body = h('div', { class: 'card pad-lg bible-page' });
   const selBar = h('div', { class: 'sel-bar hidden' });
   const isQuranTr = (id) => /^(quran_)/i.test(id || '');
