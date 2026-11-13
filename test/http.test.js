@@ -1,31 +1,52 @@
 'use strict';
 // HTTP smoke tests. Uses TEST_BASE_URL if set, otherwise boots the server
-// (needs DATABASE_URL pointing at a reachable Postgres); skipped when neither.
+// (needs DATABASE_URL pointing at Postgres, or DB_DRIVER=sqlite); skipped when neither.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
+const os = require('node:os');
+const fs = require('node:fs');
 
 let base = process.env.TEST_BASE_URL;
 let child;
-const skip = !base && !process.env.DATABASE_URL ? 'set TEST_BASE_URL or DATABASE_URL' : false;
+let sqliteDir;
+const skip = !base && !process.env.DATABASE_URL && process.env.DB_DRIVER !== 'sqlite' ? 'set TEST_BASE_URL, DATABASE_URL, or DB_DRIVER=sqlite' : false;
 
 test.before(async () => {
   if (skip || base) return;
+  if (process.env.DB_DRIVER === 'sqlite') sqliteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'venue-http-'));
   const port = 3990 + Math.floor(Math.random() * 9);
   base = `http://127.0.0.1:${port}`;
-  child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(port), AI_MOCK: 'true', JWT_SECRET: process.env.JWT_SECRET || 'test-secret', PUBLIC_URL: base }, stdio: 'ignore' });
+  child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, ...(sqliteDir ? { SQLITE_PATH: path.join(sqliteDir, 'test.sqlite'), DATA_DIR: sqliteDir, STORAGE_DIR: path.join(sqliteDir, 'uploads'), ACCOUNTS_URL: '', ACCOUNTS_LOGIN_URL: '' } : {}), PORT: String(port), AI_MOCK: 'true', JWT_SECRET: process.env.JWT_SECRET || 'test-secret', PUBLIC_URL: base }, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) { try { if ((await fetch(base + '/health')).ok) return; } catch {} await new Promise((r) => setTimeout(r, 250)); }
   throw new Error('server did not start');
 });
-test.after(() => child && child.kill());
+test.after(async () => {
+  if (child && child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise((resolve) => child.once('exit', resolve));
+    child.kill();
+    await exited;
+  }
+  if (sqliteDir) fs.rmSync(sqliteDir, { recursive: true, force: true });
+});
 
 test('GET /health', { skip }, async () => {
   const r = await fetch(base + '/health'); assert.equal(r.status, 200);
-  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, 'postgresql');
+  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, process.env.DB_DRIVER === 'sqlite' ? 'sqlite' : 'postgresql');
 });
 test('GET /api/config', { skip }, async () => {
   const r = await fetch(base + '/api/config'); assert.equal(r.status, 200); assert.equal(typeof (await r.json()), 'object');
+});
+test('sqlite local mode offers local sign-in without Collab Accounts', { skip: skip || process.env.DB_DRIVER !== 'sqlite' }, async () => {
+  const r = await fetch(base + '/api/config');
+  assert.equal((await r.json()).accountsEnabled, false);
+});
+test('sqlite local mode serves configured meeting templates', { skip: skip || process.env.DB_DRIVER !== 'sqlite' }, async () => {
+  const r = await fetch(base + '/api/templates');
+  const body = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(body.templates.find((t) => t.slug === 'classroom').settings.waitingRoom, true);
 });
 test('static shell, manifest, service worker, logo', { skip }, async () => {
   for (const p of ['/', '/discover', '/manifest.webmanifest', '/sw.js', '/brand/logo.svg', '/icons/icon-192.png']) {
@@ -72,4 +93,42 @@ test('whiteboards: create, list, rename, save pages, delete', { skip }, async ()
   const list = await j('/api/whiteboards'); assert.ok(list.b.boards.length >= 2);
   assert.equal((await j(`/api/whiteboards/${b2.b.id}`, 'DELETE')).s, 200);
   assert.equal((await j(`/api/whiteboards/${b2.b.id}`)).s, 404);
+});
+
+test('sqlite local event and room flow works over HTTP without LiveKit', { skip: skip || process.env.DB_DRIVER !== 'sqlite' }, async () => {
+  const cookie = await signup();
+  const request = async (url, method = 'GET', body, auth = true) => {
+    const r = await fetch(base + url, { method, headers: { ...(auth ? { cookie } : {}), 'content-type': 'application/json' }, body: body && JSON.stringify(body) });
+    return { status: r.status, body: await r.json() };
+  };
+  const created = await request('/api/events', 'POST', { title: 'Local Seminar', category: 'seminar', tags: ['local'] });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const event = created.body;
+  assert.equal((await request('/api/discover?q=Local')).body.events[0].id, event.id);
+  const room = await request('/api/create', 'POST', { name: 'Local Seminar', participantName: 'Ada', eventId: event.id });
+  assert.equal(room.status, 200, JSON.stringify(room.body));
+  assert.equal(room.body.code, event.code);
+  const guest = await request('/api/join', 'POST', { code: room.body.code, participantName: 'Ben' }, false);
+  assert.equal(guest.status, 200, JSON.stringify(guest.body));
+  assert.equal(guest.body.status, 'ACTIVE');
+  assert.equal((await request('/api/leave', 'POST', { code: room.body.code, participantId: guest.body.participantId }, false)).status, 200);
+  assert.equal((await request('/api/leave', 'POST', { code: room.body.code, participantId: room.body.participantId })).status, 200);
+});
+
+test('sqlite venue keeps its code and places guests in the waiting room', { skip: skip || process.env.DB_DRIVER !== 'sqlite' }, async () => {
+  const cookie = await signup();
+  const call = async (url, method, body, auth = true) => {
+    const r = await fetch(base + url, { method, headers: { ...(auth ? { cookie } : {}), 'content-type': 'application/json' }, body: body && JSON.stringify(body) });
+    return { status: r.status, body: await r.json() };
+  };
+  const venue = await call('/api/venues', 'POST', { name: 'Local Venue' });
+  assert.equal(venue.status, 200, JSON.stringify(venue.body));
+  const opened = await call('/api/create', 'POST', { name: 'Friday Meetup', participantName: 'Ada', venue: venue.body.slug });
+  assert.equal(opened.status, 200, JSON.stringify(opened.body));
+  assert.equal(opened.body.code, venue.body.code);
+  const waiting = await call('/api/join', 'POST', { code: venue.body.code, participantName: 'Ben' }, false);
+  assert.equal(waiting.status, 200, JSON.stringify(waiting.body));
+  assert.equal(waiting.body.status, 'WAITING');
+  const lookup = await call('/api/venues/by-code/' + venue.body.code, 'GET', null, false);
+  assert.equal(lookup.body.venue.live.open, true);
 });

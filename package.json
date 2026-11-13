@@ -7,8 +7,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "dev:sqlite": "DB_DRIVER=sqlite AI_MOCK=true node --watch server.js",
     "migrate": "node scripts/migrate.js",
     "test": "node --test test/*.test.js",
+    "test:sqlite": "DB_DRIVER=sqlite node --test test/*.test.js",
     "icons": "python3 scripts/build-icons.py",
     "migrate:sqlite-to-pg": "node scripts/migrate-sqlite-to-pg.js",
     "livekit:check": "node scripts/livekit-check.js"
@@ -25,5 +27,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.11.1"
   }
 }

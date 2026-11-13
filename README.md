@@ -4,7 +4,7 @@
 
 **Stack**
 - Node 22, plain `http` and `ws`, with no framework and no build step.
-- PostgreSQL 16. Migrations run automatically on boot.
+- PostgreSQL 16 in deployment; SQLite for local testing. Migrations run automatically on boot.
 - LiveKit SFU, with simulcast, dynacast and bitrate caps.
 - Vanilla ES-module front end with a service worker.
 
@@ -39,10 +39,18 @@ Postgres is tuned small (shared_buffers 64 MB, 40 connections). It runs with a n
 
 ```bash
 npm install
-DATABASE_URL=postgres://venue@localhost:5432/venue AI_MOCK=true npm run dev
-npm test
+npm run dev:sqlite
+npm run test:sqlite
 npm run icons   # regenerate PWA icons from the mark (needs python3 + Pillow)
 ```
+
+Local mode creates `data/venue.sqlite` automatically and starts with an empty database. It uses local email/password accounts and mock AI by default, so sign up at `/signup` to try account features. Stop the server before resetting your local data, then delete `data/venue.sqlite` and its `-wal` and `-shm` companion files. `npm run test:sqlite` uses temporary database files and does not reset your local data.
+
+Local event search uses SQLite FTS5 and title matching; its typo matching may differ from PostgreSQL's trigram search.
+
+For PostgreSQL development, use `DATABASE_URL=postgres://venue@localhost:5432/venue AI_MOCK=true npm run dev` and `npm test`. Deployment still uses PostgreSQL; SQLite is for a single local app process. LiveKit is still required for real audio/video, and external Accounts, AI, STT, and LibreOffice need their own configuration or installation.
+
+When a feature changes the database schema, add a migration in both `migrations/` (PostgreSQL) and `migrations/sqlite/`. Keep database-specific query variants in the data layer so local tests continue to represent production behavior.
 
 If `LIVEKIT_*` is not set, rooms still work for chat, polls, Q&A, boards, Bible, transcripts (through Web Speech) and so on. Audio and video stay off until you configure LiveKit.
 

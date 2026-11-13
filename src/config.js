@@ -27,7 +27,7 @@ const LIVEKIT_API_KEY = env('LIVEKIT_API_KEY');
 const LIVEKIT_API_SECRET = env('LIVEKIT_API_SECRET');
 
 // Collab Accounts SSO (shared cookies on COOKIE_DOMAIN)
-const ACCOUNTS_URL = env('ACCOUNTS_URL', 'https://accounts.collab.name.ng').replace(/\/$/, '');
+const ACCOUNTS_URL = env('ACCOUNTS_URL', process.env.DB_DRIVER === 'sqlite' ? '' : 'https://accounts.collab.name.ng').replace(/\/$/, '');
 const ACCOUNTS_LOGIN_URL = env('ACCOUNTS_LOGIN_URL', ACCOUNTS_URL ? ACCOUNTS_URL + '/login' : '');
 const ACCOUNTS_JWT_SECRET = env('ACCOUNTS_JWT_SECRET', env('ACCOUNTS_SECRET_KEY'));
 const ACCOUNTS_ACCESS_COOKIE = env('ACCOUNTS_ACCESS_COOKIE', 'access_token');

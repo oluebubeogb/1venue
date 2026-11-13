@@ -105,7 +105,7 @@ function createRequestHandler() {
       ok: dbOk,
       app: config.APP_NAME,
       livekitConfigured: !!(LIVEKIT_API_KEY && LIVEKIT_API_SECRET && LIVEKIT_URL),
-      db: dbOk ? 'postgresql' : 'unreachable',
+      db: dbOk ? (db.USE_PG ? 'postgresql' : 'sqlite') : 'unreachable',
       uptime: Math.round(process.uptime()),
       liveRooms: meetings.size,
     });

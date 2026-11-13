@@ -34,6 +34,7 @@ async function start() {
 
   await new Promise((resolve) => server.listen(config.PORT, '0.0.0.0', resolve));
   console.log(`${config.APP_NAME} is running at http://0.0.0.0:${config.PORT}`);
+  console.log(db.USE_PG ? '[db] PostgreSQL' : `[db] SQLite local file: ${db.DB_PATH}`);
   console.log('[features]', JSON.stringify(features));
   if (!isLiveKitConfigured()) console.warn('[WARN] LiveKit is not configured (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET). Audio and video are disabled.');
   else console.log(`[LiveKit] ${config.LIVEKIT_URL}`);

@@ -1,5 +1,5 @@
 /**
- * 1venue data layer: PostgreSQL only.
+ * 1venue data layer: PostgreSQL in deployment, SQLite for local testing.
  * Meet's query API is kept intact (same function names and shapes) so the
  * plugins and routes inherited from Meet keep working. Schema changes live in
  * /migrations as numbered SQL files. They are applied once, in order, under an
@@ -9,12 +9,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Pool } = require('pg');
+const USE_PG = process.env.DB_DRIVER !== 'sqlite';
+const sqlite = USE_PG ? null : require('./src/db/sqlite');
 
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
-const USE_PG = true;
-const DB_PATH = null;
+const DB_PATH = sqlite ? sqlite.DB_PATH : null;
 
 let pool = null;
 let ready = null;
@@ -28,6 +29,7 @@ function slugArtifact() {
 }
 
 function getPool() {
+  if (sqlite) throw new Error('PostgreSQL pool is unavailable in SQLite mode');
   if (!pool) {
     if (!DATABASE_URL) {
       throw new Error('DATABASE_URL is required (postgres://user:pass@host:5432/db)');
@@ -48,6 +50,7 @@ function getPool() {
 }
 
 async function migrate({ log = console.log } = {}) {
+  if (sqlite) return sqlite.migrate({ log });
   const p = getPool();
   const client = await p.connect();
   try {
@@ -82,6 +85,7 @@ async function migrate({ log = console.log } = {}) {
 }
 
 function ensureReady() {
+  if (sqlite) return sqlite.ensureReady();
   if (!ready) {
     ready = (async () => {
       getPool();
@@ -95,11 +99,13 @@ function ensureReady() {
 }
 
 async function q(text, params = []) {
+  if (sqlite) return sqlite.q(text, params);
   await ensureReady();
   return getPool().query(text, params);
 }
 
 async function tx(fn) {
+  if (sqlite) return sqlite.tx(fn);
   await ensureReady();
   const client = await getPool().connect();
   try {
@@ -116,6 +122,7 @@ async function tx(fn) {
 }
 
 async function close() {
+  if (sqlite) return sqlite.close();
   if (pool) await pool.end();
   pool = null;
   ready = null;

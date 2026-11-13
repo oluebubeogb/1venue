@@ -1,8 +1,8 @@
 /**
- * 1venue data access (PostgreSQL). All queries are parameterised.
+ * 1venue data access. PostgreSQL is deployed; SQLite runs local tests.
  */
 const crypto = require('crypto');
-const { q, tx } = require('../../db');
+const { q, tx, USE_PG } = require('../../db');
 
 const one = async (sql, p) => (await q(sql, p)).rows[0] || null;
 const many = async (sql, p) => (await q(sql, p)).rows;
@@ -194,13 +194,21 @@ async function discover({ q: term, category, status, tag, limit = 24, offset = 0
   else if (status === 'upcoming') where.push("e.status='scheduled'");
   else if (status === 'past') where.push("e.status='ended'");
   if (category && CATEGORIES.includes(category)) { params.push(category); where.push(`e.category=$${params.length}`); }
-  if (tag) { params.push(String(tag).toLowerCase()); where.push(`$${params.length} = ANY(e.tags)`); }
+  if (tag) { params.push(String(tag).toLowerCase()); where.push(USE_PG ? `$${params.length} = ANY(e.tags)` : `EXISTS (SELECT 1 FROM json_each(e.tags) WHERE value=$${params.length})`); }
   if (term && String(term).trim()) {
     const t = String(term).trim().slice(0, 100);
     params.push(t);
     const i = params.length;
-    where.push(`(e.search @@ plainto_tsquery('simple', $${i}) OR e.title % $${i} OR e.title ILIKE '%' || $${i} || '%' OR e.host_name ILIKE '%' || $${i} || '%')`);
-    rank = `(e.status='live') DESC, ts_rank(e.search, plainto_tsquery('simple', $${i})) + similarity(e.title, $${i}) DESC`;
+    if (USE_PG) {
+      where.push(`(e.search @@ plainto_tsquery('simple', $${i}) OR e.title % $${i} OR e.title ILIKE '%' || $${i} || '%' OR e.host_name ILIKE '%' || $${i} || '%')`);
+      rank = `(e.status='live') DESC, ts_rank(e.search, plainto_tsquery('simple', $${i})) + similarity(e.title, $${i}) DESC`;
+    } else {
+      const words = t.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+      const fts = words.map((word) => `"${word.replace(/"/g, '')}"*`).join(' ');
+      if (fts) params.push(fts);
+      where.push(`(${fts ? `e.id IN (SELECT rowid FROM event_search WHERE event_search MATCH $${params.length}) OR ` : ''}e.title LIKE '%' || $${i} || '%' OR e.host_name LIKE '%' || $${i} || '%')`);
+      rank = `(e.status='live') DESC, (lower(e.title)=lower($${i})) DESC, e.started_at DESC NULLS LAST`;
+    }
   } else {
     rank = `(e.status='live') DESC, (e.status='scheduled') DESC, ${rank}`;
   }
@@ -438,12 +446,23 @@ async function addHostAnswer(id, text, byName) {
   const t = String(text || '').trim().slice(0, 2000);
   if (!t) return null;
   const ans = { id: 'ha-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), text: t, by: String(byName || 'Host').slice(0, 80), at: new Date().toISOString() };
-  const r = await one(`UPDATE questions SET host_answers = host_answers || $2::jsonb WHERE id=$1 RETURNING *`, [id, JSON.stringify([ans])]);
+  const r = USE_PG
+    ? await one(`UPDATE questions SET host_answers = host_answers || $2::jsonb WHERE id=$1 RETURNING *`, [id, JSON.stringify([ans])])
+    : await one(`UPDATE questions SET host_answers=json_insert(host_answers,'$[#]',json($2)) WHERE id=$1 RETURNING *`, [id, JSON.stringify(ans)]);
   return r ? questionOut(r) : null;
 }
 async function editHostAnswer(id, answerId, text) {
   const t = String(text || '').trim().slice(0, 2000);
   if (!t) return null;
+  if (!USE_PG) {
+    return tx(async (c) => {
+      const row = (await c.query('SELECT * FROM questions WHERE id=$1', [id])).rows[0];
+      if (!row) return null;
+      const answers = (row.host_answers || []).map((a) => a.id === answerId ? { ...a, text: t } : a);
+      const updated = (await c.query('UPDATE questions SET host_answers=$2 WHERE id=$1 RETURNING *', [id, JSON.stringify(answers)])).rows[0];
+      return questionOut(updated);
+    });
+  }
   const r = await one(`UPDATE questions SET host_answers = (
     SELECT COALESCE(jsonb_agg(CASE WHEN (elem->>'id') = $3 THEN jsonb_set(elem, '{text}', to_jsonb($4::text)) ELSE elem END), '[]'::jsonb)
     FROM jsonb_array_elements(host_answers) elem
@@ -451,6 +470,15 @@ async function editHostAnswer(id, answerId, text) {
   return r ? questionOut(r) : null;
 }
 async function deleteHostAnswer(id, answerId) {
+  if (!USE_PG) {
+    return tx(async (c) => {
+      const row = (await c.query('SELECT * FROM questions WHERE id=$1', [id])).rows[0];
+      if (!row) return null;
+      const answers = (row.host_answers || []).filter((a) => a.id !== answerId);
+      const updated = (await c.query('UPDATE questions SET host_answers=$2 WHERE id=$1 RETURNING *', [id, JSON.stringify(answers)])).rows[0];
+      return questionOut(updated);
+    });
+  }
   const r = await one(`UPDATE questions SET host_answers = (
     SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
     FROM jsonb_array_elements(host_answers) elem
@@ -495,7 +523,11 @@ async function saveSummary({ historyId, kind = 'summary', content, provider, mod
   return { id: Number(r.id), kind: r.kind, content: r.content, provider: r.provider, model: r.model, createdAt: r.created_at };
 }
 async function latestSummaries(historyId) {
-  return (await many(`SELECT DISTINCT ON (kind) * FROM ai_summaries WHERE meeting_history_id=$1 ORDER BY kind, created_at DESC`, [historyId]))
+  const sql = USE_PG
+    ? `SELECT DISTINCT ON (kind) * FROM ai_summaries WHERE meeting_history_id=$1 ORDER BY kind, created_at DESC, id DESC`
+    : `SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY kind ORDER BY created_at DESC, id DESC) AS rn
+       FROM ai_summaries WHERE meeting_history_id=$1) WHERE rn=1`;
+  return (await many(sql, [historyId]))
     .map((r) => ({ id: Number(r.id), kind: r.kind, content: r.content, provider: r.provider, model: r.model, createdAt: r.created_at }));
 }
 async function getHistory(id) { return one('SELECT * FROM meeting_history WHERE id=$1', [id]); }
@@ -535,7 +567,10 @@ async function saveWhiteboard(userId, title = 'My board', data = {}) {
   return { id: Number(r.id), title: r.title, updatedAt: r.updated_at };
 }
 async function listWhiteboards(userId) {
-  return (await many(`SELECT id, title, updated_at, COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(data->'pages')='array' THEN data->'pages' END),1) AS pages
+  const pageCount = USE_PG
+    ? "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(data->'pages')='array' THEN data->'pages' END),1)"
+    : "COALESCE(json_array_length(data, '$.pages'),1)";
+  return (await many(`SELECT id, title, updated_at, ${pageCount} AS pages
     FROM whiteboards WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 200`, [userId]))
     .map((r) => ({ id: Number(r.id), title: r.title, updatedAt: r.updated_at, pages: Number(r.pages) || 1 }));
 }
@@ -550,6 +585,11 @@ async function updateWhiteboard(userId, id, { title, data }) {
 }
 async function deleteWhiteboard(userId, id) { return !!(await one('DELETE FROM whiteboards WHERE id=$1 AND user_id=$2 RETURNING id', [id, userId])); }
 async function bibleCacheGet(t, b, c, maxAgeDays) {
+  if (!USE_PG) {
+    const cutoff = new Date(Date.now() - Number(maxAgeDays) * 86400000).toISOString();
+    const r = await one('SELECT payload FROM bible_cache WHERE translation=$1 AND book=$2 AND chapter=$3 AND fetched_at > $4', [t, b, c, cutoff]);
+    return r ? r.payload : null;
+  }
   const r = await one(`SELECT payload FROM bible_cache WHERE translation=$1 AND book=$2 AND chapter=$3 AND fetched_at > NOW() - ($4 || ' days')::interval`, [t, b, c, String(maxAgeDays)]);
   return r ? r.payload : null;
 }
@@ -560,6 +600,20 @@ async function bibleCachePut(t, b, c, payload) {
 
 // ---------------------------------------------------------------- dashboard
 async function dashboard(userId) {
+  if (!USE_PG) {
+    const stats = await one(`SELECT
+      (SELECT COUNT(*) FROM meeting_history WHERE host_user_id=$1) AS hosted,
+      (SELECT COUNT(DISTINCT meeting_history_id) FROM meeting_participants_log WHERE user_id=$1) AS attended,
+      (SELECT COALESCE(SUM((julianday(COALESCE(left_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))) - julianday(joined_at))*86400),0) FROM meeting_participants_log WHERE user_id=$1 AND joined_at > datetime('now','-30 days')) AS seconds30,
+      (SELECT COUNT(*) FROM follows WHERE followee_id=$1) AS followers,
+      (SELECT COUNT(*) FROM follows WHERE follower_id=$1) AS following,
+      ((SELECT COALESCE(SUM(total_joins),0) FROM events WHERE host_user_id=$1) + (SELECT COUNT(*) FROM meeting_participants_log l JOIN meeting_history h ON h.id=l.meeting_history_id WHERE h.host_user_id=$1)) AS audience,
+      MAX((SELECT COALESCE(MAX(peak_viewers),0) FROM events WHERE host_user_id=$1),(SELECT COALESCE(MAX(max_participants),0) FROM meeting_history WHERE host_user_id=$1)) AS peak,
+      (SELECT COUNT(*) FROM transcript_segments t JOIN meeting_history h ON h.id=t.meeting_history_id WHERE h.host_user_id=$1) AS transcript_lines`, [userId]);
+    const activity = await many(`WITH RECURSIVE days(day,n) AS (SELECT date('now','-13 days'),0 UNION ALL SELECT date(day,'+1 day'),n+1 FROM days WHERE n<13)
+      SELECT day,(SELECT COUNT(*) FROM meeting_participants_log l WHERE l.user_id=$1 AND date(l.joined_at)=day) AS n FROM days ORDER BY day`, [userId]);
+    return { stats, activity };
+  }
   // Audience/peak include venue + instant meetings (meeting_history), not only scheduled events.
   // Transcripts count segments from any meeting the user hosted.
   const stats = await one(`SELECT
@@ -648,7 +702,7 @@ async function addVenueAdmins(venueId, ownerId, usernames) {
       `SELECT id, username, display_name, handle FROM users
        WHERE lower(username)=lower($1)
           OR lower(COALESCE(handle,''))=lower($1)
-          OR username ~* ('^[uU][0-9a-fA-F]{8}_' || $1 || '$')
+          OR ${USE_PG ? "username ~* ('^[uU][0-9a-fA-F]{8}_' || $1 || '$')" : "regexp('^[uU][0-9a-fA-F]{8}_' || $1 || '$', username)"}
        LIMIT 1`,
       [uname]
     );

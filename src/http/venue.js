@@ -333,7 +333,7 @@ async function resolveUserId(idOrName) {
   const row = await db.q(
     `SELECT id FROM users
      WHERE LOWER(COALESCE(handle,'')) = LOWER($1)
-        OR username ~* ('^[uU][0-9a-fA-F]{8}_' || $1 || '$')
+        OR ${db.USE_PG ? "username ~* ('^[uU][0-9a-fA-F]{8}_' || $1 || '$')" : "regexp('^[uU][0-9a-fA-F]{8}_' || $1 || '$', username)"}
      LIMIT 1`,
     [idOrName]
   ).then((r) => r.rows[0]).catch(() => null);
