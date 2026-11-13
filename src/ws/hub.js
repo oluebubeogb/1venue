@@ -1,4 +1,5 @@
 const { normCode } = require('../lib/codes');
+const metrics = require('../core/metrics');
 const { WebSocketServer } = require('ws');
 const db = require('../../db');
 const config = require('../config');
@@ -21,7 +22,9 @@ const {
 const { endMeeting } = require('../rooms/lifecycle');
 const { can } = require('../lib/permissions');
 const { verifyWsCredential } = require('../lib/wsCredential');
-const { registerBuiltinPlugins, loadAll } = require('../plugins');
+const { registerPlugin, loadAll } = require('../core/plugin-registry');
+const featureRegistry = require('../core/features');
+const { getOrRestoreMeeting } = require('../rooms/snapshot');
 
 function createPluginContext() {
   const wsHandlers = new Map();
@@ -58,17 +61,44 @@ function createPluginContext() {
 }
 
 function attachWebSocket(server) {
-  registerBuiltinPlugins();
+  featureRegistry.registerWsPlugins(registerPlugin);
   const ctx = createPluginContext();
-  loadAll(ctx);
+  loadAll(ctx, featureRegistry.isEnabled);
 
   const wss = new WebSocketServer({ server, path: '/' });
+  metrics.setWss(wss);
+
+  // Heartbeat: browsers answer pings automatically; sockets that miss one round are dead (sleeping
+  // laptops, dropped mobile links) and get terminated so their memory and fan-out cost is freed.
+  const heartbeatMs = config.MEMORY.wsHeartbeatMs;
+  const heartbeat = heartbeatMs > 0 ? setInterval(() => {
+    for (const ws of wss.clients) {
+      if (ws.isAlive === false) { metrics.incDeadSockets(); try { ws.terminate(); } catch (_) {} continue; }
+      ws.isAlive = false;
+      try { ws.ping(); } catch (_) {}
+    }
+  }, heartbeatMs) : null;
+  if (heartbeat) heartbeat.unref();
+  wss.on('close', () => heartbeat && clearInterval(heartbeat));
+
+  /** Graceful restart: tell every client to reconnect (they keep their LiveKit media), then close. */
+  wss.notifyRestart = (retryInMs = 1500) => {
+    const payload = JSON.stringify({ type: 'server-restarting', retryInMs });
+    for (const ws of wss.clients) {
+      try { ws.send(payload); } catch (_) {}
+      try { ws.close(1012, 'server restarting'); } catch (_) {}
+    }
+  };
 
   wss.on('connection', (ws) => {
     let participantId = null;
     let meetingCode = null;
+    let restoring = null; // set while a meeting is being restored from a restart snapshot
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
 
-    ws.on('message', (raw) => {
+    ws.on('message', function onMessage(raw) {
+      if (restoring) { restoring.then(() => onMessage(raw)); return; }
       let msg;
       try {
         msg = JSON.parse(raw.toString());
@@ -101,6 +131,13 @@ function attachWebSocket(server) {
         participantId = verified.participantId;
         meetingCode = verified.code;
 
+        if (!getMeeting(meetingCode) && !msg._restoreTried) {
+          // Not live in this process: maybe it was live before a restart. Retry register once restored.
+          msg._restoreTried = true;
+          restoring = getOrRestoreMeeting(meetingCode).catch(() => null).finally(() => { restoring = null; });
+          restoring.then(() => onMessage(JSON.stringify(msg)));
+          return;
+        }
         const meeting = getMeeting(meetingCode);
         if (!meeting) {
           try {

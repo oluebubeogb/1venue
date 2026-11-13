@@ -20,20 +20,23 @@
    - `COOKIE_DOMAIN=.collab.name.ng`
 4. **Storage.** Add a persistent storage mount at `/data`. Uploads live in `/data/uploads`.
 5. **Domain.** Set the domain (for example `venue.collab.name.ng`) and deploy.
-   - The health check is `GET /health`.
+   - Health checks: `GET /health` is liveness (process up, no database call; the Dockerfile uses it). `GET /ready` also checks the database (503 when it is down).
+   - Monitoring: set `METRICS_TOKEN` to enable `GET /metrics` (Prometheus text, `Authorization: Bearer <token>`; 404 while unset). The app also logs one `[metrics]` line a minute (`METRICS_LOG=false` turns it off).
    - Tables are created on first boot.
    - The app must be served under `*.collab.name.ng` so it can read the Collab Accounts `access_token` and `refresh_token` cookies.
-6. **Optional.** Fill in `AI_PRIMARY_*` with RunPod (`https://api.runpod.ai/v2/<id>/openai/v1`) and `AI_SECONDARY_*` with any OpenAI-compatible provider. Then set `STT_PRIMARY_BASE_URL` to an N-ATLaS endpoint.
+6. **Optional.** Fill in `AI_PRIMARY_*` with RunPod (`https://api.runpod.ai/v2/<id>/openai/v1`) and `AI_SECONDARY_*` with any OpenAI-compatible provider. For speech-to-text, point `STT_*` at a hosted OpenAI-compatible endpoint (see *Speech-to-text* below and `.env.example`).
+7. **Restarts and memory.** Deploys no longer end live meetings: on shutdown the app saves every live room to Postgres and the new container restores it; browsers show "Reconnecting…" and rejoin by themselves (media keeps flowing through LiveKit). Keep Coolify's stop grace period at 15 s or more. The Node heap is `NODE_MAX_OLD_SPACE_MB` (default 2048); keep the container limit about 1 GB above it.
 
 ## Deploy with docker compose (backup)
 
 ```bash
 cp .env.example .env        # set JWT_SECRET, POSTGRES_PASSWORD, LIVEKIT_*, PUBLIC_URL
 docker compose up -d --build
-docker compose --profile stt up -d --build   # + local N-ATLaS speech-to-text (CPU, needs HF_TOKEN)
 ```
 
-Postgres is tuned small (shared_buffers 64 MB, 40 connections). It runs with a named volume and a health check, and the app waits until the database is healthy before it starts. The memory caps are 256 MB for the database and 512 MB for the app.
+Postgres runs with a named volume and a health check, and the app waits until the database is healthy before it starts. Defaults are sized for a Contabo Cloud VPS with 8 GB+ RAM: Postgres `shared_buffers=256MB`, 60 connections, `mem_limit 1g`; the app `mem_limit 3g` with a 2 GB heap. Every value is an env var (`PG_*`, `APP_MEM_LIMIT`, `NODE_MAX_OLD_SPACE_MB`), so a smaller box can lower them.
+
+Speech-to-text is no longer part of this compose file. Use a hosted endpoint, or run `stt-sidecar/docker-compose.yml` on a separate machine.
 
 ## Local development
 
@@ -46,7 +49,11 @@ npm run icons   # regenerate PWA icons from the mark (needs python3 + Pillow)
 
 If `LIVEKIT_*` is not set, rooms still work for chat, polls, Q&A, boards, Bible, transcripts (through Web Speech) and so on. Audio and video stay off until you configure LiveKit.
 
-Deploying LiveKit on Coolify (`wss://1v.collab.name.ng`): see [docs/livekit-coolify.md](docs/livekit-coolify.md). Check it with `npm run livekit:check`.
+LiveKit runs on its own server from its own repo (`livekit-server/`, shipped next to this one), so several apps can share it. See [docs/livekit-coolify.md](docs/livekit-coolify.md). Check it with `npm run livekit:check`.
+
+## Working on a feature
+
+Each feature lives in one folder, `src/features/<feature>/` (server WebSocket plugin, API routes, queries, migrations, browser handlers and CSS), and is discovered automatically. Start from `src/features/_template/`. Read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Auth: Collab Accounts SSO
 
@@ -59,8 +66,8 @@ Deploying LiveKit on Coolify (`wss://1v.collab.name.ng`): see [docs/livekit-cool
 
 `STT_PROVIDER=auto` tries the providers in this order:
 
-1. **N-ATLaS.** These are NCAIR1/Awarri Whisper-Small fine-tunes for Nigerian-accented English, Yorùbá, Igbo and Hausa. They are reached through any OpenAI-compatible `/audio/transcriptions` endpoint: `stt-sidecar/`, or a RunPod worker.
-2. **Whisper.** Any OpenAI-compatible endpoint.
+1. **Primary** (`STT_PRIMARY_*`, named N-ATLaS by default). Any OpenAI-compatible `/audio/transcriptions` endpoint: a RunPod GPU pod running an OpenAI-compatible Whisper server (e.g. speaches), or the optional `stt-sidecar/` on a separate box (the sidecar serves the NCAIR1/Awarri N-ATLaS Whisper-Small fine-tunes for Nigerian-accented English, Yorùbá, Igbo and Hausa; it is a CPU build).
+2. **Secondary** (`STT_SECONDARY_*`, Whisper). Any OpenAI-compatible endpoint: Groq (`whisper-large-v3-turbo`, cheapest), OpenAI (`whisper-1`), etc.
 3. **The browser's Web Speech API.**
 
 Every line is stored as `Name: text`. Transcripts can be saved, summarised by AI with one click, and downloaded: the transcript as `.txt` and the summary as `.md`.
@@ -78,6 +85,10 @@ The Bibles come from the Free Use Bible API (bible.helloao.org, sourced from eBi
 
 The Good News Translation (GNT) is copyrighted by the American Bible Society, so it is not bundled. Use BBE or WEB as the plain-English choice.
 
+## Read-out (text-to-speech)
+
+The 🔊 icon reads scripture aloud through Replicate's `google/gemini-3.8-flash-tts` (server-side, cached in storage). It only appears when the language is supported: Igbo, Hausa, Arabic and English yes; Yorùbá no. Set `REPLICATE_API_TOKEN` to turn it on. Setup, pricing and language rules: [docs/TTS.md](docs/TTS.md).
+
 ## Recordings and storage
 
-Recordings are captured in the browser and saved straight to the user's device as `.webm`, so they are never uploaded. Shared files go to VPS disk (`STORAGE_DRIVER=local`). To use S3, R2, MinIO or Spaces instead, set `STORAGE_DRIVER=s3` and fill in the `S3_*` variables.
+Recordings are captured in the browser and saved straight to the user's device as `.webm`, so they are never uploaded. Shared files go to VPS disk (`STORAGE_DRIVER=local`). To use S3, Cloudflare R2, MinIO or Spaces instead, set `STORAGE_DRIVER=s3` and fill in the `S3_*` variables (`.env.example` has an R2 walkthrough). Downloads from a private bucket are streamed, not loaded into memory. Chat attachments are always uploaded as files; inline `data:` attachments are off by default (`CHAT_INLINE_MAX_MB=0`).

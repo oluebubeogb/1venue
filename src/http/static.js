@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const config = require('../config');
+const clientAssets = require('../core/client-assets');
 
 const ROOT = config.PUBLIC;
 const VENDOR = {
@@ -85,6 +86,7 @@ function serveStatic(req, res, urlPath) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'Not found' }));
   }
+  if (clientAssets.serve(req, res, urlPath)) return;
   if (VENDOR[urlPath]) return send(req, res, VENDOR[urlPath], urlPath);
   let p = urlPath === '/' ? '/index.html' : urlPath;
   let decoded;

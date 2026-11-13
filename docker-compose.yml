@@ -1,7 +1,9 @@
-# Backup / self-host deployment: app + PostgreSQL (+ optional N-ATLaS STT sidecar).
+# 1venue on Coolify / any Docker host: app + PostgreSQL.
 #   cp .env.example .env   # fill in secrets
 #   docker compose up -d --build
-#   docker compose --profile stt up -d --build   # also run the speech-to-text sidecar
+# LiveKit runs as its own service/repo (see docs/livekit-coolify.md and the livekit-server repo).
+# Speech-to-text is NOT run here: point STT_*_BASE_URL at a hosted / RunPod endpoint (see .env.example).
+# The old self-hosted N-ATLaS sidecar is optional: stt-sidecar/docker-compose.yml (needs a GPU box).
 services:
   db:
     image: postgres:16-alpine
@@ -12,13 +14,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40", "-c", "work_mem=4MB"]
+    # Sized for a Contabo Cloud VPS (8+ GB RAM). Lower shared_buffers/mem_limit on small boxes.
+    command: ["postgres", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-256MB}", "-c", "max_connections=${PG_MAX_CONNECTIONS:-60}", "-c", "work_mem=8MB", "-c", "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-1GB}"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 20
-    mem_limit: 256m
+    mem_limit: ${PG_MEM_LIMIT:-1g}
 
   app:
     build: .
@@ -27,6 +30,15 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-venue}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-venue}}
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
       PORT: 3000
+      NODE_MAX_OLD_SPACE_MB: ${NODE_MAX_OLD_SPACE_MB:-2048}
+      WS_HEARTBEAT_MS: ${WS_HEARTBEAT_MS:-30000}
+      LEFT_PARTICIPANT_PRUNE_MINUTES: ${LEFT_PARTICIPANT_PRUNE_MINUTES:-10}
+      WB_MAX_STROKES: ${WB_MAX_STROKES:-1000}
+      WB_MAX_POINTS: ${WB_MAX_POINTS:-2000}
+      SCREEN_TIMELINE_MAX_ITEMS: ${SCREEN_TIMELINE_MAX_ITEMS:-10}
+      SCREEN_TIMELINE_MAX_CHARS: ${SCREEN_TIMELINE_MAX_CHARS:-1500000}
+      MEETING_RESTORE_MAX_MINUTES: ${MEETING_RESTORE_MAX_MINUTES:-30}
+      SHUTDOWN_GRACE_MS: ${SHUTDOWN_GRACE_MS:-1500}
       APP_NAME: ${APP_NAME:-1venue}
       PUBLIC_URL: ${PUBLIC_URL:-https://venue.collab.name.ng}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://venue.collab.name.ng}
@@ -94,9 +106,9 @@ services:
       UPLOAD_MEETING_CAP_MB: ${UPLOAD_MEETING_CAP_MB:-150}
       UPLOAD_RATE_PER_MIN: ${UPLOAD_RATE_PER_MIN:-12}
       UPLOAD_RATE_PER_HOUR: ${UPLOAD_RATE_PER_HOUR:-120}
-      CHAT_INLINE_MAX_MB: ${CHAT_INLINE_MAX_MB:-0.6}
+      CHAT_INLINE_MAX_MB: ${CHAT_INLINE_MAX_MB:-0}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_REGION: ${S3_REGION:-auto}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
@@ -115,20 +127,12 @@ services:
       - "3000"
     volumes:
       - appdata:/data
-    mem_limit: 512m
-
-  stt:
-    profiles: ["stt"]
-    build: ./stt-sidecar
-    restart: unless-stopped
-    environment:
-      HF_TOKEN: ${HF_TOKEN:-}
-      STT_LANGS: ${STT_LANGS:-en}
-    volumes:
-      - hfcache:/root/.cache/huggingface
-    mem_limit: 3g
+    # Container memory. Keep NODE_MAX_OLD_SPACE_MB at ~65% of this (2048 MB heap for 3g):
+    # the rest covers buffers, sockets and LibreOffice PPTX conversions.
+    mem_limit: ${APP_MEM_LIMIT:-3g}
+    # Give the graceful shutdown (room snapshots + reconnect notice) time to finish.
+    stop_grace_period: 15s
 
 volumes:
   pgdata:
   appdata:
-  hfcache:

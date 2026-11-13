@@ -20,9 +20,12 @@ test.before(async () => {
 });
 test.after(() => child && child.kill());
 
-test('GET /health', { skip }, async () => {
+test('GET /health is liveness only (no DB), /ready checks the database', { skip }, async () => {
   const r = await fetch(base + '/health'); assert.equal(r.status, 200);
-  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, 'postgresql');
+  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, undefined);
+  const rd = await fetch(base + '/ready'); assert.equal(rd.status, 200);
+  const k = await rd.json(); assert.equal(k.ok, true); assert.equal(k.db, 'postgresql');
+  assert.equal((await (await fetch(base + '/api/health')).json()).db, 'postgresql');
 });
 test('GET /api/config', { skip }, async () => {
   const r = await fetch(base + '/api/config'); assert.equal(r.status, 200); assert.equal(typeof (await r.json()), 'object');

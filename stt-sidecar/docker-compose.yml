@@ -1,0 +1,20 @@
+# OPTIONAL self-hosted N-ATLaS speech-to-text (CPU build, ~3 GB RAM, slow on a VPS).
+# 1venue no longer runs this by default: use a hosted OpenAI-compatible
+# /audio/transcriptions endpoint (RunPod serverless, OpenAI, Groq, ...) instead.
+# Only use this on a separate box, then set in 1venue:
+#   STT_PRIMARY_BASE_URL=http://<this-host>:8000/v1
+#   docker compose -f stt-sidecar/docker-compose.yml up -d --build
+services:
+  stt:
+    build: .
+    restart: unless-stopped
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      STT_LANGS: ${STT_LANGS:-en}
+    ports:
+      - "8000:8000"
+    volumes:
+      - hfcache:/root/.cache/huggingface
+    mem_limit: 3g
+volumes:
+  hfcache:

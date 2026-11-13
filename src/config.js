@@ -124,7 +124,7 @@ const UPLOADS = {
   contentPerMinute: int('UPLOAD_CONTENT_RATE_PER_MIN', 240),
   contentPerHour: int('UPLOAD_CONTENT_RATE_PER_HOUR', 480),
   perHour: int('UPLOAD_RATE_PER_HOUR', 120),
-  chatInlineBytes: mb('CHAT_INLINE_MAX_MB', 0.6), // legacy data-URL attachments over WS
+  chatInlineBytes: mb('CHAT_INLINE_MAX_MB', 0), // legacy data-URL attachments over WS; 0 = off (clients upload to /api/files)
 };
 
 const BIBLE = {
@@ -132,6 +132,29 @@ const BIBLE = {
   fallbackBase: env('BIBLE_FALLBACK_BASE', 'https://bible-api.com').replace(/\/$/, ''),
   defaultTranslation: env('BIBLE_DEFAULT_TRANSLATION', 'eng_kjv'),
   cacheDays: int('BIBLE_CACHE_DAYS', 30),
+};
+
+// Memory guards for live rooms (all state lives in this process; see docs/ARCHITECTURE.md)
+const MEMORY = {
+  wsHeartbeatMs: int('WS_HEARTBEAT_MS', 30_000), // ping every socket; drop ones that miss a pong (0 disables)
+  leftPruneMs: int('LEFT_PARTICIPANT_PRUNE_MINUTES', 10) * 60 * 1000, // forget people who left (0 disables)
+  wbMaxStrokes: int('WB_MAX_STROKES', 1000), // shared whiteboard strokes kept per room / shared board page
+  wbMaxPoints: int('WB_MAX_POINTS', 2000), // points kept per stroke
+  timelineMaxItems: int('SCREEN_TIMELINE_MAX_ITEMS', 10),
+  timelineMaxChars: int('SCREEN_TIMELINE_MAX_CHARS', 1_500_000), // ~1.1 MB JPEG per snapshot
+};
+
+// Graceful restarts: live rooms are snapshotted on SIGTERM and restored when people reconnect
+const RESTART = {
+  restoreMaxMs: int('MEETING_RESTORE_MAX_MINUTES', 30) * 60 * 1000, // older snapshots are ended instead
+  shutdownGraceMs: int('SHUTDOWN_GRACE_MS', 1500), // time for "server-restarting" frames to flush
+};
+
+// Monitoring: GET /metrics (Prometheus text) needs METRICS_TOKEN as a Bearer token; unset = /metrics is 404.
+const METRICS = {
+  token: env('METRICS_TOKEN', ''),
+  log: bool('METRICS_LOG', true), // one compact "[metrics] …" log line per interval
+  logIntervalMs: int('METRICS_LOG_INTERVAL_MS', 60_000),
 };
 
 const RATE_LIMIT_PER_MIN = int('RATE_LIMIT_PER_MIN', 240);
@@ -161,11 +184,11 @@ const MIME = {
 };
 
 module.exports = {
-  env, int, bool,
+  env, int, bool, METRICS,
   PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, JWT_TTL, PUBLIC_URL, APP_NAME,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
   ACCOUNTS_URL, ACCOUNTS_LOGIN_URL, ACCOUNTS_JWT_SECRET, ACCOUNTS_ACCESS_COOKIE, ACCOUNTS_REFRESH_COOKIE,
   COOKIE_DOMAIN, ALLOW_LOCAL_SIGNUP,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };
