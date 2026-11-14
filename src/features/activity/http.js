@@ -1,6 +1,6 @@
 /**
  * Activity: recent activity for a meeting.
- * Raw HTTP handler (moved verbatim from the old src/http/routes.js chain).
+ * Raw HTTP handler.
  * Each block answers its path and returns; unmatched requests fall through (return false).
  */
 const {

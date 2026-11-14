@@ -13,7 +13,7 @@ const codes = require('../lib/codes');
 const { normCode, isCode, codeLink } = codes;
 const { parseBody, readRaw, sendJSON, sendText, isValidEmail, isValidUsername, clientIp, rateLimit } = require('../lib/http');
 const auth = require('../lib/auth');
-const { getAuthUser, signToken, publicUser, ensureAccountsUser, isInternalUsername, localCookie, loginUrl, logoutUrl } = auth;
+const { getAuthUser, publicUser } = auth;
 const store = require('../rooms/store');
 const { can, resolvePermissions, isModerator } = require('../lib/permissions');
 const { endMeeting } = require('../rooms/lifecycle');
@@ -77,16 +77,16 @@ function publicErr(e, fallback) {
   return m.slice(0, 200);
 }
 
-const { PORT, PUBLIC, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, ACCOUNTS_URL, ACCOUNTS_JWT_SECRET, MIME } = config;
+const { PORT, PUBLIC, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, MIME } = config;
 
 module.exports = {
   URL, fs, path, bcrypt, db, config, codes, normCode, isCode, codeLink,
   parseBody, readRaw, sendJSON, sendText, isValidEmail, isValidUsername, clientIp, rateLimit,
-  auth, getAuthUser, signToken, publicUser, ensureAccountsUser, isInternalUsername, localCookie, loginUrl, logoutUrl,
+  auth, getAuthUser, publicUser,
   store, ...store,
   can, resolvePermissions, isModerator, endMeeting, getOrRestoreMeeting, discardSnapshot,
   createLiveKitToken, isLiveKitConfigured, grantsFromPermissions, signWsCredential, verifyWsCredential,
   features, stage, data, ai, stt, bible, qr, storage,
   httpError, requireUser, roomParticipant, int, attach, liveInfo, publicErr,
-  PORT, PUBLIC, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, ACCOUNTS_URL, ACCOUNTS_JWT_SECRET, MIME,
+  PORT, PUBLIC, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, MIME,
 };

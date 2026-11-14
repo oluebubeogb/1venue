@@ -522,7 +522,7 @@ export function buildTools(R) {
     },
     shortcuts() {
       const keys = [['M', 'Mute / unmute'], ['V', 'Camera on / off'], ['S', 'Share screen'], ['H', 'Raise / lower hand'], ['C', 'Chat'], ['P', 'People'], ['E', 'Engage (polls, Q&A)'], ['G', 'Cycle layout'], ['F', 'Fullscreen'], ['/', 'Command bar'], ['Ctrl K', 'Command bar'], ['Esc', 'Close panel / sheet']];
-      return h('div', { class: 'list' }, keys.map(([k, l]) => h('div', { class: 'set-row' }, h('span', { class: 'kbd' }, k), h('span', { class: 'grow' }, l))), note('Text-size shortcuts were removed — use Settings → Text size for a comfortable reading size.'));
+      return h('div', { class: 'list' }, keys.map(([k, l]) => h('div', { class: 'set-row' }, h('span', { class: 'kbd' }, k), h('span', { class: 'grow' }, l))), note('For a comfortable reading size, use Settings → Text size.'));
     },
   };
 }

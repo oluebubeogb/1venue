@@ -1,10 +1,10 @@
 /**
  * Core rooms: LiveKit token, create, join, meeting state, invite regenerate, leave.
- * Raw HTTP handler (moved verbatim from the old src/http/routes.js chain).
+ * Raw HTTP handler.
  * Each block answers its path and returns; unmatched requests fall through (return false).
  */
 const {
-  db, config, normCode, isCode, parseBody, sendJSON, getAuthUser, isInternalUsername, meetings, clients, getParticipantsList, getWaitingList, getRaisedHands, getContentState, getSecurityState, broadcast, broadcastToModerators, generateCode, generateInviteToken, createMeetingSettings, createParticipant, normalizeParticipantName, findParticipantByUserId, isBlocked, can, resolvePermissions, endMeeting, getOrRestoreMeeting, discardSnapshot, createLiveKitToken, grantsFromPermissions, signWsCredential, stage, publicErr, LIVEKIT_URL,
+  db, config, normCode, isCode, parseBody, sendJSON, getAuthUser, meetings, clients, getParticipantsList, getWaitingList, getRaisedHands, getContentState, getSecurityState, broadcast, broadcastToModerators, generateCode, generateInviteToken, createMeetingSettings, createParticipant, normalizeParticipantName, findParticipantByUserId, isBlocked, can, resolvePermissions, endMeeting, getOrRestoreMeeting, discardSnapshot, createLiveKitToken, grantsFromPermissions, signWsCredential, stage, publicErr, LIVEKIT_URL,
 } = require('./http-kit');
 
 module.exports = async function handle(req, res, parsed) {
@@ -33,7 +33,7 @@ module.exports = async function handle(req, res, parsed) {
         || 'Participant';
 
       if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId, code }).ok) {
-        // Meet clients did not always send this. Accept for compatibility but log.
+        // Some clients omit this. Accept it but log.
         if (body.wsCredential) return sendJSON(res, 403, { error: 'Invalid credential' });
       }
       if (participant.status !== 'ACTIVE') {
@@ -122,7 +122,7 @@ module.exports = async function handle(req, res, parsed) {
       const hostName = normalizeParticipantName(
         body.participantName
         || authUser?.displayName
-        || (!authUser?.username || isInternalUsername(authUser.username) ? null : authUser.username)
+        || authUser?.username
         || (authUser?.email && authUser.email.split('@')[0])
       );
       if (!hostName) {
@@ -282,7 +282,7 @@ module.exports = async function handle(req, res, parsed) {
       const participantName = normalizeParticipantName(
         body.participantName
         || authUser?.displayName
-        || (!authUser?.username || isInternalUsername(authUser.username) ? null : authUser.username)
+        || authUser?.username
         || (authUser?.email && authUser.email.split('@')[0])
       );
       if (!participantName) {

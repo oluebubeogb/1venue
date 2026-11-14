@@ -1,4 +1,4 @@
-/** Room plugin: polls (moved from src/plugins/venue.js). Turn off with FEATURE_POLLS=false. */
+/** Room plugin: polls. Turn off with FEATURE_POLLS=false. */
 const data = require('../../venue/data');
 const { mod, active, voterKey, err } = require('../../core/room-helpers');
 

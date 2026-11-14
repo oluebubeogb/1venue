@@ -20,7 +20,7 @@ function eventOut(r) {
     startsAt: r.starts_at, endsAt: r.ends_at, startedAt: r.started_at, endedAt: r.ended_at,
     coverUrl: r.cover_url, theme: r.theme || {}, speakerSeats: r.speaker_seats, settings: r.settings || {},
     templateSlug: r.template_slug, liveViewers: r.live_viewers, peakViewers: r.peak_viewers, totalJoins: r.total_joins,
-    host: { id: r.host_user_id, username: (require('../../lib/auth').publicUsername(r.host_username) || r.host_username || null), name: r.host_name, avatarUrl: r.host_avatar || null },
+    host: { id: r.host_user_id, username: r.host_username || null, name: r.host_name, avatarUrl: r.host_avatar || null },
     rsvps: r.rsvps != null ? Number(r.rsvps) : undefined,
     rsvped: r.rsvped != null ? !!r.rsvped : undefined,
     historyId: r.meeting_history_id || null,
@@ -164,8 +164,7 @@ async function listSpeakers(eventId) {
     FROM event_speakers es LEFT JOIN users u ON u.id=es.user_id
     WHERE es.event_id=$1 ORDER BY es.sort_order, es.id`, [eventId]))
     .map((r) => {
-      const { publicUsername } = require('../../lib/auth');
-      return { id: Number(r.id), userId: r.user_id, username: publicUsername(r.username) || r.username || null, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null };
+      return { id: Number(r.id), userId: r.user_id, username: r.username || null, name: r.display_name, headline: r.headline, avatarUrl: r.avatar_url, email: r.email || null };
     });
 }
 async function setSpeakers(eventId, list) {

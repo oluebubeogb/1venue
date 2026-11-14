@@ -23,12 +23,13 @@ browser ──HTTPS/WSS──> Coolify proxy (Traefik) ──> 1venue app contai
 ## Request flow (src/http/routes.js)
 
 ```
-OPTIONS / rate limits
+CANONICAL_HOST 301 (off when unset; skips /health, /ready, /api/health, /metrics)
+ -> OPTIONS / rate limits (auth endpoints: AUTH_RATE_PER_MIN per IP)
  -> feature JSON routes     src/features/<id>/routes.js   via src/core/router.js   (/api/... table)
  -> feature raw handlers    src/features/<id>/http.js     (streams, /files/..., older if-chain APIs)
  -> /health (liveness, no DB)   /metrics (Prometheus, METRICS_TOKEN; src/core/metrics.js)
     /ready + /api/health (DB check, 503 when down)
- -> core auth routes        src/core/auth-routes.js       (config, sign-up/in, SSO, /api/me)
+ -> core auth routes        src/core/auth-routes.js       (/api/config, /api/session, /api/me)
  -> core room routes        src/core/room-routes.js       (create, join, meeting, LiveKit token, leave)
  -> static files            src/http/static.js            (+ /features/* browser assets)
 ```
@@ -61,7 +62,7 @@ Heartbeat: the hub pings every `WS_HEARTBEAT_MS` (30 s) and terminates sockets t
 * Browsers show "Reconnecting…" and rejoin automatically with fast, jittered retries.
 * Snapshots older than `MEETING_RESTORE_MAX_MINUTES` (30) are ended properly by the cleanup
   timer (history row closed, event marked ended).
-* A crash (`SIGKILL`, OOM kill) writes no snapshot; those meetings end, as before.
+* A crash (`SIGKILL`, OOM kill) writes no snapshot; those meetings end.
 
 Memory guards: left participants are pruned after `LEFT_PARTICIPANT_PRUNE_MINUTES`,
 whiteboards keep at most `WB_MAX_STROKES` × `WB_MAX_POINTS`, screen timelines are capped, and
@@ -79,8 +80,8 @@ inline `data:` chat attachments are off.
 | `src/ws/hub.js` | WebSocket server, register/auth, plugin dispatch, heartbeat |
 | `src/http/` | request pipeline, static server, `venue.js` compatibility shim |
 | `src/venue/` | shared services: AI, STT, Bible, QR, storage (local/S3/R2), PPTX, uploads; `data.js` is a facade over the feature `data.js` files |
-| `src/lib/` | auth, permissions, codes, HTTP helpers, WS credentials, attachments |
-| `migrations/` | core SQL migrations (`001_…013_` legacy, then UTC timestamps) |
+| `src/lib/` | auth (sessions, cookies, password hashing), permissions, codes, HTTP helpers, WS credentials, attachments |
+| `migrations/` | core SQL migrations (`001_…013_` numbered, newer ones named by UTC timestamp) |
 | `public/` | front end: `js/app.js` router, `js/pages/*` pages, `js/room/*` the room UI |
 | `test/` | `node --test` suites (DB-backed ones need `DATABASE_URL`) |
 | `stt-sidecar/` | optional self-hosted speech-to-text, run on another box |
@@ -105,6 +106,8 @@ Nothing is registered by hand: `src/core/features.js` scans the folder. Folders 
 | order | feature | has |
 |---|---|---|
 | 10 | `chat` | ws, client/ws |
+| 15 | `mail` | SMTP sender + branded templates (no routes; used by `auth`) |
+| 20 | `auth` | routes, http (Google), data, migrations: local accounts, sessions, Google sign-in (docs/AUTH.md) |
 | 20 | `reactions` | ws, client/ws |
 | 30 | `mute` | ws |
 | 40 | `deviceIcons` | ws |

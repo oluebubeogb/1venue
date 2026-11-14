@@ -38,13 +38,11 @@ async function setPrefs(userId, p = {}) {
 // ---------------------------------------------------------------- users
 function userCard(r) {
   if (!r) return null;
-  const { publicUsername, isInternalUsername } = require('../../lib/auth');
-  const raw = r.username || null;
-  const uname = publicUsername(raw) || (!isInternalUsername(raw) ? raw : null);
+  const uname = r.username || null;
   return {
     id: r.id,
     username: uname,
-    name: r.display_name || uname || (r.email ? r.email.split('@')[0] : raw),
+    name: r.display_name || uname || (r.email ? r.email.split('@')[0] : 'User'),
     handle: r.handle || uname || null,
     avatarUrl: r.avatar_url || null, bio: r.bio || null,
     followers: r.followers != null ? Number(r.followers) : undefined,
@@ -96,8 +94,7 @@ async function suggestedPeople(userId, limit = 6) {
     ORDER BY followers DESC, u.id DESC LIMIT $2`, [userId || 0, limit])).map(userCard);
 }
 function postOut(r) {
-  const { publicUsername } = require('../../lib/auth');
-  const authorU = publicUsername(r.author_username) || r.author_handle || null;
+  const authorU = r.author_username || r.author_handle || null;
   return {
     id: Number(r.id), kind: r.kind, body: r.body, media: r.media || [], likeCount: r.like_count, commentCount: r.comment_count,
     liked: !!r.liked, createdAt: r.created_at,

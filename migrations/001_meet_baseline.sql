@@ -1,4 +1,4 @@
--- 001: Meet baseline schema (idempotent; safe on existing Meet databases)
+-- 001: baseline meeting schema (idempotent; safe to re-run on an existing database)
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,

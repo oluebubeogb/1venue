@@ -1,4 +1,4 @@
-/** Room plugin: scripture (moved from src/plugins/venue.js). Turn off with FEATURE_SCRIPTURE=false. */
+/** Room plugin: scripture. Turn off with FEATURE_SCRIPTURE=false. */
 const stage = require('../../venue/stage');
 const { mod, active, err } = require('../../core/room-helpers');
 

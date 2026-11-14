@@ -1,4 +1,4 @@
-/** Room plugin: stage (moved from src/plugins/venue.js). Turn off with FEATURE_STAGE=false. */
+/** Room plugin: stage. Turn off with FEATURE_STAGE=false. */
 const { resolvePermissions } = require('../../lib/permissions');
 const stage = require('../../venue/stage');
 const { mod, active, err, limited } = require('../../core/room-helpers');

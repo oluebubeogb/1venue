@@ -1,5 +1,5 @@
 # Who reviews what. GitHub requests a review from the owners of every file a PR touches.
-# Replace the @placeholders with real GitHub usernames or teams (e.g. @collab/rooms) before
+# Replace the @placeholders with real GitHub usernames or teams (e.g. @your-org/rooms) before
 # turning on "Require review from Code Owners" in the branch protection for main.
 # Later lines win over earlier ones.
 

@@ -32,6 +32,16 @@ function createRequestHandler() {
     const parsed = new URL(req.url, `http://localhost:${PORT}`);
     const urlPath = parsed.pathname;
 
+    // CANONICAL_HOST: 301 every other host name (www., an old domain) to the canonical one.
+    // Health checks stay reachable on any host (Docker/Coolify call them by IP or container name).
+    if (config.CANONICAL_HOST && !/^\/(health|ready|metrics|api\/health)$/.test(urlPath)) {
+      const host = String((config.TRUST_PROXY && req.headers['x-forwarded-host']) || req.headers.host || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '');
+      if (host && host !== config.CANONICAL_HOST) {
+        res.writeHead(301, { Location: `https://${config.CANONICAL_HOST}${req.url}`, 'Cache-Control': 'public, max-age=3600' });
+        return res.end();
+      }
+    }
+
     if (req.method === 'OPTIONS') {
       res.writeHead(204, { ...BASE_HEADERS, ...corsFor(req) });
       return res.end();
@@ -42,7 +52,7 @@ function createRequestHandler() {
       if (!rateLimit('api:' + ip, config.RATE_LIMIT_PER_MIN)) {
         return sendJSON(res, 429, { error: 'Too many requests. Slow down a little.' });
       }
-      if (/^\/api\/(login|signup|accounts\/)/.test(urlPath) && !rateLimit('auth:' + ip, 20)) {
+      if (/^\/api\/(login|signup|logout|auth\/)/.test(urlPath) && req.method !== 'GET' && !rateLimit('auth:' + ip, config.AUTH.ratePerMin)) {
         return sendJSON(res, 429, { error: 'Too many sign-in attempts. Try again in a minute.' });
       }
     }

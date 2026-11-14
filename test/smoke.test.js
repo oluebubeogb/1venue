@@ -15,7 +15,7 @@ test.before(async () => {
   if (skip || base) return;
   const port = 4010 + Math.floor(Math.random() * 40);
   base = `http://127.0.0.1:${port}`;
-  child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(port), AI_MOCK: 'true', JWT_SECRET: process.env.JWT_SECRET || 'test-secret', PUBLIC_URL: base, ACCOUNTS_URL: '' }, stdio: 'ignore' });
+  child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(port), AI_MOCK: 'true', JWT_SECRET: process.env.JWT_SECRET || 'test-secret', PUBLIC_URL: base }, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) { try { if ((await fetch(base + '/health')).ok) return; } catch {} await new Promise((r) => setTimeout(r, 250)); }
   throw new Error('server did not start');
 });

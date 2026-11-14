@@ -30,7 +30,7 @@ async function parseBody(req, limit = 1e6) {
 
 // CORS: only origins listed in CORS_ORIGINS (comma separated, default the app domain) get
 // credentialed cross-origin access. Same-origin requests never need CORS headers.
-const CORS_ORIGINS = String(process.env.CORS_ORIGINS || process.env.PUBLIC_URL || 'https://venue.collab.name.ng')
+const CORS_ORIGINS = String(process.env.CORS_ORIGINS || process.env.PUBLIC_URL || '')
   .split(',').map((x) => x.trim().replace(/\/$/, '')).filter(Boolean);
 function corsFor(req) {
   const o = req && req.headers && req.headers.origin;

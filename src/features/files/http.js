@@ -1,6 +1,6 @@
 /**
  * Files: GET /files/<id>/<name> downloads (local disk, or S3/R2 streamed when no public URL).
- * Raw HTTP handler (moved verbatim from the old src/http/routes.js chain).
+ * Raw HTTP handler.
  * Each block answers its path and returns; unmatched requests fall through (return false).
  */
 const {

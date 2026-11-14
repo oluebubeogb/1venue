@@ -21,8 +21,8 @@
 | | |
 |---|---|
 | **What it is** | Premium virtual events and meetings: talk shows, seminars, sermons, presentations and team calls |
-| **Lineage** | Evolution of Meet: every Meet feature kept (inventory sections A–H), new UI and venue layer on top |
-| **Suite** | Part of Collab, signs in through Collab Accounts SSO |
+| **Scope** | Full meetings platform plus events, stage, scripture, captions and a social layer (see docs/FEATURE_INVENTORY.md) |
+| **Accounts** | Its own: email + password with verification, or Continue with Google (docs/AUTH.md) |
 | **Market** | Nigeria-first: Nigerian-accent and Yoruba, Igbo, Hausa captions, low-bandwidth caps, mobile-first PWA |
 | **Differentiators** | Speaker seats with request-to-speak, host-synced scripture, `Name: text` transcripts with AI summaries, social layer |
 | **Feel** | Premium and alive: colour-coded function groups, motion, faint background art, Instagram-like stickiness |
@@ -35,7 +35,8 @@ flowchart LR
   app["1venue app<br/>Node 22 http + ws, plugins"]
   pg[("PostgreSQL 16<br/>Auto-migrate on boot")]
   lk["LiveKit SFU<br/>Simulcast, bitrate caps"]
-  sso["Collab Accounts<br/>SSO cookies on .collab.name.ng"]
+  mail["SMTP provider<br/>verify + reset emails"]
+  goog["Google OIDC<br/>optional sign-in"]
   ai1["AI primary<br/>OpenAI-compatible (RunPod)"]
   ai2["AI secondary<br/>Fallback provider"]
   stt["STT sidecar<br/>N-ATLaS, optional profile"]
@@ -45,10 +46,11 @@ flowchart LR
 
   pwa -->|HTTPS + WebSocket| app
   pwa -->|WebRTC media| lk
-  pwa -.->|login redirect| sso
+  pwa -.->|Continue with Google| goog
   app -->|pg pool| pg
   app -->|tokens, room API| lk
-  app -->|/auth/me, /auth/refresh| sso
+  app -->|emails| mail
+  app -->|code exchange, JWKS| goog
   app -->|chat| ai1
   ai1 -.->|on failure| ai2
   app -->|audio chunks| stt
@@ -74,7 +76,8 @@ If both server STT engines fail, the browser's Web Speech API captures captions 
 |  `/books` | Books | Reader, translations, share a verse |
 | `/whiteboard` | Whiteboard | Personal board |
 | `/settings` | Settings | Theme, accent, font size, motion, devices, translation |
-| `/login` | Login | SSO redirect or local sign-in |
+| `/login`, `/signup`, `/forgot-password` | Sign in | Email + password, Continue with Google |
+| `/reset-password`, `/verify-email` | Account links | Opened from emails |
 | `/new`, `/ABC-123` | Room | Pre-join, waiting, stage, panels |
 
 ### In-room panels
@@ -104,7 +107,7 @@ If both server STT engines fail, the browser's Web Speech API captures captions 
 | Media | Client-side recording (stays on the user's device) | Partial | Blue (media) | MediaRecorder flow; not exercised headless |
 | Joining & moderation | Pre-join, instant room, join by code | Done | Red (admin) / Violet (people) | Smoke-tested on both viewports |
 | Joining & moderation | Waiting room and admit | Done | Red (admin) / Violet (people) | Host admits guest in smoke test |
-| Joining & moderation | Lock, permissions, mute-all, ring-all, roles | Partial | Red (admin) / Violet (people) | Server plugins from Meet; UI built, not exercised end to end |
+| Joining & moderation | Lock, permissions, mute-all, ring-all, roles | Partial | Red (admin) / Violet (people) | Server plugins built; UI built, not exercised end to end |
 | Joining & moderation | Breakout rooms | Partial | Red (admin) / Violet (people) | Plugin kept; LiveKit room switch untested |
 | Chat & community | Room chat with mentions | Done | Orange (social) | Guest to host message verified |
 | Chat & community | Private DMs and group chats | Partial | Orange (social) | Built; not in the smoke flow |
@@ -139,8 +142,8 @@ If both server STT engines fail, the browser's Web Speech API captures captions 
 | PWA | Install banner with iOS instructions | Partial | Slate (nav) | Built; not tested on an iPhone |
 | PWA | Push notifications | Not built | Slate (nav) | On the roadmap |
 | QR | Themed QR codes with logo, light and dark | Done | Teal (content) | Unit-tested SVG |
-| Identity | Collab Accounts SSO via `.collab.name.ng` cookies | Partial | Red (admin) | Env-driven; not tested against live accounts |
-| Identity | Local sign-up fallback | Done | Red (admin) | `ALLOW_LOCAL_SIGNUP`; tested |
+| Identity | Local accounts: sign-up, verification, reset, sessions, sign out everywhere | Done | Red (admin) | Tested (`test/auth.test.js`); real SMTP not yet tried |
+| Identity | Continue with Google (OIDC + PKCE) | Done | Red (admin) | Tested against a mocked Google; needs a real client ID |
 | Storage | VPS disk storage, S3-compatible driver | Partial | Teal (content) | Disk works; S3 never run against a bucket |
 
 Partial mostly means built but not run against a real service: there was no LiveKit server, AI keys or STT model in the build environment.
@@ -201,7 +204,7 @@ Partial mostly means built but not run against a real service: there was no Live
 | `meeting_membership` | code, participant_id, role, status | Who is admitted and with what role |
 | `scheduled_meetings` | code, scheduled_start, scheduled_end, status | host_user_id → users |
 | `meeting_activity` | event_type, detail | meeting_history |
-| `meeting_recordings` | status, file_path, file_url | meeting_history (Meet legacy; 1venue records on the client) |
+| `meeting_recordings` | status, file_path, file_url | meeting_history (reserved; recordings are made in the browser) |
 | `meeting_templates / meeting_artifacts` | slug, settings_json / short_code, is_live, is_public | Artifacts → meeting_history |
 | `chat_messages` | sender, body, attachments, group_id | artifact_id → meeting_artifacts |
 | `dm_threads / dm_messages` | user_a, user_b, guest_key / body | Messages → threads |
@@ -219,7 +222,7 @@ Partial mostly means built but not run against a real service: there was no Live
 | `bible_cache` | translation, book, chapter, payload | Cache, no FK |
 | `whiteboards` | title, data | user_id → users (personal) |
 
-`001_meet_baseline.sql` carries Meet's 15 tables unchanged; `002_venue_core.sql` adds the venue tables for events, social, engagement, transcripts, AI, files, Books cache and whiteboards.
+`001_meet_baseline.sql` creates the 15 meeting tables (rooms, chat, history, templates, artifacts); `002_venue_core.sql` adds the tables for events, social, engagement, transcripts, AI, files, Books cache and whiteboards.
 
 ## 8. AI, speech-to-text and Bibles
 
@@ -275,14 +278,15 @@ Partial mostly means built but not run against a real service: there was no Live
 
 | Variable | Need | Notes |
 |---|---|---|
-| `PUBLIC_URL` | Required | Public https URL; QR codes, SSO next= and links |
+| `PUBLIC_URL` | Required | Public https URL; QR codes, email links, Google redirect |
 | `JWT_SECRET` | Required | Signs local sessions and room credentials |
 | `POSTGRES_PASSWORD (or DATABASE_URL)` | Required | Compose builds `DATABASE_URL` from `POSTGRES_*` |
 | `LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET` | Required for media | No audio or video without them |
-| `ACCOUNTS_URL, ACCOUNTS_LOGIN_URL` | Required for SSO | `https://accounts.collab.name.ng` |
-| `COOKIE_DOMAIN` | Required for SSO | `.collab.name.ng` |
-| `ACCOUNTS_JWT_SECRET` | Optional | Local token check; otherwise validates via `/auth/me` |
-| `ALLOW_LOCAL_SIGNUP` | Optional | Keep local sign-up as a fallback |
+| `SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM` | Required in production | Verification and reset emails |
+| `GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET` | Optional | Shows "Continue with Google" |
+| `AUTH_*`, `BCRYPT_COST` | Optional | Token lifetimes, password rules, rate limits (docs/AUTH.md) |
+| `ALLOW_LOCAL_SIGNUP` | Optional | Email + password sign-up (default on) |
+| `CANONICAL_HOST` | Optional | 301 other host names (e.g. www) to this one |
 | `AI_PRIMARY_* and AI_SECONDARY_*` | Optional | NAME, BASE_URL, API_KEY, MODEL each (RunPod or any OpenAI-compatible) |
 | `AI_MOCK` | Optional | Set false in production once keys exist |
 | `STT_PROVIDER, STT_PRIMARY_*, STT_SECONDARY_*` | Optional | N-ATLaS sidecar then Whisper; browser speech if unset |
@@ -309,12 +313,12 @@ Partial mostly means built but not run against a real service: there was no Live
 
 ## 10. Gaps and roadmap
 
-> **Top gaps:** Real-service verification (LiveKit, SSO, AI, STT) comes first; then stage-event flows; then the premium and alive layer.
+> **Top gaps:** Real-service verification (LiveKit, email, Google sign-in, AI, STT) comes first; then stage-event flows; then the premium and alive layer.
 
 | Priority | Item | Why |
 |---|---|---|
 | P0 | Connect LiveKit and test media, simulcast, screen share, breakouts | Core of the product, untested live |
-| P0 | Test Collab Accounts SSO on the deployed domain | Login must work across the suite |
+| P0 | Set up SMTP and Google sign-in on the deployed domain; send set-password emails to existing users | Sign-up, confirmation and password-reset emails must arrive in production |
 | P0 | Add AI keys, set `AI_MOCK=false`, verify failover | Summaries are mock today |
 | P1 | Run a stage event end to end: audience, seats, request-to-speak | Key differentiator, untested |
 | P1 | Stand up an STT endpoint (sidecar or GPU on RunPod), test Nigerian captions | Headline Nigeria-first feature |
@@ -339,7 +343,7 @@ Partial mostly means built but not run against a real service: there was no Live
 ## Open questions
 
 1. LiveKit: Cloud, same VPS, or a separate media server? What VPS size are you on?
-2. Does Collab Accounts issue JWTs we can verify locally, or should 1venue always call `/auth/me`?
+2. Should email confirmation be required before using the app (`AUTH_REQUIRE_VERIFIED_EMAIL`)?
 3. Which RunPod models and endpoints for primary and secondary AI, and is a GPU STT endpoint possible?
 4. Do you have access to the gated N-ATLaS models, and is the research licence acceptable, or default to Whisper?
 5. Should local sign-up stay on in production?

@@ -23,7 +23,7 @@ async function boot(extraEnv) {
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(port), JWT_SECRET: 'test-secret', PUBLIC_URL: base, ACCOUNTS_URL: '', AI_MOCK: 'true', ...extraEnv },
+    env: { ...process.env, PORT: String(port), JWT_SECRET: 'test-secret', PUBLIC_URL: base, AI_MOCK: 'true', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';

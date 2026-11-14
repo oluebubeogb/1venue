@@ -2,7 +2,9 @@
 
 Three phases: **(1)** survive restarts and keep memory bounded, **(2)** move heavy services
 (LiveKit, speech-to-text) off the app, **(3)** restructure into feature folders so a team can
-work in parallel. Nothing here has been deployed. Read "Before you deploy" first.
+work in parallel. Nothing here has been deployed. Read "Before you deploy" first, and the
+last section, **"1venue on its own: own accounts, email, Google, new domain"**, which changes
+sign-in for everyone.
 
 ---
 
@@ -41,7 +43,7 @@ force-exits at 8 s).
 2. R2 → **Manage API tokens** → Create token: *Object Read & Write*, limited to that bucket.
    Copy the Access Key ID and Secret Access Key (shown once).
 3. R2 → Overview: copy your **S3 API** endpoint `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`.
-4. Optional, faster downloads: bucket → Settings → **Custom domain**, e.g. `files.collab.name.ng`.
+4. Optional, faster downloads: bucket → Settings → **Custom domain**, e.g. `files.1venue.live`.
 5. On the 1venue app in Coolify set:
    ```
    STORAGE_DRIVER=s3
@@ -51,7 +53,7 @@ force-exits at 8 s).
    S3_ACCESS_KEY_ID=…
    S3_SECRET_ACCESS_KEY=…
    S3_FORCE_PATH_STYLE=true
-   S3_PUBLIC_BASE_URL=https://files.collab.name.ng   # only if you did step 4
+   S3_PUBLIC_BASE_URL=https://files.1venue.live   # only if you did step 4
    ```
 6. Existing files stay on the `/data` volume and keep working: each file row remembers which
    storage it was saved to, so old files are still served from `/data` and only new uploads go
@@ -66,18 +68,18 @@ into memory first).
 Full guide: `livekit-server/README.md`. Short version:
 
 1. Push `livekit-server/` to a new Git repo.
-2. DNS: `1v.collab.name.ng` A record → the LiveKit server's IP, **DNS only (grey cloud)**.
-   Optional TURN/TLS needs a second name, e.g. `turn.collab.name.ng`, also grey cloud.
+2. DNS: `rtc.1venue.live` A record → the LiveKit server's IP, **DNS only (grey cloud)**.
+   Optional TURN/TLS needs a second name, e.g. `turn.1venue.live`, also grey cloud.
 3. Firewall on that server (ufw **and** Contabo's firewall if you use it): 80/tcp, 443/tcp,
    7881/tcp, 50000–60000/udp, 3478/udp, 30000–30100/udp. Do not open 7880.
-4. Keys: `./scripts/generate-keys.sh` (or reuse the current pair so 1venue needs no change).
+4. Keys: `./scripts/generate-keys.sh` (or reuse the current pair so only `LIVEKIT_URL` changes in 1venue).
 5. Coolify: new **Docker Compose** resource from the repo; env `LIVEKIT_KEYS="APIkey: secret"`,
-   `NODE_IP=<public IPv4>`, `LIVEKIT_DOMAIN=1v.collab.name.ng`; domain on the `livekit` service
-   `https://1v.collab.name.ng:7880`. If Coolify won't attach a domain to a host-network service,
+   `NODE_IP=<public IPv4>`, `LIVEKIT_DOMAIN=rtc.1venue.live`; domain on the `livekit` service
+   `https://rtc.1venue.live:7880`. If Coolify won't attach a domain to a host-network service,
    use Option B in the README (Traefik dynamic config).
 6. Stop the old LiveKit resource, deploy the new one, run
-   `./scripts/check.sh 1v.collab.name.ng <key> <secret>`, join a room from Wi-Fi and from mobile data.
-7. 1venue env: `LIVEKIT_URL=wss://1v.collab.name.ng`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
+   `./scripts/check.sh rtc.1venue.live <key> <secret>`, join a room from Wi-Fi and from mobile data.
+7. 1venue env: `LIVEKIT_URL=wss://rtc.1venue.live`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`.
 
 Contabo sizing: a Cloud VPS 20/30 (6–8 vCPU) is a good dedicated LiveKit box. LiveKit is CPU and
 bandwidth bound, not RAM bound.
@@ -296,7 +298,7 @@ decided, cost tips).
      scheme: https
      metrics_path: /metrics
      authorization: { type: Bearer, credentials: <METRICS_TOKEN> }
-     static_configs: [{ targets: ['venue.collab.name.ng'] }]
+     static_configs: [{ targets: ['1venue.live'] }]
    ```
    Or check it by hand: `curl -H "Authorization: Bearer $METRICS_TOKEN" https://<domain>/metrics`.
 4. Set `language` on events (e.g. `ig`, `ha`, `ar`) when creating them, so future read-out on
@@ -311,3 +313,123 @@ decided, cost tips).
 * The model is new, so its inputs or language list could change. Re-check the model page if
   read-out starts failing, and pin a version with `TTS_REPLICATE_MODEL=owner/name:version`.
 * If you wipe the storage bucket but keep the database, run `DELETE FROM tts_cache;`.
+
+---
+
+## Own accounts, email, Google, new domain (13 Nov 2026)
+
+1venue has its own accounts, sends its own email, offers "Continue with Google", and every
+address comes from env (`PUBLIC_URL` and friends),
+so it can run on 1venue.live or any other domain. Full guide: `docs/AUTH.md`; DNS/Cloudflare:
+`docs/DEPLOY-1venue.live.md`.
+
+**Migration note (the only place the previous setup is named):** 1venue previously ran at
+`venue.collab.name.ng`, signed in through Collab Accounts (`accounts.collab.name.ng`) with shared
+cookies on `.collab.name.ng`, and used LiveKit at `1v.collab.name.ng`. This release removes all of
+it: the `ACCOUNTS_*` and `COOKIE_DOMAIN` settings, the shared `access_token`/`refresh_token`
+cookies, the `/auth/me` relay and Set-Cookie forwarding, `ACCOUNTS_JWT_SECRET` checks, the
+login/logout redirects, the "Use Collab Accounts" wording, and the `isInternalUsername` /
+`publicUsername` display hacks. `users.accounts_id` stays, unused and nullable. Users created
+through Collab Accounts are the "imported users" below. Keep the old app domain pointing at
+1venue (with `CANONICAL_HOST=1venue.live`) for a while so old links and QR codes redirect.
+
+### What changed
+* **Local accounts** (`src/lib/auth.js`, `src/features/auth/`): sign up, sign in, sign out,
+  sign out everywhere, per-device sign-out; 15-minute access JWT plus a rotating refresh token
+  stored hashed in `auth_sessions` (reuse detection); cookies `__Host-1v_at` / `__Host-1v_rt`,
+  `HttpOnly; Secure; SameSite=Lax`, host-only; bcrypt with `BCRYPT_COST`; rate limits; email
+  verification (default: app usable with a banner; `AUTH_REQUIRE_VERIFIED_EMAIL=true` to
+  require it); forgot/reset with single-use expiring tokens (reset signs out every device);
+  change password (signs out other devices); change email with re-verification and a notice to
+  the old address; `ALLOW_LOCAL_SIGNUP` kept; generic answers for sign-in, forgot and change-email.
+* **Mail** (`src/features/mail/`): any SMTP server via nodemailer (`SMTP_HOST`, `SMTP_PORT`,
+  `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_REPLY_TO`); branded HTML + text
+  templates (confirm email, reset, set password, welcome, already-have-an-account, email
+  changed); links printed to the log outside production when SMTP is not set; SMTP checked at boot.
+* **Continue with Google** (`src/features/auth/google.js`, `http.js`): OIDC code flow with PKCE
+  (S256), state and nonce in a signed short-lived cookie; ID token verified against Google's
+  JWKS (signature, issuer, audience, expiry, nonce, `email_verified`); endpoints from Google's
+  discovery document; links by verified email, else creates a user (`GOOGLE_ALLOW_SIGNUP`);
+  new `oauth_identities` table; button hidden when not configured.
+* **Imported users (no password):** migration `20261113230000_local_accounts` clears their never-used
+  placeholder passwords and flags them; any sign-in attempt or "Forgot password" emails a
+  set-password link; Google with the same verified email links automatically. Migration
+  `20261113230100_clean_collab_usernames` turns `accounts:…`, `acc_…` and `u1a2b3c4_…`
+  usernames into readable ones once (collisions get `_2`, `_3`, …).
+* **Frontend:** new `/login` (sign in / sign up / forgot), `/reset-password` and `/verify-email`
+  pages with the Google button; a "please confirm your email" banner; Settings → Account
+  (email status, resend, change email, change/set password, Google status, devices, sign out
+  everywhere). Service worker v14.
+* **Domain:** `CANONICAL_HOST` middleware (301 to the canonical host, off when unset, health and
+  metrics paths exempt). CORS defaults to `PUBLIC_URL` only. docker-compose no longer has a
+  default domain (`PUBLIC_URL` is required). Examples use `1venue.live`, `wss://rtc.1venue.live`,
+  `turn.1venue.live` and `https://files.1venue.live`; the livekit-server repo uses
+  `LIVEKIT_DOMAIN=rtc.1venue.live` and `TURN_DOMAIN=turn.1venue.live`.
+* **Docs:** new `docs/AUTH.md` and `docs/DEPLOY-1venue.live.md`; README, ARCHITECTURE,
+  BLUEPRINT, FEATURE_INVENTORY (renamed), livekit-coolify, `.env.example`, package description and
+  CODEOWNERS example updated. LICENSE (MIT, Oluebube Ogbonnaya) was not changed.
+* **Tests:** 65 passing (`test/mail.test.js`, `test/auth.test.js`, `test/google.test.js` with a
+  mocked Google, plus the existing suites). A headless-Chrome run covered sign-up, the banner,
+  Settings → Account, confirming by email link, change password, forgot/reset, and sign-in
+  errors, with no browser errors.
+
+### Risks
+* **Everyone has to sign in again** after this deploy: the old shared cookies are no longer
+  read, and the new cookies are host-only with new names.
+* **Imported users have no password.** They need the set-password email (sent when they
+  try to sign in or use Forgot password) or Google. So **SMTP must work in production**, or
+  they can only get in with Google. Users stored with a placeholder `@accounts.local` email
+  cannot receive mail at all.
+* With the default `AUTH_REQUIRE_VERIFIED_EMAIL=false`, sign-up answers differently when an email
+  is already registered (it says "check your email" instead of signing in), which tells someone
+  that the address has an account. Sign-in, forgot password and change email never do. Set
+  `AUTH_REQUIRE_VERIFIED_EMAIL=true` to close this too, at the cost of making people confirm before
+  using the app.
+* Rate limits are in memory per process. Fine for the single app container; if you ever run
+  several replicas, move them to Redis or Postgres.
+* Rotating `JWT_SECRET` does **not** sign people out (refresh tokens live in the database). To
+  force everyone out, run `UPDATE auth_sessions SET revoked_at = NOW() WHERE revoked_at IS NULL;`.
+* Google sign-in only works for everyone once the OAuth app is **published**; in *Testing*,
+  only listed test users can use it.
+* Emails from a new domain often land in spam until SPF, DKIM and DMARC are set.
+
+### Manual steps
+1. **SMTP:** pick a provider (examples in `docs/AUTH.md`: Zoho, Gmail app password, Brevo,
+   Mailgun), verify `1venue.live` with it (SPF/DKIM/DMARC in Cloudflare), and set `SMTP_HOST`,
+   `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (secret), `MAIL_FROM` in Coolify. Check the boot log for
+   `[mail] SMTP ready`.
+2. **Google:** create the OAuth client (`docs/AUTH.md` → *Set up Continue with Google*) with
+   redirect `https://1venue.live/auth/google/callback`, publish the app, and set
+   `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (secret) in Coolify.
+3. **Coolify env:** set `PUBLIC_URL=https://1venue.live`, clear `CORS_ORIGINS` (or set it to
+   `https://1venue.live`), optionally `CANONICAL_HOST=1venue.live`; **delete** `ACCOUNTS_URL`,
+   `ACCOUNTS_LOGIN_URL`, `ACCOUNTS_ACCESS_COOKIE`, `ACCOUNTS_REFRESH_COOKIE`,
+   `ACCOUNTS_JWT_SECRET`, `COOKIE_DOMAIN` and `JWT_TTL` (no longer read). Keep `JWT_SECRET`.
+4. **DNS / Cloudflare / R2 / LiveKit names:** follow `docs/DEPLOY-1venue.live.md` (apex + www
+   proxied, Full (strict), www → apex, `rtc` and `turn` grey cloud, `files` as the R2 custom
+   domain). Update `LIVEKIT_URL=wss://rtc.1venue.live` and `S3_PUBLIC_BASE_URL=https://files.1venue.live`,
+   and redeploy livekit-server with `LIVEKIT_DOMAIN=rtc.1venue.live`.
+5. **Coolify domains:** add `https://1venue.live` (and `https://www.1venue.live` if you use
+   `CANONICAL_HOST` instead of a Cloudflare redirect). Keep the old domain attached for a while
+   so old links redirect.
+6. **After deploy:** sign up with a real address, confirm the email arrives, try Forgot
+   password and Continue with Google, and sign in with an imported account to see the
+   set-password email arrive.
+7. **Tell users** (in-app, WhatsApp, email): "1venue now has its own sign-in. Use Continue with
+   Google, or tap Forgot password to set a password for your email."
+
+### Orphaned files (compared with the original upload, commit `b7c436e`)
+Files from the original repo that no longer exist at their old path:
+
+| Old path | Now |
+|---|---|
+| `src/plugins/index.js` | deleted; replaced by feature discovery in `src/core/features.js` |
+| `src/plugins/venue.js` | deleted; its routes moved into `src/features/*/routes.js` / `http.js` |
+| `src/plugins/registry.js` | moved to `src/core/plugin-registry.js` |
+| `src/plugins/{activity,breakout,chat,content,deviceIcons,groupChat,moderation,mute,privateChat,reactions,recording,screenTimeline,sounds,whiteboard}.js` | moved to `src/features/<name>/ws.js` |
+
+If you unzip this over an old checkout instead of starting clean, delete the whole
+`src/plugins/` folder: nothing loads it any more. This release (accounts/domain) deleted no
+files. Still present but outdated: `docs/livekit/` (old in-repo LiveKit resource, kept one release
+as a fallback; delete after the livekit-server move) and `screenshots/` (taken before the new
+sign-in screens; not used by the app). A scan found no other unreferenced code files.

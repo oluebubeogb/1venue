@@ -40,7 +40,12 @@ async function start() {
   if (!isLiveKitConfigured()) console.warn('[WARN] LiveKit is not configured (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET). Audio and video are disabled.');
   else console.log(`[LiveKit] ${config.LIVEKIT_URL}`);
   if (config.JWT_SECRET === config.DEFAULT_SECRET) console.warn('[WARN] JWT_SECRET is the default. Set a long random JWT_SECRET in production.');
-  console.log(config.ACCOUNTS_URL ? `[Accounts] SSO via ${config.ACCOUNTS_URL}` : '[Accounts] ACCOUNTS_URL not set; local accounts only');
+  {
+    const mail = require('./features/mail/mailer');
+    const google = require('./features/auth/google');
+    console.log(`[auth] local accounts${google.enabled() ? ' + Google sign-in' : ''}; email ${mail.configured() ? 'via SMTP ' + mail.settings().host : 'NOT configured (links are only logged)'}`);
+    if (mail.configured()) mail.verify().catch(() => {});
+  }
 
   const timers = [
     setInterval(() => { cleanupInactiveMeetings(); snapshot.expireSnapshots().catch(() => {}); }, config.MEETING_CLEANUP_INTERVAL_MS),

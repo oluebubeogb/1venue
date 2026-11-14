@@ -1,4 +1,4 @@
-/** Room plugin: captions (moved from src/plugins/venue.js). Turn off with FEATURE_CAPTIONS=false. */
+/** Room plugin: captions. Turn off with FEATURE_CAPTIONS=false. */
 const data = require('../../venue/data');
 const { mod, active, voterKey } = require('../../core/room-helpers');
 

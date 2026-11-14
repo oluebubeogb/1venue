@@ -1,6 +1,6 @@
 /**
  * Attendance lists: generate, list, view, toggle public, share to timeline.
- * Raw HTTP handler (moved verbatim from the old src/http/routes.js chain).
+ * Raw HTTP handler.
  * Each block answers its path and returns; unmatched requests fall through (return false).
  */
 const {

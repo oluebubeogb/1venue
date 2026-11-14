@@ -1,4 +1,4 @@
-// moderation: room WebSocket messages handled in the browser (moved from public/js/room/wsHandlers.js).
+// moderation: room WebSocket messages handled in the browser.
 // Return false to skip the re-render; anything else re-renders the room (R.changed()).
 import { onMessage } from '/js/room/registry.js';
 import { toast, confirmDlg } from '/js/ui.js';

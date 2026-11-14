@@ -1,4 +1,4 @@
-// qa: room WebSocket messages handled in the browser (moved from public/js/room/wsHandlers.js).
+// qa: room WebSocket messages handled in the browser.
 // Return false to skip the re-render; anything else re-renders the room (R.changed()).
 import { onMessage } from '/js/room/registry.js';
 

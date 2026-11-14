@@ -6,7 +6,8 @@
  *   };
  *
  * ctx = { req, res, url, origin, body(limit) }. Throw kit.httpError(status, msg) for errors.
- * Return { raw, type, headers } to send text/SVG instead of JSON.
+ * Return { raw, type, headers } to send text/SVG instead of JSON, or
+ * { $status, $body, $headers } for a JSON answer with another status (e.g. 201, 202).
  * Routes are matched in feature order, then in the order a feature registers them.
  */
 const config = require('../config');
@@ -44,6 +45,7 @@ async function dispatch(req, res, parsed) {
     try {
       const out = await r.handler(ctx, m.slice(1));
       if (out && out.raw !== undefined) sendText(res, 200, out.raw, out.type, out.headers || {});
+      else if (out && out.$status) sendJSON(res, out.$status, out.$body === undefined ? { ok: true } : out.$body, out.$headers || {});
       else sendJSON(res, 200, out === undefined ? { ok: true } : out);
     } catch (e) {
       const status = e.status || 500;

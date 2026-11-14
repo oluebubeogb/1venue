@@ -1,7 +1,6 @@
 /**
  * 1venue data layer: PostgreSQL only.
- * Meet's query API is kept intact (same function names and shapes) so the
- * plugins and routes inherited from Meet keep working. Schema changes live in
+ * Room, chat and history queries used by the WebSocket plugins and routes. Schema changes live in
  * /migrations (core) and src/features/<id>/migrations (per feature) as SQL files named
  * <number>_<name>.sql. New files use a UTC timestamp (YYYYMMDDHHMMSS_name.sql, see
  * `npm run migration:new`) so two developers never pick the same number. All files are

@@ -58,7 +58,7 @@ test('POST /api/tts: auth, language gating, caching, limits, polling (mock Repli
   const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tts-'));
   const child = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(port), JWT_SECRET: 'test-secret', PUBLIC_URL: base, ACCOUNTS_URL: '', AI_MOCK: 'true', METRICS_LOG: 'false',
+    env: { ...process.env, PORT: String(port), JWT_SECRET: 'test-secret', PUBLIC_URL: base, AI_MOCK: 'true', METRICS_LOG: 'false',
       STORAGE_DRIVER: 'local', STORAGE_DIR: storeDir, REPLICATE_API_TOKEN: 'r8_test_token', REPLICATE_API_BASE: `http://127.0.0.1:${mock.srv.address().port}/v1`,
       TTS_RATE_PER_MIN: '4', TTS_MAX_CHARS: '200', TTS_LANGUAGES: '' },
     stdio: 'ignore',
@@ -144,7 +144,7 @@ test('POST /api/tts: auth, language gating, caching, limits, polling (mock Repli
 test('POST /api/tts is 503 when REPLICATE_API_TOKEN is unset', { skip }, async () => {
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(port), JWT_SECRET: 'test-secret', ACCOUNTS_URL: '', REPLICATE_API_TOKEN: '', METRICS_LOG: 'false' }, stdio: 'ignore' });
+  const child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(port), JWT_SECRET: 'test-secret', REPLICATE_API_TOKEN: '', METRICS_LOG: 'false' }, stdio: 'ignore' });
   try {
     for (let i = 0; i < 60; i++) { try { if ((await fetch(base + '/health')).ok) break; } catch {} await new Promise((r) => setTimeout(r, 250)); }
     assert.equal((await (await fetch(base + '/api/tts/config')).json()).enabled, false);

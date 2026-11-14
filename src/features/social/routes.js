@@ -43,11 +43,10 @@ module.exports = function routes(route, kit) {
     const db = require('../../../db');
     const byName = await db.getUserByUsername(idOrName);
     if (byName) return byName.id;
-    // collab internal usernames are u{hex8}_{public}; accept the public form + handle
+    // also accept a handle
     const row = await db.q(
       `SELECT id FROM users
        WHERE LOWER(COALESCE(handle,'')) = LOWER($1)
-          OR username ~* ('^[uU][0-9a-fA-F]{8}_' || $1 || '$')
        LIMIT 1`,
       [idOrName]
     ).then((r) => r.rows[0]).catch(() => null);

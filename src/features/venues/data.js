@@ -56,24 +56,22 @@ async function venueMeetings(code, limit = 100) {
 
 // ---------------------------------------------------------------- venue admins & audit
 async function addVenueAdmins(venueId, ownerId, usernames) {
-  const { publicUsername } = require('../../lib/auth');
   const names = [...new Set(String(usernames || '').split(/[,\s]+/).map(s => s.trim().toLowerCase().replace(/^@/, '')).filter(Boolean))];
   const added = [];
   const skipped = [];
   for (const uname of names) {
-    // Match clean username, handle, or internal u{hex8}_{name} form
+    // Match username or handle
     const u = await one(
       `SELECT id, username, display_name, handle FROM users
        WHERE lower(username)=lower($1)
           OR lower(COALESCE(handle,''))=lower($1)
-          OR username ~* ('^[uU][0-9a-fA-F]{8}_' || $1 || '$')
        LIMIT 1`,
       [uname]
     );
     if (!u) { skipped.push(uname); continue; }
     if (u.id === ownerId) { skipped.push(uname + ' (owner)'); continue; }
     await q('INSERT INTO venue_admins (venue_id, user_id, added_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [venueId, u.id, ownerId]);
-    const pub = publicUsername(u.username) || u.handle || u.username;
+    const pub = u.username || u.handle;
     added.push({ id: u.id, username: pub, name: u.display_name || pub });
     await logVenueAudit(venueId, ownerId, null, 'admin-add', pub);
   }
@@ -85,11 +83,10 @@ async function removeVenueAdmin(venueId, ownerId, userId) {
   return r.rowCount > 0;
 }
 async function listVenueAdmins(venueId) {
-  const { publicUsername } = require('../../lib/auth');
   return (await many(`SELECT u.id, u.username, u.display_name, u.handle, va.added_at
     FROM venue_admins va JOIN users u ON u.id=va.user_id WHERE va.venue_id=$1 ORDER BY va.added_at`, [venueId]))
     .map(r => {
-      const pub = publicUsername(r.username) || r.handle || r.username;
+      const pub = r.username || r.handle;
       return { id: r.id, username: pub, name: r.display_name || pub, addedAt: r.added_at };
     });
 }

@@ -1,4 +1,4 @@
-/** Room plugin: wbShare (moved from src/plugins/venue.js). Turn off with FEATURE_WB_SHARE=false. */
+/** Room plugin: wbShare. Turn off with FEATURE_WB_SHARE=false. */
 const { MEMORY } = require('../../config');
 const { active } = require('../../core/room-helpers');
 

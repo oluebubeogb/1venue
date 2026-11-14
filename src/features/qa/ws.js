@@ -1,4 +1,4 @@
-/** Room plugin: qa (moved from src/plugins/venue.js). Turn off with FEATURE_QA=false. */
+/** Room plugin: qa. Turn off with FEATURE_QA=false. */
 const data = require('../../venue/data');
 const { mod, active, voterKey, err, limited } = require('../../core/room-helpers');
 

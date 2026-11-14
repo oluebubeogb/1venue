@@ -38,7 +38,7 @@ function cleanPage(p) {
   };
 }
 
-/** v1 (.mwb from the original Meet app): 1920x1080 canvas, points {x,y}, base width × tool factor, optional PNG snapshot. */
+/** v1 .mwb files: 1920x1080 canvas, points {x,y}, base width × tool factor, optional PNG snapshot. */
 export function fromV1(d) {
   const S = VW / 1920;
   const eff = (tool, b) => (tool === 'pencil' ? Math.max(1, b) : tool === 'pen' ? Math.max(2, b * 2.5) : tool === 'brush' ? Math.max(5, b * 6) : tool === 'eraser' ? Math.max(12, b * 8) : b);

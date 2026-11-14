@@ -1,4 +1,4 @@
-/** Room plugin: comments (moved from src/plugins/venue.js). Turn off with FEATURE_COMMENTS=false. */
+/** Room plugin: comments. Turn off with FEATURE_COMMENTS=false. */
 const data = require('../../venue/data');
 const { mod, active, voterKey, err, limited } = require('../../core/room-helpers');
 

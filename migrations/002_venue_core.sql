@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS events (
   cover_url     TEXT,
   theme         JSONB NOT NULL DEFAULT '{}'::jsonb,       -- {accent, accent2} owner's theme for QR and branding
   speaker_seats SMALLINT NOT NULL DEFAULT 4 CHECK (speaker_seats BETWEEN 1 AND 50),
-  settings      JSONB NOT NULL DEFAULT '{}'::jsonb,       -- Meet meeting settings snapshot
+  settings      JSONB NOT NULL DEFAULT '{}'::jsonb,       -- meeting settings snapshot
   template_slug TEXT,
   live_viewers  INTEGER NOT NULL DEFAULT 0 CHECK (live_viewers >= 0),
   peak_viewers  INTEGER NOT NULL DEFAULT 0 CHECK (peak_viewers >= 0),
