@@ -108,7 +108,14 @@ function publicUser(user) {
     source: 'local',
     plan: user.plan || 'free',
     createdAt: user.created_at,
+    isAdmin: isAdmin(user),
   };
+}
+/** Site admin: email listed in ADMIN_EMAILS and confirmed (Google sign-in counts as confirmed). */
+function isAdmin(user) {
+  if (!user || !user.email || !config.ADMIN_EMAILS.length) return false;
+  const verified = user.emailVerified !== undefined ? !!user.emailVerified : !!user.email_verified_at;
+  return verified && config.ADMIN_EMAILS.includes(String(user.email).toLowerCase());
 }
 async function userById(id) { return (await db.q('SELECT * FROM users WHERE id = $1', [id])).rows[0] || null; }
 
@@ -272,7 +279,7 @@ async function endSession(req, res) {
 module.exports = {
   parseCookies, sha256, newSecret,
   hashPassword, verifyPassword, passwordProblem,
-  niceDisplayName, shapeUser, publicUser, userById,
+  niceDisplayName, shapeUser, publicUser, isAdmin, userById,
   startSession, endSession, revokeSession, revokeAllSessions, listSessions, currentSessionId, clearCookies,
   getAuthUser, forgetUser,
   ACCESS_COOKIE, REFRESH_COOKIE,

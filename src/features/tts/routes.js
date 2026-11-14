@@ -13,12 +13,16 @@ const ttsConfig = require('./config');
 const { normLang } = require('./languages');
 const { synthesize } = require('./replicate');
 const data = require('./data');
+const { isAdmin } = require('../../lib/auth');
+const { DOCUMENTED } = require('./languages');
 
 module.exports = function routes(route, kit) {
   const { roomParticipant, getAuthUser, httpError, rateLimit, storage } = kit;
   const cfg = ttsConfig.load();
   const inflight = new Map(); // hash -> promise, so two people asking at once pay once
   const budget = { day: '', chars: 0 };
+  const undocumented = cfg.languages.filter((l) => !DOCUMENTED.some(([c]) => c === l));
+  if (cfg.token && undocumented.length) console.warn(`[tts] TTS_LANGUAGES has codes not on Google’s Gemini TTS list: ${undocumented.join(', ')} (they will be sent anyway)`);
 
   // The model treats <tags>, |backchannels| and /IPA/ as directions, so user text is neutralised:
   // content is read verbatim, never "performed".
@@ -74,6 +78,12 @@ module.exports = function routes(route, kit) {
       })().catch((e) => { budget.chars = Math.max(0, budget.chars - text.length); throw e; })
         .finally(() => inflight.delete(hash)));
     }
-    return { url: await inflight.get(hash), cached: false, chars: text.length };
+    try {
+      return { url: await inflight.get(hash), cached: false, chars: text.length };
+    } catch (e) {
+      // Admins see the provider's reason (bad token, billing, model error) to fix setup quickly.
+      if (user && isAdmin(user) && e.detail) throw httpError(e.status || 502, `${e.message} — ${e.detail}`);
+      throw e;
+    }
   });
 };

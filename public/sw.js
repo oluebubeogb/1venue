@@ -1,8 +1,8 @@
 /* 1venue service worker: offline app shell, stale-while-revalidate for static assets, network-only for API/WS/media. */
-const VERSION = 'v16-2026-11-14';
+const VERSION = 'v17-2026-11-14';
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
-const PRECACHE = ['/', '/offline.html', '/css/app.css', '/css/room.css', '/js/app.js', '/js/ui.js', '/js/icons.js', '/js/commands.js', '/js/pwa.js', '/brand/logo.svg', '/brand/mark-white.svg', '/manifest.webmanifest', '/icons/icon-192.png'];
+const PRECACHE = ['/', '/offline.html', '/css/app.css', '/css/room.css', '/js/app.js', '/js/ui.js', '/js/icons.js', '/js/commands.js', '/js/pwa.js', '/js/quran-cmd.js', '/brand/logo.svg', '/brand/mark-white.svg', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));

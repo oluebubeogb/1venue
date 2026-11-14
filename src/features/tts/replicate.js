@@ -5,7 +5,7 @@
  */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function fail(status, message) { const e = new Error(message); e.status = status; return e; }
+function fail(status, message, detail) { const e = new Error(message); e.status = status; if (detail) e.detail = String(detail).slice(0, 300); return e; }
 
 async function fetchJson(url, opts, what) {
   let res;
@@ -16,7 +16,8 @@ async function fetchJson(url, opts, what) {
     const detail = body && (body.detail || body.error || body.title);
     if (res.status === 401 || res.status === 403) console.error('[tts] Replicate rejected the API token');
     else console.error('[tts] Replicate', what, res.status, detail || '');
-    throw fail(res.status === 429 ? 429 : 502, res.status === 429 ? 'The speech service is busy, try again in a moment' : 'The speech service could not read this right now');
+    throw fail(res.status === 429 ? 429 : 502, res.status === 429 ? 'The speech service is busy, try again in a moment' : 'The speech service could not read this right now',
+      `Replicate ${what} ${res.status}${res.status === 401 || res.status === 403 ? ' (token rejected: check REPLICATE_API_TOKEN)' : res.status === 402 ? ' (billing: add a payment method or credit on Replicate)' : ''}${detail ? `: ${detail}` : ''}`);
   }
   return body;
 }
@@ -39,7 +40,7 @@ async function synthesize(cfg, input) {
   }
   if (!pred || pred.status !== 'succeeded') {
     console.error('[tts] prediction', pred && pred.id, pred && pred.status, pred && pred.error);
-    throw fail(502, 'The speech service could not read this right now');
+    throw fail(502, 'The speech service could not read this right now', `prediction ${pred && pred.status}${pred && pred.error ? `: ${pred.error}` : ''}`);
   }
   const out = Array.isArray(pred.output) ? pred.output[0] : pred.output;
   if (typeof out !== 'string' || !/^https?:\/\//.test(out)) throw fail(502, 'The speech service returned no audio');

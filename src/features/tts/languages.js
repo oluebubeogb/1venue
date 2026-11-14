@@ -10,7 +10,7 @@
  *
  * Codes are BCP-47 primary subtags (ISO 639-1 where one exists, otherwise ISO 639-3). Matching
  * uses the primary subtag of the content's language tag, so "ar-EG" and "ar" both match "ar".
- * Override the whole list with TTS_LANGUAGES=en,ar,ha,ig (comma separated).
+ * Override the whole list with TTS_LANGUAGES=ig,ha,ar (comma separated; ig-NG, ar-XA, "igbo" also work).
  */
 const DOCUMENTED = [
   ['ace', 'Acehnese (Arab script)'], ['af', 'Afrikaans'], ['ak', 'Akan'], ['am', 'Amharic'], ['hy', 'Armenian'],
@@ -40,9 +40,12 @@ const DOCUMENTED = [
 ];
 
 /** Other tags people commonly use for a listed language. */
-const ALIASES = { tl: 'fil', no: 'nb', ps: 'pbt', swh: 'sw', arb: 'ar', ful: 'fuv', ff: 'fuv', khk: 'mn', zsm: 'ms', als: 'sq', uzn: 'uz' };
+const ALIASES = { tl: 'fil', no: 'nb', ps: 'pbt', swh: 'sw', arb: 'ar', ful: 'fuv', ff: 'fuv', khk: 'mn', zsm: 'ms', als: 'sq', uzn: 'uz',
+  // ISO 639-2/3 and plain names people type into TTS_LANGUAGES
+  ibo: 'ig', hau: 'ha', ara: 'ar', eng: 'en', yor: 'yo', fra: 'fr', fre: 'fr', swa: 'sw',
+  igbo: 'ig', hausa: 'ha', arabic: 'ar', english: 'en', yoruba: 'yo', french: 'fr', swahili: 'sw' };
 
-/** Primary subtag, lower-case, aliases resolved: "ar-EG" -> "ar", "tl" -> "fil". */
+/** Primary subtag, lower-case, aliases resolved: "ar-XA" -> "ar", "ig-NG" -> "ig", "Igbo" -> "ig", "tl" -> "fil". */
 function normLang(tag) {
   const p = String(tag || '').trim().toLowerCase().replace(/_/g, '-').split('-')[0];
   return ALIASES[p] || p;

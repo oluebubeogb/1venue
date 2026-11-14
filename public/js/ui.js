@@ -9,7 +9,7 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&a
 export function profilePath(u) {
   if (u == null) return '/me';
   if (typeof u === 'string' || typeof u === 'number') return `/u/${encodeURIComponent(String(u))}`;
-  const key = u.username || u.handle || u.id;
+  const key = u.username || u.handle || u.id; // public page is /u/<username>
   return key != null ? `/u/${encodeURIComponent(String(key))}` : '/me';
 }
 

@@ -46,6 +46,8 @@ const AUTH = {
   },
 };
 const ALLOW_LOCAL_SIGNUP = bool('ALLOW_LOCAL_SIGNUP', true);
+// Site admins (comma-separated emails). They get /admin (demo data load/remove). Email must be confirmed.
+const ADMIN_EMAILS = env('ADMIN_EMAILS', '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 // When set (e.g. 1venue.example.com), requests for any other host (www., old domain) get a 301 there.
 const CANONICAL_HOST = env('CANONICAL_HOST', '').replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
 
@@ -201,7 +203,7 @@ module.exports = {
   env, int, bool, METRICS,
   PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, PUBLIC_URL, APP_NAME,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
-  AUTH, ALLOW_LOCAL_SIGNUP, CANONICAL_HOST,
+  AUTH, ALLOW_LOCAL_SIGNUP, ADMIN_EMAILS, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
   MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };
