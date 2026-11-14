@@ -96,6 +96,13 @@ function serveStatic(req, res, urlPath) {
     res.writeHead(403);
     return res.end('Forbidden');
   }
+  // Extensionless paths with a matching .html file (e.g. /privacy → privacy.html)
+  if (!path.extname(decoded.replace(/\/+$/, '')) && urlPath !== '/') {
+    const htmlPath = filePath.replace(/\/+$/, '') + '.html';
+    if (htmlPath.startsWith(ROOT) && fs.existsSync(htmlPath)) {
+      return send(req, res, htmlPath, urlPath.replace(/\/+$/, '') + '.html');
+    }
+  }
   return send(req, res, filePath, urlPath);
 }
 

@@ -1,5 +1,5 @@
 // Shared building blocks: event cards, posts, comment threads, people rows.
-import { icon } from './icons.js';
+import { icon, LOGO_ART } from './icons.js';
 import { h, api, avatar, timeAgo, fmtDate, fmtNum, toast, toastErr, esc, confirmDlg, frag, profilePath } from './ui.js';
 import { state, navigate, requireLogin } from './app.js';
 import { pillComposer } from './composer.js';
@@ -18,7 +18,6 @@ export const CAT = {
   meeting: ['Meeting', 'users', '#475569'], concert: ['Concert', 'music', '#e11d48'], class: ['Class', 'book', '#059669'], other: ['Event', 'sparkle', '#64748b'],
 };
 export const catOf = (k) => CAT[k] || CAT.other;
-const LOGO_ART = '<svg viewBox="0 0 160 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M36 54 L62 34 L62 122" stroke-width="16"/><path d="M88 36 L128 62 L128 118 L88 118 L88 98" stroke-width="5.5"/></svg>';
 
 export function eventCard(ev, { compact = false } = {}) {
   const [cl, ci, cc] = catOf(ev.category);

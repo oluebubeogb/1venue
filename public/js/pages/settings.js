@@ -41,7 +41,10 @@ export async function mount(view) {
       card('App', 'install',
         row('install', 'nav', 'Install 1venue', canInstall() ? 'Full-screen, faster, works offline' : 'Already installed or not supported in this browser', h('button', { class: 'btn sm', onclick: promptInstall }, 'Install')),
         row('keyboard', 'nav', 'Command bar', 'Press / or Ctrl K anywhere — every feature and setting is searchable', h('span', { class: 'kbd' }, '/'))),
-      state.user ? null : card('Account', 'user', row('login', 'nav', 'Not signed in', 'Sign in to sync your settings across devices', h('a', { class: 'btn sm primary', href: loginUrl('/settings'), 'data-link': '' }, 'Sign in')))));
+      state.user ? null : card('Account', 'user', row('login', 'nav', 'Not signed in', 'Sign in to sync your settings across devices', h('a', { class: 'btn sm primary', href: loginUrl('/settings'), 'data-link': '' }, 'Sign in'))),
+      card('About', 'info',
+        row('shield', 'admin', 'Privacy policy', 'How 1venue uses your information', h('a', { class: 'btn sm', href: '/privacy' }, 'Read')),
+        row('file', 'admin', 'Terms of service', 'The rules for using 1venue', h('a', { class: 'btn sm', href: '/terms' }, 'Read')))));
   if (state.user) await accountCard(card, row).then((sec) => view.querySelector('.set-grid').append(sec)).catch(() => {});
   if (location.hash) setTimeout(() => { const el = document.getElementById(location.hash.slice(1)); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); } }, 120);
 }

@@ -35,6 +35,16 @@ test('static shell, manifest, service worker, logo', { skip }, async () => {
     const r = await fetch(base + p); assert.equal(r.status, 200, p);
   }
 });
+test('GET /privacy and /terms return 200 text/html without auth', { skip }, async () => {
+  for (const p of ['/privacy', '/terms']) {
+    const r = await fetch(base + p);
+    assert.equal(r.status, 200, p);
+    assert.match(r.headers.get('content-type') || '', /text\/html/, p);
+    const body = await r.text();
+    assert.match(body, /1venue/, p);
+    assert.doesNotMatch(body, /1venue needs JavaScript to run/, p);
+  }
+});
 test('optional event lookup by room code returns null, strict returns 404', { skip }, async () => {
   assert.equal(await (await fetch(base + '/api/events/NOPE99?optional=1')).json(), null);
   assert.equal((await fetch(base + '/api/events/NOPE99')).status, 404);

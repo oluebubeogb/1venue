@@ -38,11 +38,14 @@ export const passwordInput = (placeholder = 'Password', autocomplete = 'current-
   return { input: inp, el: h('div', { class: 'pw-wrap' }, inp, eye) };
 };
 
+export const legalLinks = () => h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } },
+  h('a', { href: '/privacy' }, 'Privacy policy'), ' · ', h('a', { href: '/terms' }, 'Terms of service'));
+
 export const authCard = (title, subtitle, ...kids) => h('div', { class: 'auth-wrap' }, h('div', { class: 'card pad-lg auth-card' },
   h('div', { class: 'auth-logo', html: LOGO(56) }),
   h('h1', { style: { textAlign: 'center', fontSize: '1.6rem' } }, title),
   subtitle ? h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.3rem 0 1.3rem' } }, subtitle) : null,
-  ...kids));
+  ...kids, legalLinks()));
 
 export const notice = (kind, text) => h('div', { class: `auth-note ${kind}`, role: kind === 'error' ? 'alert' : 'status', html: icon(kind === 'error' ? 'alert' : kind === 'ok' ? 'check' : 'mail', { size: 18 }) }, h('span', null, text));
 
@@ -131,7 +134,8 @@ export async function mount(view, params) {
   const card = h('div', { class: 'card pad-lg auth-card' },
     h('div', { class: 'auth-logo', html: LOGO(56) }), title, sub, msg,
     google, or, form, swap,
-    h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } }, 'You can still join any room as a guest with just a name.'));
+    h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } }, 'You can still join any room as a guest with just a name.'),
+    legalLinks());
   view.append(h('div', { class: 'auth-wrap' }, card));
   setMode(mode);
   if (params.error) show('error', GOOGLE_ERRORS[params.error] || GOOGLE_ERRORS.google);

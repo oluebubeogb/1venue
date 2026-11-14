@@ -433,3 +433,21 @@ If you unzip this over an old checkout instead of starting clean, delete the who
 files. Still present but outdated: `docs/livekit/` (old in-repo LiveKit resource, kept one release
 as a fallback; delete after the livekit-server move) and `screenshots/` (taken before the new
 sign-in screens; not used by the app). A scan found no other unreferenced code files.
+
+## Privacy and terms pages (14 Nov 2026)
+
+Public, no-login pages at `https://1venue.live/privacy` and `https://1venue.live/terms` (also
+`/privacy.html` and `/terms.html`) so Google OAuth publishing can be completed, and so anyone
+can read how 1venue uses data and the terms of the service. They are standalone HTML (no
+JavaScript required), use 1venue branding, and are linked from the sign-in / sign-up screens
+and from Settings → About. Contact: `legal@1venue.live`.
+
+The operator is named as **1venue**. If a registered legal entity exists, fill in its legal
+name (and a postal address, if required) on both pages.
+
+For Google Auth Platform → Branding, use:
+
+* Home page: `https://1venue.live`
+* Privacy policy: `https://1venue.live/privacy`
+* Terms of service: `https://1venue.live/terms`
+* Authorised domain: `1venue.live`

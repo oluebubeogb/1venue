@@ -1,5 +1,5 @@
 /* 1venue service worker: offline app shell, stale-while-revalidate for static assets, network-only for API/WS/media. */
-const VERSION = 'v14-2026-11-13';
+const VERSION = 'v15-2026-11-14';
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 const PRECACHE = ['/', '/offline.html', '/css/app.css', '/css/room.css', '/js/app.js', '/js/ui.js', '/js/icons.js', '/js/commands.js', '/js/pwa.js', '/brand/logo.svg', '/brand/mark-white.svg', '/manifest.webmanifest', '/icons/icon-192.png'];

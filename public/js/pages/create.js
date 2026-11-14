@@ -1,4 +1,4 @@
-import { icon } from '../icons.js';
+import { icon, LOGO_ART } from '../icons.js';
 import { h, api, esc, toast, toastErr, uploadFile, avatar, debounce } from '../ui.js';
 import { state, navigate, requireLogin, CATS, ACCENTS } from '../app.js';
 import { catOf } from '../components.js';
@@ -138,7 +138,7 @@ export async function mount(view, params) {
   function preview() {
     const [cl, ci] = catOf(category);
     prev.innerHTML = '';
-    prev.append(h('div', { class: 'cover', style: { '--c1': acc, '--c2': acc2 } }, coverUrl ? h('img', { src: coverUrl, alt: '' }) : h('div', { class: 'art', html: '<svg viewBox="0 0 160 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M36 54 L62 34 L62 122" stroke-width="16"/><path d="M88 36 L128 62 L128 118 L88 118 L88 98" stroke-width="5.5"/></svg>' })),
+    prev.append(h('div', { class: 'cover', style: { '--c1': acc, '--c2': acc2 } }, coverUrl ? h('img', { src: coverUrl, alt: '' }) : h('div', { class: 'art', html: LOGO_ART })),
       h('div', { class: 'body' }, h('span', { class: 'cat', style: { '--g': catOf(category)[2] }, html: icon(ci, { size: 13 }) + esc(cl) }), h('div', { class: 'title' }, title.value || 'Your event title')));
   }
   title.addEventListener('input', preview); preview();

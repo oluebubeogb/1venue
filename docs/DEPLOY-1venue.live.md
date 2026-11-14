@@ -99,6 +99,7 @@ also receive mail on the domain (e.g. Zoho Mail). Mail records are always **DNS 
 - [ ] `files.1venue.live` connected to the R2 bucket; `S3_PUBLIC_BASE_URL` set
 - [ ] SMTP provider domain verified (SPF/DKIM/DMARC); `MAIL_FROM` on 1venue.live
 - [ ] Google OAuth client: origin `https://1venue.live`, redirect `https://1venue.live/auth/google/callback`, authorized domain `1venue.live`
+- [ ] Google Auth Platform → Branding: home page `https://1venue.live`, privacy `https://1venue.live/privacy`, terms `https://1venue.live/terms`, authorised domain `1venue.live`
 - [ ] Coolify env set (section 5) and app redeployed
 - [ ] `https://www.1venue.live/x?y=1` → 301 → `https://1venue.live/x?y=1`
 - [ ] `https://1venue.live/api/config` shows `livekitConfigured: true` and `auth.google: true`

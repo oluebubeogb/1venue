@@ -154,8 +154,9 @@ user row, id, profile, follows and events, and marks them `needs_password_setup`
 2. Go to **Google Auth Platform** (APIs & Services → OAuth consent screen opens the same place).
    If asked, click **Get started**: app name `1venue`, a support email, audience **External**,
    a contact email, accept the policy, **Create**.
-3. **Branding**: app logo (optional), home page `https://1venue.example.com`, privacy policy and
-   terms links, and under **Authorized domains** add your domain (e.g. `1venue.live`).
+3. **Branding**: app logo (optional), home page `https://1venue.live`, privacy policy
+   `https://1venue.live/privacy`, terms of service `https://1venue.live/terms`, and under
+   **Authorized domains** add `1venue.live`.
 4. **Data access**: the default `openid`, `email` and `profile` scopes are all 1venue needs
    (these are non-sensitive scopes).
 5. **Audience**: while the app is in *Testing*, only the test users you list can sign in. Click

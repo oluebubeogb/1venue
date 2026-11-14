@@ -402,7 +402,7 @@ async function boot() {
     const a = e.target.closest('a[href]');
     if (!a || a.target || a.hasAttribute('download') || e.metaKey || e.ctrlKey || e.shiftKey) return;
     const url = new URL(a.href, location.href);
-    if (url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/')) return;
+    if (url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/') || /^\/(privacy|terms)(\.html)?\/?$/.test(url.pathname)) return;
     e.preventDefault(); navigate(url.pathname + url.search + url.hash);
   });
   window.addEventListener('popstate', route);

@@ -174,8 +174,8 @@ Partial mostly means built but not run against a real service: there was no Live
 
 - **Typography**: One sans family; font-size setting scales the root, replacing the ↑/↓ shortcuts
 - **Motion**: Hover lift and group-colour glow, staggered panel entry, floating reactions, pulse on live; honours reduce motion
-- **Logo**: Rounded 1 plus house outline as a `currentColor` SVG: navy on light, white on dark
-- **App icons**: Navy on white (32, 192, 512, Apple 180) and white on navy maskable 512
+- **Logo**: Bold “1” plus house-like bracket as a `currentColor` SVG: brand blue `#003EA8` on light, white on dark
+- **App icons**: Brand blue `#003EA8` on white (32, 192, 512, Apple 180) and white on brand-blue maskable 512
 
 ## 6. Command bar
 
