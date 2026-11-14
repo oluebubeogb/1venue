@@ -20,9 +20,12 @@ test.before(async () => {
 });
 test.after(() => child && child.kill());
 
-test('GET /health', { skip }, async () => {
+test('GET /health is liveness only (no DB), /ready checks the database', { skip }, async () => {
   const r = await fetch(base + '/health'); assert.equal(r.status, 200);
-  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, 'postgresql');
+  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, undefined);
+  const rd = await fetch(base + '/ready'); assert.equal(rd.status, 200);
+  const k = await rd.json(); assert.equal(k.ok, true); assert.equal(k.db, 'postgresql');
+  assert.equal((await (await fetch(base + '/api/health')).json()).db, 'postgresql');
 });
 test('GET /api/config', { skip }, async () => {
   const r = await fetch(base + '/api/config'); assert.equal(r.status, 200); assert.equal(typeof (await r.json()), 'object');
@@ -32,13 +35,23 @@ test('static shell, manifest, service worker, logo', { skip }, async () => {
     const r = await fetch(base + p); assert.equal(r.status, 200, p);
   }
 });
+test('GET /privacy and /terms return 200 text/html without auth', { skip }, async () => {
+  for (const p of ['/privacy', '/terms']) {
+    const r = await fetch(base + p);
+    assert.equal(r.status, 200, p);
+    assert.match(r.headers.get('content-type') || '', /text\/html/, p);
+    const body = await r.text();
+    assert.match(body, /1venue/, p);
+    assert.doesNotMatch(body, /1venue needs JavaScript to run/, p);
+  }
+});
 test('optional event lookup by room code returns null, strict returns 404', { skip }, async () => {
   assert.equal(await (await fetch(base + '/api/events/NOPE99?optional=1')).json(), null);
   assert.equal((await fetch(base + '/api/events/NOPE99')).status, 404);
 });
 test('local signup sets session cookie, /api/me works', { skip }, async () => {
   const u = 't' + Date.now().toString(36);
-  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' }) });
+  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long', phone: '+2348031234567', country: 'NG' }) });
   assert.equal(r.status, 201);
   const cookie = (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')]).map((c) => c.split(';')[0]).join('; ');
   const me = await fetch(base + '/api/me', { headers: { cookie } }); assert.equal(me.status, 200);
@@ -46,7 +59,7 @@ test('local signup sets session cookie, /api/me works', { skip }, async () => {
 
 async function signup() {
   const u = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' }) });
+  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long', phone: '+2348031234567', country: 'NG' }) });
   return (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')]).map((c) => c.split(';')[0]).join('; ');
 }
 test('uploads: content purpose accepted, unknown purpose normalised, video refused, limits exposed', { skip }, async () => {

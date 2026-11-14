@@ -1,94 +1,222 @@
-import { LOGO } from '../icons.js';
+// Sign in, create account, forgot password. Also hosts "Continue with Google" when configured.
+import { LOGO, icon } from '../icons.js';
 import { h, api, toastErr, toast } from '../ui.js';
-import { state, navigate, refreshSession, loginUrl, signupUrl } from '../app.js';
+import { state, navigate, refreshSession } from '../app.js';
 
-function accountsDest(cfg, { signup = false, next = '/dashboard' } = {}) {
-  const login = cfg.accountsLoginUrl;
-  if (!login) return null;
-  const base = signup ? login.replace(/\/login\/?$/, '/signup') : login;
-  const abs = (cfg.publicUrl || location.origin) + next;
-  return `${base}?next=${encodeURIComponent(abs)}`;
-}
+export const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 
-function safeNext(raw) {
+const GOOGLE_ERRORS = {
+  'google-cancelled': 'Google sign-in was cancelled.',
+  'google-expired': 'That Google sign-in took too long. Please try again.',
+  'google-state': 'That Google sign-in could not be confirmed. Please try again.',
+  'google-unverified': 'Your Google email address is not verified yet.',
+  'google-signup-closed': 'There is no 1venue account for that Google email yet.',
+  'google-off': 'Google sign-in is not set up on this server.',
+  'google-unavailable': 'Google is not reachable right now. Try again, or use your email and password.',
+  google: 'Google sign-in did not work. Please try again.',
+  rate: 'Too many attempts. Wait a minute and try again.',
+};
+
+export function safeNext(raw) {
   if (!raw) return '/dashboard';
   const s = String(raw);
-  if (s.startsWith('/') && !s.startsWith('//')) return s;
-  try {
-    const u = new URL(s, location.origin);
-    if (u.origin === location.origin) return u.pathname + u.search;
-  } catch {}
+  if (s.startsWith('/') && !s.startsWith('//') && !s.startsWith('/\\')) return s;
+  try { const u = new URL(s, location.origin); if (u.origin === location.origin) return u.pathname + u.search; } catch { /* ignore */ }
   return '/dashboard';
 }
 
+/** "Continue with Google" button (only when the server has it configured).
+ *  Full-page href: /auth/* is excluded from the SPA click interceptor and the service worker. */
+export function googleButton(next, label = 'Continue with Google') {
+  if (!state.config?.auth?.google) return null;
+  return h('a', { class: 'btn block lg google-btn', href: '/auth/google/start?next=' + encodeURIComponent(next), html: GOOGLE_G + '<span>' + label + '</span>' });
+}
+
+export const passwordInput = (placeholder = 'Password', autocomplete = 'current-password') => {
+  const inp = h('input', { class: 'input', type: 'password', placeholder, autocomplete, 'aria-label': placeholder, required: true, maxlength: 128 });
+  const eye = h('button', { class: 'icon-btn pw-eye', type: 'button', 'aria-label': 'Show password', html: icon('eye', { size: 18 }) });
+  eye.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; eye.innerHTML = icon(show ? 'eyeOff' : 'eye', { size: 18 }); eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); };
+  return { input: inp, el: h('div', { class: 'pw-wrap' }, inp, eye) };
+};
+
+export const DEFAULT_PHONE_COUNTRY = 'NG';
+export const PHONE_COUNTRIES = [
+  { iso: 'NG', dial: '+234', name: 'Nigeria' },
+  { iso: 'GH', dial: '+233', name: 'Ghana' },
+  { iso: 'KE', dial: '+254', name: 'Kenya' },
+  { iso: 'ZA', dial: '+27', name: 'South Africa' },
+  { iso: 'EG', dial: '+20', name: 'Egypt' },
+  { iso: 'CM', dial: '+237', name: 'Cameroon' },
+  { iso: 'TZ', dial: '+255', name: 'Tanzania' },
+  { iso: 'UG', dial: '+256', name: 'Uganda' },
+  { iso: 'US', dial: '+1', name: 'United States' },
+  { iso: 'GB', dial: '+44', name: 'United Kingdom' },
+  { iso: 'CA', dial: '+1', name: 'Canada' },
+  { iso: 'IN', dial: '+91', name: 'India' },
+  { iso: 'AE', dial: '+971', name: 'United Arab Emirates' },
+  { iso: 'DE', dial: '+49', name: 'Germany' },
+  { iso: 'FR', dial: '+33', name: 'France' },
+  { iso: 'NL', dial: '+31', name: 'Netherlands' },
+  { iso: 'AU', dial: '+61', name: 'Australia' },
+  { iso: 'BR', dial: '+55', name: 'Brazil' },
+  { iso: '', dial: '+', name: 'Other (full number with country code)' },
+];
+
+/** Live availability check (~300ms debounce) under a username input. */
+export function bindUsernameCheck(input, status, { current } = {}) {
+  let t = 0, ac = null;
+  const paint = (text, kind) => {
+    status.textContent = text;
+    status.className = 'tiny username-status' + (kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : ' faint');
+  };
+  const check = () => {
+    const u = input.value.trim().toLowerCase();
+    if (input.value !== u) input.value = u;
+    clearTimeout(t);
+    if (ac) ac.abort();
+    if (!u) { paint('', ''); return; }
+    if (current && u === String(current).toLowerCase()) { paint('✓ current username', 'ok'); return; }
+    t = setTimeout(async () => {
+      ac = new AbortController();
+      try {
+        const r = await fetch('/api/auth/username-available?u=' + encodeURIComponent(u), { signal: ac.signal, credentials: 'same-origin' });
+        const body = await r.json();
+        if (body.available) paint('✓ available', 'ok');
+        else paint((body.message || 'Not available') + (body.suggestions?.length ? ' · try ' + body.suggestions.join(', ') : ''), 'err');
+      } catch (e) { if (e.name !== 'AbortError') paint('', ''); }
+    }, 300);
+  };
+  input.addEventListener('input', check);
+  return check;
+}
+
+export function usernameField(opts = {}) {
+  const input = h('input', { class: 'input', type: 'text', name: 'username', placeholder: 'Username', autocomplete: 'username', 'aria-label': 'Username', maxlength: 30, spellcheck: 'false', autocapitalize: 'none', required: true });
+  if (opts.value) input.value = opts.value;
+  const status = h('p', { class: 'tiny faint username-status', role: 'status' });
+  bindUsernameCheck(input, status, opts);
+  return { input, status, el: h('div', { class: 'col', style: { gap: '.15rem' } }, input, status) };
+}
+
+export function phoneField({ required = true, value = '', country = DEFAULT_PHONE_COUNTRY } = {}) {
+  const select = h('select', { class: 'input', name: 'country', 'aria-label': 'Country calling code' },
+    ...PHONE_COUNTRIES.map((c) => h('option', { value: c.iso }, c.iso ? `${c.name} (${c.dial})` : c.name)));
+  select.value = country;
+  const input = h('input', { class: 'input', type: 'tel', name: 'phone', placeholder: '803 123 4567', autocomplete: 'tel', inputmode: 'tel', 'aria-label': 'Phone number' });
+  if (required) input.required = true;
+  if (value) input.value = value;
+  return { input, select, el: h('div', { class: 'phone-row' }, select, input) };
+}
+
+export const legalLinks = () => h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } },
+  h('a', { href: '/privacy' }, 'Privacy policy'), ' · ', h('a', { href: '/terms' }, 'Terms of service'));
+
+export const authCard = (title, subtitle, ...kids) => h('div', { class: 'auth-wrap' }, h('div', { class: 'card pad-lg auth-card' },
+  h('div', { class: 'auth-logo', html: LOGO(56) }),
+  h('h1', { style: { textAlign: 'center', fontSize: '1.6rem' } }, title),
+  subtitle ? h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.3rem 0 1.3rem' } }, subtitle) : null,
+  ...kids, legalLinks()));
+
+export const notice = (kind, text) => h('div', { class: `auth-note ${kind}`, role: kind === 'error' ? 'alert' : 'status', html: icon(kind === 'error' ? 'alert' : kind === 'ok' ? 'check' : 'mail', { size: 18 }) }, h('span', null, text));
+
 export async function mount(view, params) {
   const next = safeNext(params.next);
-  // Re-check session in case the accounts cookie was just set on redirect back.
-  if (!state.user) { try { await refreshSession(); } catch {} }
+  if (!state.user) { try { await refreshSession(); } catch { /* offline */ } }
   if (state.user) { navigate(next, { replace: true }); return; }
   const cfg = state.config || {};
-  const wantSignup = params.mode === 'signup' || location.pathname.startsWith('/signup');
-  const forceLocal = params.local === '1' || params.local === 'true';
+  const canSignup = cfg.auth?.allowSignup !== false;
+  let mode = params.mode === 'signup' || location.pathname.startsWith('/signup') ? 'signup' : params.mode === 'forgot' ? 'forgot' : 'login';
+  if (mode === 'signup' && !canSignup) mode = 'login';
+  const min = cfg.auth?.passwordMin || 8;
 
-  // Seamless handoff: when Collab Accounts is configured, leave 1venue immediately.
-  const dest = !forceLocal ? accountsDest(cfg, { signup: wantSignup, next }) : null;
-  if (dest) {
-    document.title = 'Continuing to Collab Accounts... — 1venue';
-    const flash = h('div', { class: 'card pad-lg auth-card' },
-      h('div', { class: 'auth-logo', html: LOGO(56) }),
-      h('h1', { style: { textAlign: 'center', fontSize: '1.35rem' } }, 'Continuing to Collab Accounts...'),
-      h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.4rem 0 0' } }, 'One account for every app in the suite.'),
-    );
-    view.append(h('div', { class: 'auth-wrap' }, flash));
-    location.replace(dest);
-    return;
+  const msg = h('div', { class: 'auth-msg' });
+  const show = (kind, text) => { msg.replaceChildren(text ? notice(kind, text) : ''); };
+
+  const name = h('input', { class: 'input', placeholder: 'Your name', autocomplete: 'name', 'aria-label': 'Your name', maxlength: 80 });
+  const uname = usernameField();
+  const phone = phoneField();
+  const email = h('input', { class: 'input', type: 'text', inputmode: 'email', placeholder: 'Email', autocomplete: 'username', 'aria-label': 'Email', required: true, maxlength: 320 });
+  if (params.email) email.value = params.email;
+  const pw = passwordInput();
+  const btn = h('button', { class: 'btn primary block lg', type: 'submit' });
+  const rules = h('p', { class: 'tiny faint', style: { margin: '-.2rem 0 0' } }, `At least ${min} characters. A short sentence is easy to remember.`);
+  const forgot = h('a', { href: '#', class: 'tiny muted', onclick: (e) => { e.preventDefault(); setMode('forgot'); } }, 'Forgot password?');
+  const swap = h('p', { class: 'small muted', style: { textAlign: 'center', margin: '.9rem 0 0' } });
+  const title = h('h1', { style: { textAlign: 'center', fontSize: '1.6rem' } });
+  const sub = h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.3rem 0 1.1rem' } });
+  const google = googleButton(next, 'Continue with Google');
+  const or = google ? h('div', { class: 'auth-or' }, h('span', null, 'or')) : null;
+  const form = h('form', { class: 'col', style: { gap: '.7rem' }, novalidate: true });
+
+  function setMode(m) {
+    mode = m; show();
+    const titles = { login: ['Sign in to 1venue', 'Welcome back.'], signup: ['Create your account', 'Free. Host and join events in minutes.'], forgot: ['Reset your password', 'We’ll email you a link to choose a new one.'] };
+    title.textContent = titles[m][0]; sub.textContent = titles[m][1];
+    btn.textContent = m === 'signup' ? 'Create account' : m === 'forgot' ? 'Email me a link' : 'Sign in';
+    email.autocomplete = m === 'signup' ? 'email' : 'username';
+    email.placeholder = m === 'login' ? 'Email or username' : 'Email';
+    pw.input.autocomplete = m === 'signup' ? 'new-password' : 'current-password';
+    pw.input.placeholder = m === 'signup' ? 'Create a password' : 'Password';
+    form.replaceChildren(...[
+      m === 'signup' ? name : null,
+      m === 'signup' ? uname.el : null,
+      email,
+      m === 'signup' ? phone.el : null,
+      m !== 'forgot' ? pw.el : null, m === 'signup' ? rules : null,
+      m === 'login' ? h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '-.2rem' } }, forgot) : null,
+      btn,
+    ].filter(Boolean));
+    swap.replaceChildren(...(m === 'login'
+      ? (canSignup ? ['New here? ', link('Create an account', 'signup')] : [])
+      : ['Have an account? ', link('Sign in', 'login')]));
+    if (google) { google.style.display = m === 'forgot' ? 'none' : ''; or.style.display = m === 'forgot' ? 'none' : ''; }
+    history.replaceState({}, '', m === 'signup' ? `/signup?next=${encodeURIComponent(next)}` : `/login?${m === 'forgot' ? 'mode=forgot&' : ''}next=${encodeURIComponent(next)}`);
+    document.title = `${titles[m][0]} — 1venue`;
   }
+  const link = (text, m) => h('a', { href: '#', onclick: (e) => { e.preventDefault(); setMode(m); } }, text);
 
-  // Local email/password only when Accounts is off, or ?local=1 (ops escape hatch).
-  let mode = wantSignup ? 'signup' : 'login';
-  const email = h('input', { class: 'input', type: 'email', placeholder: 'you@example.com', autocomplete: 'email', 'aria-label': 'Email' });
-  const pass = h('input', { class: 'input', type: 'password', placeholder: 'Password', autocomplete: 'current-password', 'aria-label': 'Password' });
-  const name = h('input', { class: 'input hidden', placeholder: 'Display name', autocomplete: 'name', 'aria-label': 'Display name' });
-  const btn = h('button', { class: 'btn primary block lg', type: 'submit' }, 'Sign in');
-  const swap = h('button', { class: 'btn ghost sm', type: 'button' });
-  const paint = () => {
-    name.classList.toggle('hidden', mode !== 'signup');
-    btn.textContent = mode === 'signup' ? 'Create account' : 'Sign in';
-    swap.textContent = mode === 'signup' ? 'Have an account? Sign in' : 'New here? Create an account';
-    pass.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
-  };
-  swap.onclick = () => { mode = mode === 'signup' ? 'login' : 'signup'; paint(); };
-  paint();
-  const form = h('form', { class: 'col', style: { gap: '.7rem' } }, name, email, pass, btn, cfg.allowLocalSignup !== false ? swap : null);
   form.onsubmit = async (e) => {
-    e.preventDefault(); btn.disabled = true;
+    e.preventDefault();
+    const em = email.value.trim();
+    if (!em) { email.focus(); return show('error', mode === 'login' ? 'Enter your email or username.' : 'Enter your email address.'); }
+    if (mode !== 'forgot' && !pw.input.value) { pw.input.focus(); return show('error', 'Enter your password.'); }
+    if (mode === 'signup' && !uname.input.value.trim()) { uname.input.focus(); return show('error', 'Choose a username.'); }
+    if (mode === 'signup' && !phone.input.value.trim()) { phone.input.focus(); return show('error', 'Enter your phone number.'); }
+    if (mode === 'signup' && pw.input.value.length < min) { pw.input.focus(); return show('error', `Use at least ${min} characters for your password.`); }
+    btn.disabled = true; show();
     try {
-      const path = mode === 'signup' ? '/api/signup' : '/api/login';
-      const em = email.value.trim();
-      const uname = (em.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 18) || 'user') + '_' + Math.floor(1000 + Math.random() * 9000);
-      await api(path, { method: 'POST', body: mode === 'signup' ? { email: em, username: uname, password: pass.value } : { login: em, password: pass.value } });
-      if (mode === 'signup' && name.value.trim()) await api('/api/profile', { method: 'PATCH', body: { displayName: name.value.trim() } }).catch(() => {});
+      if (mode === 'forgot') {
+        const r = await api('/api/auth/forgot', { method: 'POST', body: { email: em } });
+        show('info', r.message);
+        return;
+      }
+      if (mode === 'signup') {
+        const r = await api('/api/signup', { method: 'POST', body: { email: em, password: pw.input.value, displayName: name.value.trim() || undefined, username: uname.input.value.trim(), phone: phone.input.value.trim(), country: phone.select.value } });
+        if (r.checkEmail) { show('info', r.message || 'Check your inbox to continue.'); return; }
+      } else {
+        await api('/api/login', { method: 'POST', body: { login: em, password: pw.input.value } });
+      }
       await refreshSession();
-      if (!state.user) throw new Error('Signed in, but the session cookie was not accepted. Check PUBLIC_URL / HTTPS settings.');
-      toast(`Welcome, ${state.user.displayName}`, { icon: 'check' });
+      if (!state.user) throw new Error('You are signed in, but this browser did not keep the session. Check that cookies are allowed for this site.');
+      toast(mode === 'signup' ? `Welcome to 1venue, ${state.user.displayName}` : `Welcome back, ${state.user.displayName}`, { icon: 'check' });
       navigate(next, { replace: true });
-    } catch (er) { toastErr(er); } finally { btn.disabled = false; }
+    } catch (er) {
+      if (er.status === 401) show('error', [er.message, er.data?.hint].filter(Boolean).join(' '));
+      else if (er.status === 403 && er.data?.code === 'email-unverified') show('info', er.message);
+      else if (er.status === 400 || er.status === 409 || er.status === 429) show('error', er.message);
+      else toastErr(er);
+    } finally { btn.disabled = false; }
   };
 
-  const subtitle = cfg.accountsLoginUrl
-    ? 'Local sign-in (ops). Prefer Collab Accounts for normal use.'
-    : 'Use your email and password.';
-  const accountsLink = cfg.accountsLoginUrl
-    ? h('p', { class: 'tiny', style: { textAlign: 'center', marginTop: '.4rem' } },
-      h('a', { href: wantSignup ? signupUrl(next) : loginUrl(next), class: 'muted' }, 'Continue with Collab Accounts'))
-    : null;
   const card = h('div', { class: 'card pad-lg auth-card' },
-    h('div', { class: 'auth-logo', html: LOGO(56) }),
-    h('h1', { style: { textAlign: 'center', fontSize: '1.6rem' } }, mode === 'signup' ? 'Create your account' : 'Sign in to 1venue'),
-    h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.3rem 0 1.3rem' } }, subtitle),
-    form,
+    h('div', { class: 'auth-logo', html: LOGO(56) }), title, sub, msg,
+    google, or, form, swap,
     h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } }, 'You can still join any room as a guest with just a name.'),
-    accountsLink,
-  );
+    legalLinks());
   view.append(h('div', { class: 'auth-wrap' }, card));
+  setMode(mode);
+  if (params.error) show('error', GOOGLE_ERRORS[params.error] || GOOGLE_ERRORS.google);
+  else if (params.verified) show('ok', 'Email confirmed. Sign in to continue.');
+  else if (params.reset) show('ok', 'Password saved. You are signed out everywhere else.');
+  (mode === 'signup' ? name : email).focus();
 }

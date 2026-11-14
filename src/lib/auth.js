@@ -1,26 +1,34 @@
 /**
- * Authentication for 1venue.
+ * 1venue sessions (core). Used by every route through getAuthUser().
  *
- * Token sources, in order:
- *   1. Authorization: Bearer <token>  (local 1venue JWT or Collab Accounts access token)
- *   2. Collab Accounts shared cookie `access_token` on COOKIE_DOMAIN (SSO across the suite)
- *   3. Local cookie `venue_token` (local accounts only, when Accounts is not used)
- *
- * When only the refresh cookie is present, or the access token is expired, the
- * request's cookies are forwarded to ACCOUNTS_URL/auth/me. Accounts silently
- * renews the session, and any Set-Cookie it returns is relayed to the browser.
- * Results are cached briefly by token hash so Accounts is not called on every request.
+ *   Access token  : short-lived JWT { sub, sid, typ:'access' } in an httpOnly cookie
+ *                   (or Authorization: Bearer). Checked against its session row, so signing out
+ *                   (or "sign out everywhere") takes effect at once, not when the JWT expires.
+ *   Refresh token : random 256-bit secret in an httpOnly cookie. Only its SHA-256 is stored
+ *                   (auth_sessions.token_hash). It is rotated every time it is used; the
+ *                   previous value stays valid for a short grace period (parallel requests),
+ *                   and using it after that revokes the session (token theft detection).
+ *   Cookies       : host-only (no Domain), Path=/, HttpOnly, SameSite=Lax, Secure on https.
+ *                   On https the names carry the __Host- prefix, which browsers only accept
+ *                   from this exact host over TLS.
+ * Routes for sign-up / sign-in / reset live in src/features/auth. See docs/AUTH.md.
  */
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../../db');
 const config = require('../config');
-const { getBearerToken } = require('./http');
+const { getBearerToken, clientIp } = require('./http');
 
-const LOCAL_COOKIE = 'venue_token';
-const cache = new Map(); // key -> { user, exp }
-const CACHE_MS = 60_000;
+const A = config.AUTH;
+const ROTATE_GRACE_MS = 60_000;
+const prefix = () => (A.cookieSecure ? '__Host-' : '');
+const ACCESS_COOKIE = () => prefix() + '1v_at';
+const REFRESH_COOKIE = () => prefix() + '1v_rt';
+const LEGACY_COOKIES = ['venue_token', 'access_token', 'refresh_token'];
+
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const newSecret = () => crypto.randomBytes(32).toString('base64url');
 
 function parseCookies(req) {
   const out = {};
@@ -29,281 +37,243 @@ function parseCookies(req) {
     const i = part.indexOf('=');
     if (i < 0) continue;
     const k = part.slice(0, i).trim();
-    if (!k) continue;
+    if (!k || k in out) continue;
     try { out[k] = decodeURIComponent(part.slice(i + 1).trim()); } catch (_) { out[k] = part.slice(i + 1).trim(); }
   }
   return out;
 }
 
-function isInternalUsername(name) {
-  if (!name) return true;
-  const s = String(name);
-  return s.startsWith('accounts:') || s.startsWith('acc_') || s.endsWith('@accounts.local') || /^u[0-9a-f]{8}_/i.test(s);
+function cookie(name, value, maxAgeSec) {
+  const parts = [`${name}=${value ? encodeURIComponent(value) : ''}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${value ? maxAgeSec : 0}`];
+  if (A.cookieSecure) parts.push('Secure');
+  return parts.join('; ');
+}
+function addCookies(res, list) {
+  if (!res || res.headersSent) return;
+  const prev = res.getHeader('Set-Cookie');
+  res.setHeader('Set-Cookie', [].concat(prev || [], list));
 }
 
-/** Strip internal collab prefixes so public URLs stay /u/oluebubeogb not /u/uec788dc4_oluebubeogb */
-function publicUsername(name) {
-  if (name == null || name === '') return null;
-  let s = String(name).trim();
-  if (s.startsWith('accounts:')) s = s.slice('accounts:'.length);
-  if (s.startsWith('acc_')) s = s.slice(4);
-  const m = s.match(/^u[0-9a-f]{8}_(.+)$/i);
-  if (m) s = m[1];
-  s = s.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 40);
-  return s || null;
-}
-
-function niceDisplayName({ displayName, username, email }) {
-  const candidates = [displayName, publicUsername(username), username, email && String(email).split('@')[0], 'User'];
-  for (const c of candidates) {
-    if (c && !isInternalUsername(c)) return String(c).trim().slice(0, 80);
+/* ---------- passwords ---------- */
+let dummyHash = null;
+async function hashPassword(pw) { return bcrypt.hash(String(pw), A.bcryptCost); }
+/** Constant-ish time: compares against a dummy hash when the user has no password. */
+async function verifyPassword(pw, hash) {
+  if (!hash) {
+    dummyHash = dummyHash || await bcrypt.hash('dummy-password-for-timing', A.bcryptCost);
+    await bcrypt.compare(String(pw), dummyHash);
+    return false;
   }
-  return publicUsername(username) || 'User';
+  return bcrypt.compare(String(pw), hash);
+}
+function passwordProblem(pw) {
+  if (typeof pw !== 'string' || pw.length < A.passwordMin) return `Use at least ${A.passwordMin} characters for your password`;
+  if (pw.length > 128) return 'That password is too long (128 characters max)';
+  if (/^(.)\1+$/.test(pw) || /^(password|12345678|qwertyui)/i.test(pw)) return 'Choose a less guessable password';
+  return null;
 }
 
-function shapeUser(row, extra = {}) {
+/* ---------- users ---------- */
+function niceDisplayName({ displayName, username, email }) {
+  for (const c of [displayName, username, email && String(email).split('@')[0], 'User']) {
+    if (c && String(c).trim()) return String(c).trim().slice(0, 80);
+  }
+  return 'User';
+}
+function shapeUser(row) {
+  if (!row) return null;
   return {
     id: row.id,
     username: row.username,
     email: row.email,
-    displayName: extra.displayName || row.display_name || niceDisplayName({ username: row.username, email: row.email }),
+    displayName: row.display_name || niceDisplayName({ username: row.username, email: row.email }),
     avatarUrl: row.avatar_url || null,
-    accountsId: extra.accountsId || row.accounts_id || null,
+    emailVerified: !!row.email_verified_at,
+    hasPassword: !!row.password_hash,
+    needsPasswordSetup: !!row.needs_password_setup,
     created_at: row.created_at,
-    source: extra.source || (row.accounts_id ? 'accounts' : 'local'),
+    source: 'local',
   };
 }
-
-async function ensureAccountsUser({ accountsId, email, username, displayName, avatarUrl }) {
-  const id = String(accountsId || '').trim();
-  const em = (email && String(email).trim().toLowerCase()) || (id ? id + '@accounts.local' : null);
-  const pretty = niceDisplayName({ displayName, username, email: em });
-
-  let row = null;
-  if (id) {
-    row = (await db.q('SELECT * FROM users WHERE accounts_id = $1', [id])).rows[0] || null;
-  }
-  if (!row && em && !em.endsWith('@accounts.local')) {
-    row = (await db.q('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [em])).rows[0] || null;
-  }
-  if (!row && id) {
-    row = (await db.q('SELECT * FROM users WHERE username = $1', ['accounts:' + id])).rows[0] || null;
-  }
-  if (row) {
-    // Keep the profile in sync with Accounts (display name, accounts id link, public handle)
-    const pub = publicUsername(username) || publicUsername(pretty);
-    const needsSync = row.accounts_id !== id
-      || (pretty !== 'User' && row.display_name !== pretty)
-      || (avatarUrl && !row.avatar_url)
-      || (pub && !row.handle);
-    if (needsSync) {
-      try {
-        row = (await db.q(
-          `UPDATE users SET accounts_id = COALESCE(accounts_id, $2),
-             display_name = CASE WHEN $3 <> 'User' THEN $3 ELSE display_name END,
-             avatar_url = COALESCE(avatar_url, $4),
-             handle = COALESCE(handle, $5),
-             updated_at = NOW()
-           WHERE id = $1 RETURNING *`,
-          [row.id, id || null, pretty, avatarUrl || null, pub || null]
-        )).rows[0];
-      } catch (e) { console.warn('[accounts] sync', e.message); }
-    }
-    return shapeUser(row, { displayName: row.display_name || pretty, accountsId: id, source: 'accounts' });
-  }
-
-  const base =
-    (username && !isInternalUsername(username) && String(username).replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16)) ||
-    (publicUsername(username)) ||
-    (em && !em.endsWith('@accounts.local') && em.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16)) ||
-    'user';
-  // Prefer a clean public username; fall back to prefixed form only on collision
-  let uname = String(base).toLowerCase().slice(0, 30);
-  const taken = (await db.q('SELECT 1 FROM users WHERE LOWER(username)=LOWER($1)', [uname])).rows[0];
-  if (taken) uname = ('u' + id.replace(/-/g, '').slice(0, 8) + '_' + base).slice(0, 40).toLowerCase();
-  try {
-    row = (await db.q(
-      `INSERT INTO users (username, email, password_hash, display_name, accounts_id, avatar_url)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (email) DO UPDATE SET accounts_id = EXCLUDED.accounts_id, display_name = EXCLUDED.display_name
-       RETURNING *`,
-      [uname, em, bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 8), pretty, id || null, avatarUrl || null]
-    )).rows[0];
-    return shapeUser(row, { source: 'accounts' });
-  } catch (e) {
-    console.error('[accounts] ensure user failed', e.message);
-    return null;
-  }
-}
-
-function fromAccountsPayload(u, fallbackSub) {
-  return ensureAccountsUser({
-    accountsId: String(u.id || fallbackSub || ''),
-    email: u.email || null,
-    username: u.username || null,
-    displayName: u.display_name || u.name || u.username || null,
-    avatarUrl: u.avatar_url || u.avatar || null,
-  });
-}
-
-/** Ask Accounts who this is. Forwards the bearer token and/or cookies and relays renewed cookies. */
-async function accountsMe(req, res, token) {
-  if (!config.ACCOUNTS_URL) return null;
-  const headers = { Accept: 'application/json' };
-  if (token) headers.Authorization = 'Bearer ' + token;
-  if (req.headers.cookie) headers.Cookie = req.headers.cookie;
-  try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 8000);
-    const r = await fetch(config.ACCOUNTS_URL + '/auth/me', { headers, signal: ctl.signal });
-    clearTimeout(t);
-    if (res && typeof r.headers.getSetCookie === 'function') {
-      const set = r.headers.getSetCookie();
-      if (set && set.length && !res.headersSent) {
-        const prev = res.getHeader('Set-Cookie');
-        res.setHeader('Set-Cookie', [].concat(prev || [], set));
-      }
-    }
-    if (!r.ok) return null;
-    const data = await r.json();
-    const u = data.user || data;
-    if (!u || !(u.id || u.email)) return null;
-    return await fromAccountsPayload(u);
-  } catch (e) {
-    console.warn('[accounts] /auth/me failed', e.message);
-    return null;
-  }
-}
-
-function tokenKey(parts) {
-  return crypto.createHash('sha256').update(parts.join('|')).digest('base64url');
-}
-
-async function resolveToken(token, req, res) {
-  // 1) Local 1venue JWT
-  try {
-    const payload = jwt.verify(token, config.JWT_SECRET);
-    if (payload && payload.sub != null && payload.type !== 'access') {
-      const row = (await db.q('SELECT * FROM users WHERE id = $1', [payload.sub])).rows[0];
-      if (row) return shapeUser(row, { source: row.accounts_id ? 'accounts' : 'local' });
-    }
-  } catch (_) {}
-
-  // 2) Accounts JWT verified locally (no network) when the secret is shared
-  if (config.ACCOUNTS_JWT_SECRET) {
-    try {
-      const payload = jwt.verify(token, config.ACCOUNTS_JWT_SECRET);
-      if (payload && payload.sub && (payload.type === 'access' || !payload.type)) {
-        if (payload.email || payload.display_name) {
-          return await fromAccountsPayload({
-            id: payload.sub, email: payload.email, username: payload.username, display_name: payload.display_name,
-          });
-        }
-        const viaMe = await accountsMe(req, res, token);
-        if (viaMe) return viaMe;
-      }
-    } catch (_) {}
-  }
-  // 3) Ask Accounts (also handles expired access + refresh cookie renewals)
-  return accountsMe(req, res, token);
-}
-
-/**
- * Resolve the signed-in user for a request, or null.
- * Pass `res` so renewed Accounts cookies can be relayed to the browser.
- */
-async function getAuthUser(req, res) {
-  if (req._authResolved) return req._authUser;
-  const cookies = parseCookies(req);
-  const bearer = getBearerToken(req);
-  const token = bearer || cookies[config.ACCOUNTS_ACCESS_COOKIE] || cookies[LOCAL_COOKIE] || null;
-  const refresh = cookies[config.ACCOUNTS_REFRESH_COOKIE] || null;
-  if (!token && !refresh) {
-    req._authResolved = true;
-    req._authUser = null;
-    return null;
-  }
-  const key = tokenKey([token || '', token ? '' : refresh || '']);
-  const hit = cache.get(key);
-  if (hit && hit.exp > Date.now()) {
-    req._authResolved = true;
-    req._authUser = hit.user;
-    return hit.user;
-  }
-  let user = null;
-  if (token) user = await resolveToken(token, req, res);
-  if (!user && refresh) user = await accountsMe(req, res, null);
-  if (user && user.id) {
-    cache.set(key, { user, exp: Date.now() + CACHE_MS });
-    if (cache.size > 5000) cache.delete(cache.keys().next().value);
-  } else {
-    user = null;
-  }
-  req._authResolved = true;
-  req._authUser = user;
-  return user;
-}
-
-function signToken(user) {
-  return jwt.sign(
-    { sub: user.id, username: user.username, email: user.email },
-    config.JWT_SECRET,
-    { expiresIn: config.JWT_TTL }
-  );
-}
-
-function localCookie(token, { clear = false } = {}) {
-  const parts = [
-    `${LOCAL_COOKIE}=${clear ? '' : encodeURIComponent(token)}`,
-    'Path=/', 'HttpOnly', 'SameSite=Lax',
-    clear ? 'Max-Age=0' : `Max-Age=${30 * 24 * 3600}`,
-  ];
-  if ((config.PUBLIC_URL || '').startsWith('https://')) parts.push('Secure');
-  return parts.join('; ');
-}
-
 function publicUser(user) {
   if (!user) return null;
-  const displayName = niceDisplayName({
-    displayName: user.displayName || user.display_name,
-    username: user.username,
-    email: user.email,
-  });
-  const uname = publicUsername(user.username) || (!isInternalUsername(user.username) ? user.username : null) || displayName;
   return {
     id: user.id,
-    username: uname,
+    username: user.username,
     email: user.email,
-    displayName,
+    displayName: user.displayName || user.display_name || niceDisplayName(user),
     avatarUrl: user.avatarUrl || user.avatar_url || null,
-    source: user.source || 'local',
+    emailVerified: user.emailVerified !== undefined ? !!user.emailVerified : !!user.email_verified_at,
+    hasPassword: user.hasPassword !== undefined ? !!user.hasPassword : !!user.password_hash,
+    source: 'local',
     plan: user.plan || 'free',
     createdAt: user.created_at,
   };
 }
+async function userById(id) { return (await db.q('SELECT * FROM users WHERE id = $1', [id])).rows[0] || null; }
 
-function loginUrl(next) {
-  if (!config.ACCOUNTS_LOGIN_URL) return null;
-  return config.ACCOUNTS_LOGIN_URL + '?next=' + encodeURIComponent(next || config.PUBLIC_URL || '/');
+/* ---------- small caches (one app replica; cleared on revoke) ---------- */
+const sessionCache = new Map(); // sid -> { ok, userId, exp }
+const userCache = new Map(); // userId -> { row, exp }
+const CACHE_MS = 30_000;
+function forgetSession(sid) { sessionCache.delete(sid); }
+function forgetUser(userId) {
+  userCache.delete(Number(userId));
+  for (const [sid, v] of sessionCache) if (v.userId === Number(userId)) sessionCache.delete(sid);
+}
+async function sessionActive(sid, userId) {
+  const hit = sessionCache.get(sid);
+  if (hit && hit.exp > Date.now()) return hit.ok && hit.userId === Number(userId);
+  const r = (await db.q('SELECT user_id FROM auth_sessions WHERE id = $1 AND revoked_at IS NULL AND expires_at > NOW()', [sid])).rows[0];
+  const ok = !!r && Number(r.user_id) === Number(userId);
+  sessionCache.set(sid, { ok, userId: Number(userId), exp: Date.now() + CACHE_MS });
+  if (sessionCache.size > 20000) sessionCache.delete(sessionCache.keys().next().value);
+  return ok;
+}
+async function cachedUser(id) {
+  const hit = userCache.get(Number(id));
+  if (hit && hit.exp > Date.now()) return hit.row;
+  const row = await userById(id);
+  userCache.set(Number(id), { row, exp: Date.now() + CACHE_MS });
+  if (userCache.size > 20000) userCache.delete(userCache.keys().next().value);
+  return row;
 }
 
-function logoutUrl(next) {
-  if (!config.ACCOUNTS_URL) return null;
-  return config.ACCOUNTS_URL + '/logout?next=' + encodeURIComponent(next || config.PUBLIC_URL || '/');
+/* ---------- sessions ---------- */
+function signAccess(userId, sid) {
+  return jwt.sign({ sub: userId, sid, typ: 'access' }, config.JWT_SECRET, { expiresIn: A.accessTtlSec });
+}
+function sessionCookies(userId, sid, refresh) {
+  return [
+    cookie(ACCESS_COOKIE(), signAccess(userId, sid), A.accessTtlSec),
+    cookie(REFRESH_COOKIE(), refresh, A.refreshTtlDays * 86400),
+  ];
+}
+function clearCookies(res) {
+  addCookies(res, [cookie(ACCESS_COOKIE(), '', 0), cookie(REFRESH_COOKIE(), '', 0), ...LEGACY_COOKIES.map((n) => `${n}=; Path=/; Max-Age=0`)]);
+}
+
+/** Start a new signed-in session for this browser and set the cookies. */
+async function startSession(req, res, user, { method = 'password' } = {}) {
+  const sid = crypto.randomUUID();
+  const refresh = newSecret();
+  await db.q(
+    `INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, max_expires_at, method, user_agent, ip)
+     VALUES ($1, $2, $3, NOW() + make_interval(days => $4), NOW() + make_interval(days => $5), $6, $7, $8)`,
+    [sid, user.id, sha256(refresh), A.refreshTtlDays, A.sessionMaxDays, method,
+      String(req.headers['user-agent'] || '').slice(0, 300), clientIp(req).slice(0, 64)]);
+  addCookies(res, sessionCookies(user.id, sid, refresh));
+  req._authResolved = true;
+  req._sid = sid;
+  req._authRow = await userById(user.id);
+  req._authUser = req._authRow ? shapeUser(req._authRow) : null;
+  return sid;
+}
+
+/**
+ * Exchange a refresh token for a new pair. Returns { userId, sid } or null.
+ * rotate=false (no response to set cookies on) only validates.
+ */
+async function useRefresh(req, res, token, { rotate = true } = {}) {
+  const h = sha256(token);
+  const s = (await db.q(
+    `SELECT * FROM auth_sessions WHERE (token_hash = $1 OR prev_token_hash = $1) AND revoked_at IS NULL
+       AND expires_at > NOW() AND max_expires_at > NOW()`, [h])).rows[0];
+  if (!s) return null;
+  if (s.token_hash !== h) {
+    // An older token. Fine for a moment after rotation (parallel requests), theft after that.
+    if (Date.now() - new Date(s.rotated_at).getTime() <= ROTATE_GRACE_MS) return { userId: s.user_id, sid: s.id };
+    await revokeSession(s.user_id, s.id, 'refresh-token-reuse');
+    console.warn('[auth] refresh token reuse detected; session revoked', s.id.slice(0, 8));
+    return null;
+  }
+  if (!rotate) return { userId: s.user_id, sid: s.id };
+  const next = newSecret();
+  const up = await db.q(
+    `UPDATE auth_sessions SET prev_token_hash = token_hash, token_hash = $2, rotated_at = NOW(), last_seen_at = NOW(),
+       expires_at = LEAST(max_expires_at, NOW() + make_interval(days => $3)), ip = $4
+     WHERE id = $1 AND token_hash = $5 AND revoked_at IS NULL RETURNING id`,
+    [s.id, sha256(next), A.refreshTtlDays, clientIp(req).slice(0, 64), h]);
+  if (!up.rowCount) return { userId: s.user_id, sid: s.id }; // lost a race with a parallel request: fine
+  addCookies(res, sessionCookies(s.user_id, s.id, next));
+  return { userId: s.user_id, sid: s.id };
+}
+
+async function revokeSession(userId, sid, reason = 'signed-out') {
+  await db.q('UPDATE auth_sessions SET revoked_at = NOW(), revoke_reason = $3 WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL', [sid, userId, reason]);
+  forgetSession(sid);
+}
+async function revokeAllSessions(userId, { except = null, reason = 'signed-out-everywhere' } = {}) {
+  const r = await db.q('UPDATE auth_sessions SET revoked_at = NOW(), revoke_reason = $3 WHERE user_id = $1 AND revoked_at IS NULL AND ($2::text IS NULL OR id <> $2) RETURNING id', [userId, except, reason]);
+  forgetUser(userId);
+  return r.rowCount;
+}
+async function listSessions(userId) {
+  return (await db.q(
+    `SELECT id, created_at, last_seen_at, expires_at, method, user_agent, ip FROM auth_sessions
+      WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW() ORDER BY last_seen_at DESC LIMIT 50`, [userId])).rows;
+}
+
+/** Resolve the session for a request: { row, sid } or null. Rotates the refresh token when needed. */
+async function resolve(req, res) {
+  const cookies = parseCookies(req);
+  const access = getBearerToken(req) || cookies[ACCESS_COOKIE()] || null;
+  if (access) {
+    try {
+      const p = jwt.verify(access, config.JWT_SECRET);
+      if (p && p.typ === 'access' && p.sid && p.sub != null && await sessionActive(p.sid, p.sub)) {
+        const row = await cachedUser(p.sub);
+        if (row) return { row, sid: p.sid };
+      }
+    } catch (_) { /* expired or invalid: try the refresh token */ }
+  }
+  const refresh = cookies[REFRESH_COOKIE()];
+  if (!refresh) return null;
+  const canSet = !!(res && !res.headersSent);
+  const r = await useRefresh(req, canSet ? res : null, refresh, { rotate: canSet });
+  if (!r) { if (canSet) clearCookies(res); return null; }
+  forgetSession(r.sid);
+  const row = await userById(r.userId);
+  return row ? { row, sid: r.sid } : null;
+}
+
+/**
+ * The signed-in user for a request, or null. Pass `res` so an expired access token can be
+ * renewed from the refresh cookie. With AUTH_REQUIRE_VERIFIED_EMAIL=true an unverified user
+ * counts as signed out everywhere except where { allowUnverified: true } is passed.
+ */
+async function getAuthUser(req, res, { allowUnverified = false } = {}) {
+  if (!req._authResolved) {
+    req._authResolved = true;
+    let s = null;
+    try { s = await resolve(req, res); } catch (e) { console.error('[auth] session check failed:', e.message); }
+    req._authRow = s ? s.row : null;
+    req._sid = s ? s.sid : null;
+    req._authUser = s ? shapeUser(s.row) : null;
+  }
+  const u = req._authUser;
+  if (u && A.requireVerifiedEmail && !u.emailVerified && !allowUnverified) return null;
+  return u;
+}
+async function currentSessionId(req, res) { await getAuthUser(req, res, { allowUnverified: true }); return req._sid || null; }
+
+/** Sign this browser out (revokes its session) and clear the cookies. */
+async function endSession(req, res) {
+  const u = await getAuthUser(req, res, { allowUnverified: true });
+  if (u && req._sid) await revokeSession(u.id, req._sid);
+  else {
+    const rt = parseCookies(req)[REFRESH_COOKIE()];
+    if (rt) await db.q("UPDATE auth_sessions SET revoked_at = NOW(), revoke_reason = 'signed-out' WHERE token_hash = $1 AND revoked_at IS NULL", [sha256(rt)]);
+  }
+  clearCookies(res);
+  req._authUser = null; req._authRow = null; req._sid = null;
 }
 
 module.exports = {
-  LOCAL_COOKIE,
-  parseCookies,
-  isInternalUsername,
-  publicUsername,
-  niceDisplayName,
-  ensureAccountsUser,
-  getAuthUser,
-  signToken,
-  localCookie,
-  publicUser,
-  loginUrl,
-  logoutUrl,
-  _cache: cache,
+  parseCookies, sha256, newSecret,
+  hashPassword, verifyPassword, passwordProblem,
+  niceDisplayName, shapeUser, publicUser, userById,
+  startSession, endSession, revokeSession, revokeAllSessions, listSessions, currentSessionId, clearCookies,
+  getAuthUser, forgetUser,
+  ACCESS_COOKIE, REFRESH_COOKIE,
 };

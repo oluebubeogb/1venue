@@ -1,7 +1,7 @@
 /**
  * Validate a chat attachment coming over WS. Preferred form is a stored upload
  * ({ url: '/files/<id>/<name>' or the S3 public URL }); small legacy data: URLs are
- * still accepted up to CHAT_INLINE_MAX_MB so old clients keep working.
+ * only accepted when CHAT_INLINE_MAX_MB > 0 (default 0 = off) to keep sockets and memory lean.
  */
 const config = require('../config');
 
@@ -25,6 +25,7 @@ function normalizeAttachment(a) {
   const size = Math.max(0, Number(a.size) || 0);
   const url = String(a.url || '');
   if (url) return allowedUrl(url) ? { kind, name, mime, size, url } : null;
+  if (!config.UPLOADS.chatInlineBytes) return null; // inline data URLs are off: attachments must be uploaded
   const dataUrl = String(a.dataUrl || '');
   const max = Math.ceil(config.UPLOADS.chatInlineBytes * 1.37) + 64; // base64 overhead
   if (dataUrl.startsWith('data:') && dataUrl.length <= max) return { kind, name, mime, size: size || dataUrl.length, dataUrl };

@@ -102,7 +102,7 @@ class Room {
     } }, h('div', { class: 'eyebrow' }, creating ? 'You’re hosting' : ev ? (ev.live ? '● Live now' : 'Event') : 'Joining'), h('h1', { class: 'pj-title' }, title),
       ev && ev.host ? h('div', { class: 'row gap-s muted small' }, avatar(ev.host.name, ev.host.avatarUrl, 'xs'), `Hosted by ${ev.host.name}`) : null,
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Display name'), name),
-      !state.user && this.config.accountsEnabled ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
+      !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
@@ -161,18 +161,29 @@ class Room {
   connectWs(pre) {
     const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/';
     let tries = 0;
+    let restartRetries = 0; // a deploy/restart is in progress: the room comes back once the new server restores it
     const open = () => {
       if (!this.alive) return;
       const ws = this.ws = new WebSocket(url);
       this.wsState = 'connecting';
       ws.onopen = () => { tries = 0; this.wsState = 'open'; ws.send(JSON.stringify({ type: 'register', participantId: this.me.id, code: this.code, wsCredential: this.wsCredential })); this.queue && this.queue.splice(0).forEach((x) => ws.send(x)); this.netBanner && this.netBanner(false); };
-      ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (pre && pre(m)) return; if (!this.waitingMode && this.inRoom) handle(this, m); };
+      ws.onmessage = (e) => {
+        let m; try { m = JSON.parse(e.data); } catch { return; }
+        if (m.type === 'server-restarting') { this.serverRestarting = Date.now(); this.netBanner && this.netBanner(true, 'Reconnecting…'); return; }
+        if (m.type === 'participants' && this.serverRestarting) { this.serverRestarting = 0; restartRetries = 0; }
+        if (pre && pre(m)) return;
+        if (!this.waitingMode && this.inRoom) handle(this, m);
+      };
       ws.onclose = (e) => {
         this.wsState = 'closed';
         if (!this.alive || this.ws !== ws) return;
-        if (e.code === 4403 || e.code === 4404) { if (this.inRoom) this.ended({ reason: 'gone' }); return; }
-        this.netBanner && this.netBanner(true);
-        setTimeout(open, Math.min(15000, 600 * 2 ** tries++));
+        const restarting = e.code === 1012 || (this.serverRestarting && Date.now() - this.serverRestarting < 120000);
+        if ((e.code === 4403 || e.code === 4404) && !(restarting && restartRetries < 6)) { if (this.inRoom) this.ended({ reason: 'gone' }); return; }
+        if (e.code === 4404) restartRetries++;
+        this.netBanner && this.netBanner(true, 'Reconnecting…');
+        // Server restarts reconnect fast (with jitter so a full room doesn't stampede); network drops back off to 15s.
+        const delay = restarting ? 800 + Math.random() * 1500 + restartRetries * 1000 + Math.min(tries++, 10) * 500 : Math.min(15000, 600 * 2 ** tries++);
+        setTimeout(open, delay);
       };
     };
     open();

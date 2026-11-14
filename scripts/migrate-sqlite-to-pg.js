@@ -1,8 +1,9 @@
 /**
- * One-time migration: SQLite meet.db → PostgreSQL (DATABASE_URL)
+ * One-time import: a SQLite database file → PostgreSQL (DATABASE_URL).
+ * The file is SQLITE_PATH, or DATA_DIR/meet.db by default.
  *
  * Usage:
- *   DATABASE_URL=postgresql://user:pass@host:5432/meet \
+ *   DATABASE_URL=postgresql://user:pass@host:5432/venue \
  *   DATA_DIR=/path/to/data \
  *   node scripts/migrate-sqlite-to-pg.js
  */
@@ -16,7 +17,7 @@ if (!DATABASE_URL) {
 }
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-const DB_PATH = path.join(DATA_DIR, 'meet.db');
+const DB_PATH = process.env.SQLITE_PATH || path.join(DATA_DIR, 'meet.db');
 if (!fs.existsSync(DB_PATH)) {
   console.error('SQLite file not found at', DB_PATH);
   process.exit(1);

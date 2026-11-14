@@ -143,7 +143,7 @@ function serializeParticipant(meeting, p) {
     isGuest: p.role === 'guest',
     sharing: !!p.sharing,
     userId: p.userId || null,
-    username: (() => { try { return require('../lib/auth').publicUsername(p.username) || p.username || null; } catch { return p.username || null; } })(),
+    username: p.username || null,
     device: p.device || 'desktop',
     mutedByHost: !!p.mutedByHost,
     handRaised: !!p.handRaisedAt,

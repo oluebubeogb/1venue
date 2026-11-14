@@ -18,7 +18,6 @@ const PORT = int('PORT', 3000);
 const PUBLIC = path.join(__dirname, '..', 'public');
 const DEFAULT_SECRET = 'change-me-in-production-1venue-secret-key-32chars';
 const JWT_SECRET = env('JWT_SECRET', DEFAULT_SECRET);
-const JWT_TTL = env('JWT_TTL', '30d');
 const PUBLIC_URL = env('PUBLIC_URL', '').replace(/\/$/, '');
 const APP_NAME = env('APP_NAME', '1venue');
 
@@ -26,14 +25,29 @@ const LIVEKIT_URL = env('LIVEKIT_URL');
 const LIVEKIT_API_KEY = env('LIVEKIT_API_KEY');
 const LIVEKIT_API_SECRET = env('LIVEKIT_API_SECRET');
 
-// Collab Accounts SSO (shared cookies on COOKIE_DOMAIN)
-const ACCOUNTS_URL = env('ACCOUNTS_URL', 'https://accounts.collab.name.ng').replace(/\/$/, '');
-const ACCOUNTS_LOGIN_URL = env('ACCOUNTS_LOGIN_URL', ACCOUNTS_URL ? ACCOUNTS_URL + '/login' : '');
-const ACCOUNTS_JWT_SECRET = env('ACCOUNTS_JWT_SECRET', env('ACCOUNTS_SECRET_KEY'));
-const ACCOUNTS_ACCESS_COOKIE = env('ACCOUNTS_ACCESS_COOKIE', 'access_token');
-const ACCOUNTS_REFRESH_COOKIE = env('ACCOUNTS_REFRESH_COOKIE', 'refresh_token');
-const COOKIE_DOMAIN = env('COOKIE_DOMAIN', '');
+// Accounts (local email/password + optional Google). See docs/AUTH.md.
+const AUTH = {
+  accessTtlSec: int('AUTH_ACCESS_TTL_MIN', 15) * 60, // short-lived access JWT (cookie)
+  refreshTtlDays: int('AUTH_REFRESH_TTL_DAYS', 30), // idle limit: each refresh extends it
+  sessionMaxDays: int('AUTH_SESSION_MAX_DAYS', 90), // absolute limit per sign-in
+  bcryptCost: Math.min(15, Math.max(4, int('BCRYPT_COST', 12))),
+  passwordMin: Math.max(8, int('AUTH_PASSWORD_MIN', 8)),
+  requireVerifiedEmail: bool('AUTH_REQUIRE_VERIFIED_EMAIL', false), // false = allow, show a banner
+  verifyTtlHours: int('AUTH_VERIFY_TTL_HOURS', 48),
+  resetTtlMin: int('AUTH_RESET_TTL_MIN', 60),
+  ratePerMin: int('AUTH_RATE_PER_MIN', 20), // per IP for sign-in / sign-up / reset endpoints
+  // Secure cookies unless PUBLIC_URL is plain http (local dev)
+  cookieSecure: bool('AUTH_COOKIE_SECURE', !/^http:\/\//i.test(env('PUBLIC_URL', ''))),
+  google: {
+    clientId: env('GOOGLE_CLIENT_ID', ''),
+    clientSecret: env('GOOGLE_CLIENT_SECRET', ''),
+    discoveryUrl: env('GOOGLE_DISCOVERY_URL', 'https://accounts.google.com/.well-known/openid-configuration'),
+    allowSignup: bool('GOOGLE_ALLOW_SIGNUP', true),
+  },
+};
 const ALLOW_LOCAL_SIGNUP = bool('ALLOW_LOCAL_SIGNUP', true);
+// When set (e.g. 1venue.example.com), requests for any other host (www., old domain) get a 301 there.
+const CANONICAL_HOST = env('CANONICAL_HOST', '').replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
 
 const MEETING_INACTIVITY_MS = int('MEETING_INACTIVITY_HOURS', 12) * 60 * 60 * 1000;
 const MEETING_CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
@@ -124,7 +138,7 @@ const UPLOADS = {
   contentPerMinute: int('UPLOAD_CONTENT_RATE_PER_MIN', 240),
   contentPerHour: int('UPLOAD_CONTENT_RATE_PER_HOUR', 480),
   perHour: int('UPLOAD_RATE_PER_HOUR', 120),
-  chatInlineBytes: mb('CHAT_INLINE_MAX_MB', 0.6), // legacy data-URL attachments over WS
+  chatInlineBytes: mb('CHAT_INLINE_MAX_MB', 0), // legacy data-URL attachments over WS; 0 = off (clients upload to /api/files)
 };
 
 const BIBLE = {
@@ -132,6 +146,29 @@ const BIBLE = {
   fallbackBase: env('BIBLE_FALLBACK_BASE', 'https://bible-api.com').replace(/\/$/, ''),
   defaultTranslation: env('BIBLE_DEFAULT_TRANSLATION', 'eng_kjv'),
   cacheDays: int('BIBLE_CACHE_DAYS', 30),
+};
+
+// Memory guards for live rooms (all state lives in this process; see docs/ARCHITECTURE.md)
+const MEMORY = {
+  wsHeartbeatMs: int('WS_HEARTBEAT_MS', 30_000), // ping every socket; drop ones that miss a pong (0 disables)
+  leftPruneMs: int('LEFT_PARTICIPANT_PRUNE_MINUTES', 10) * 60 * 1000, // forget people who left (0 disables)
+  wbMaxStrokes: int('WB_MAX_STROKES', 1000), // shared whiteboard strokes kept per room / shared board page
+  wbMaxPoints: int('WB_MAX_POINTS', 2000), // points kept per stroke
+  timelineMaxItems: int('SCREEN_TIMELINE_MAX_ITEMS', 10),
+  timelineMaxChars: int('SCREEN_TIMELINE_MAX_CHARS', 1_500_000), // ~1.1 MB JPEG per snapshot
+};
+
+// Graceful restarts: live rooms are snapshotted on SIGTERM and restored when people reconnect
+const RESTART = {
+  restoreMaxMs: int('MEETING_RESTORE_MAX_MINUTES', 30) * 60 * 1000, // older snapshots are ended instead
+  shutdownGraceMs: int('SHUTDOWN_GRACE_MS', 1500), // time for "server-restarting" frames to flush
+};
+
+// Monitoring: GET /metrics (Prometheus text) needs METRICS_TOKEN as a Bearer token; unset = /metrics is 404.
+const METRICS = {
+  token: env('METRICS_TOKEN', ''),
+  log: bool('METRICS_LOG', true), // one compact "[metrics] …" log line per interval
+  logIntervalMs: int('METRICS_LOG_INTERVAL_MS', 60_000),
 };
 
 const RATE_LIMIT_PER_MIN = int('RATE_LIMIT_PER_MIN', 240);
@@ -161,11 +198,10 @@ const MIME = {
 };
 
 module.exports = {
-  env, int, bool,
-  PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, JWT_TTL, PUBLIC_URL, APP_NAME,
+  env, int, bool, METRICS,
+  PORT, PUBLIC, JWT_SECRET, DEFAULT_SECRET, PUBLIC_URL, APP_NAME,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
-  ACCOUNTS_URL, ACCOUNTS_LOGIN_URL, ACCOUNTS_JWT_SECRET, ACCOUNTS_ACCESS_COOKIE, ACCOUNTS_REFRESH_COOKIE,
-  COOKIE_DOMAIN, ALLOW_LOCAL_SIGNUP,
+  AUTH, ALLOW_LOCAL_SIGNUP, CANONICAL_HOST,
   MEETING_INACTIVITY_MS, MEETING_CLEANUP_INTERVAL_MS, MAX_PARTICIPANTS, MAX_AUDIENCE, DEFAULT_SPEAKER_SEATS,
-  MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
+  MEDIA, AI, STT, STORAGE, UPLOADS, BIBLE, MEMORY, RESTART, RATE_LIMIT_PER_MIN, TRUST_PROXY, MIME,
 };

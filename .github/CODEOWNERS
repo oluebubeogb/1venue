@@ -1,0 +1,44 @@
+# Who reviews what. GitHub requests a review from the owners of every file a PR touches.
+# Replace the @placeholders with real GitHub usernames or teams (e.g. @your-org/rooms) before
+# turning on "Require review from Code Owners" in the branch protection for main.
+# Later lines win over earlier ones.
+
+# Default: lead maintainer reviews anything not listed below
+*                                   @LEAD_MAINTAINER
+
+# Core: the shared plumbing every feature depends on. Changes here need a lead review.
+/src/core/                          @LEAD_MAINTAINER
+/src/ws/                            @LEAD_MAINTAINER
+/src/rooms/                         @LEAD_MAINTAINER
+/src/http/                          @LEAD_MAINTAINER
+/db.js                              @LEAD_MAINTAINER
+/migrations/                        @LEAD_MAINTAINER
+/Dockerfile                         @LEAD_MAINTAINER
+/docker-compose.yml                 @LEAD_MAINTAINER
+/.github/                           @LEAD_MAINTAINER
+
+# Features: one owner (or team) per folder. Uncomment and fill in as people take features.
+# /src/features/chat/               @DEV_CHAT
+# /src/features/privateChat/        @DEV_CHAT
+# /src/features/groupChat/          @DEV_CHAT
+# /src/features/stage/              @DEV_STAGE
+# /src/features/polls/              @DEV_ENGAGE
+# /src/features/qa/                 @DEV_ENGAGE
+# /src/features/comments/           @DEV_ENGAGE
+# /src/features/scripture/          @DEV_FAITH
+# /src/features/captions/           @DEV_AI
+# /src/features/ai/                 @DEV_AI
+# /src/features/sessions/           @DEV_AI
+# /src/features/whiteboard/         @DEV_BOARDS
+# /src/features/wbShare/            @DEV_BOARDS
+# /src/features/events/             @DEV_EVENTS
+# /src/features/venues/             @DEV_EVENTS
+# /src/features/social/             @DEV_SOCIAL
+# /src/features/dashboard/          @DEV_SOCIAL
+# /src/features/files/              @DEV_PLATFORM
+# /src/features/materials/          @DEV_PLATFORM
+
+# Front end shared by every page
+/public/js/ui.js                    @LEAD_MAINTAINER
+/public/js/room/room.js             @LEAD_MAINTAINER
+/public/css/                        @LEAD_MAINTAINER

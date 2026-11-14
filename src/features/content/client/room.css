@@ -1,0 +1,35 @@
+/* Content-only display must remove the entire stage strip, including audience / empty state. */
+.stage.content-only > .tiles { display: none !important; }
+.present-body.slides-body { position: relative; overflow: hidden; }
+.present-body.slides-body > .present-img { height: 100%; min-width: 0; }
+.stage-thumbs { position: absolute; inset: 8px 8px 70px; z-index: 4; max-height: none; padding: 12px; align-content: start; background: var(--s1); border-radius: 12px; box-shadow: var(--shadow-2); grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.stage-thumbs[hidden] { display: none; }
+.stage-thumbs .slide-thumb img { height: 72px; object-fit: contain; }
+.slide-auto { display: flex; align-items: center; gap: 5px; color: #fff; font-size: .75rem; white-space: nowrap; padding: 0 8px; cursor: pointer; }
+.slide-auto input { accent-color: var(--accent); }
+.present[data-kind="content"] .slide-controls { max-width: calc(100% - 16px); }
+.slide-thumb:disabled { cursor: default; opacity: .7; }
+@media (max-width: 480px) { .slide-controls .icon-btn.glass { width: 32px; height: 34px; } .slide-controls { gap: 2px; } .slide-auto { padding: 0 4px; } }
+
+
+/* Live deck editor thumbs */
+.slide-thumbs.deck-edit { display: flex; flex-wrap: wrap; gap: 8px; margin-top: .5rem; }
+.slide-thumbs.deck-edit .slide-thumb {
+  position: relative; width: 88px; border-radius: 10px; overflow: hidden;
+  border: 2px solid var(--line); background: var(--s2); cursor: pointer; padding: 0;
+}
+.slide-thumbs.deck-edit .slide-thumb.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.slide-thumbs.deck-edit .slide-thumb img { display: block; width: 100%; aspect-ratio: 16/10; object-fit: cover; }
+.slide-thumbs.deck-edit .slide-thumb .tiny {
+  position: absolute; left: 4px; bottom: 4px; background: rgba(0,0,0,.55); color: #fff;
+  padding: 0 .3rem; border-radius: 6px; font-size: .65rem;
+}
+.slide-thumbs.deck-edit .slide-thumb .thumb-rm {
+  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%;
+  border: none; background: rgba(220, 38, 38, .92); color: #fff; font-weight: 700; font-size: 1rem;
+  line-height: 1; cursor: pointer; opacity: 0; transition: opacity .15s; display: flex; align-items: center; justify-content: center;
+}
+.slide-thumbs.deck-edit .slide-thumb:hover .thumb-rm { opacity: 1; }
+.slide-thumbs.deck-edit .slide-thumb.dragging { opacity: .45; }
+.slide-thumbs.deck-edit .slide-thumb.drag-over { outline: 2px dashed var(--accent); }
+.materials-inline { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; }

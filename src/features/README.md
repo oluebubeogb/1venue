@@ -1,23 +1,25 @@
-# Server features (Phase 1)
+# Features
 
-Phase 1 keeps feature **message handlers** inside `src/ws/hub.js` for zero behavior change.
+One folder per feature. Everything a feature needs (server WebSocket plugin, JSON API, raw HTTP
+handlers, SQL queries, migrations, browser message handlers, CSS) lives in its folder and is
+discovered automatically by `src/core/features.js`.
 
-In **Phase 2**, each folder here will export:
+Start a new feature by copying `_template/` (see its README). The full contract and the list
+of features with their load order are in `docs/ARCHITECTURE.md`; the team workflow is in
+`CONTRIBUTING.md`.
 
-```js
-module.exports = {
-  id: 'chat',
-  register(ctx) { /* ctx.ws.on(...), ctx.db, ctx.broadcast */ },
-};
-```
+Quick reference:
 
-| Feature        | WS / API surface                                      |
-|----------------|--------------------------------------------------------|
-| chat           | `chat`, `chat-history`                                 |
-| reactions      | `reaction`                                             |
-| mute           | `mute-participant`, `unmute-self`, `force-mute`        |
-| device-icons   | `device`                                               |
-| schedule       | `/api/schedule*`                                       |
-| content        | `content-*`, `remote-*` (legacy; UI removed)           |
+| File | Loaded by | Contract |
+|---|---|---|
+| `index.js` | `src/core/features.js` | `{ id, order }` |
+| `ws.js` | `src/core/plugin-registry.js` | `{ id, register(ctx) }`, `ctx.onWs(type, ({ msg, participantId, meeting, meetingCode, ws }) => {})` |
+| `routes.js` | `src/core/router.js` | `(route, kit) => route(method, pattern, async (ctx, params) => result)` |
+| `http.js` | `src/http/routes.js` | `async (req, res, parsed) => true` when it answered |
+| `data.js` | you (`require('./data')`) | plain async functions using `src/core/db.js` |
+| `migrations/*.sql` | `db.js migrate()` | `npm run migration:new -- name --feature <id>` |
+| `client/ws.js` | `/features/client.js` | `onMessage(type, (R, m, { roster }) => {})`; `return false` = no re-render |
+| `client/*.css` | `/features/features.css` | prefix classes with the feature name |
 
-Core (not a feature): create/join/leave, screen share start/stop, LiveKit tokens, auth, participants.
+Turn a feature's WebSocket plugin off with `FEATURE_<UPPER_SNAKE_ID>=false`
+(e.g. `FEATURE_GROUP_CHAT=false`). Its HTTP routes stay on.
