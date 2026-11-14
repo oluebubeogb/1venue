@@ -74,3 +74,13 @@ test('sqlite keeps data across a close and migration restart', async () => {
   assert.equal((await db.q('SELECT username FROM users WHERE username=$1', ['ada'])).rows[0].username, 'ada');
   assert.deepEqual(await db.migrate({ log: () => {} }), []);
 });
+
+test('sqlite allows database helpers inside transactions and rejects escaped clients', { timeout: 2000 }, async () => {
+  let escaped;
+  const result = await db.tx(async (client) => {
+    escaped = client;
+    return (await db.q('SELECT 7 AS n')).rows[0].n;
+  });
+  assert.equal(result, 7);
+  await assert.rejects(escaped.query('SELECT 1'), /transaction.*finished/i);
+});

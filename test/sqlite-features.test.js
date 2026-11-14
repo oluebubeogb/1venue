@@ -113,6 +113,13 @@ test('schedules, membership, recordings, uploads, and notes persist locally', as
   const artifact = await db.ensureArtifactForHistory(historyId, 'abc123');
   await db.upsertPersonalNote({ artifactId: artifact.id, userId: user.id, content: 'Remember' });
   assert.equal((await db.getPersonalNote(artifact.id, user.id)).content, 'Remember');
-  await data.insertFile({ id: 'file-local-1', ownerUserId: user.id, driver: 'local', objectKey: 'x', filename: 'x.txt', mime: 'text/plain', size: 12, purpose: 'attachment' });
+  await data.insertFile({ id: 'file-local-000001', ownerUserId: user.id, driver: 'local', objectKey: 'x', filename: 'x.txt', mime: 'text/plain', size: 12, purpose: 'attachment' });
   assert.equal(await data.fileUsage({ userId: user.id }), 12);
+});
+
+test('sqlite has every event template and rejects reversed event dates', async () => {
+  const templates = await db.listTemplates();
+  for (const slug of ['sermon', 'talk_show', 'seminar']) assert.ok(templates.some((t) => t.slug === slug), slug);
+  const ev = await data.createEvent(user, { title: 'Dated event', startsAt: '2026-12-02T12:00:00Z', endsAt: '2026-12-02T13:00:00Z' });
+  await assert.rejects(data.updateEvent(ev.id, user.id, { endsAt: '2026-12-01T12:00:00Z' }), (e) => e.code === '23514');
 });

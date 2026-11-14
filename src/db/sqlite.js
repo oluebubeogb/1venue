@@ -1,6 +1,8 @@
 /** Local SQLite backend. Kept behind DB_DRIVER=sqlite; production uses pg. */
 const fs = require('fs');
 const path = require('path');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const transactionContext = new AsyncLocalStorage();
 
 const JSON_COLUMNS = new Set(['attachments', 'data', 'ev_theme', 'extra', 'host_answers', 'media', 'moderation', 'options', 'payload', 'settings', 'tags', 'theme']);
 const BOOL_COLUMNS = new Set(['anonymous', 'is_custom', 'is_following', 'is_live', 'is_public', 'multi', 'ok', 'peer_is_guest', 'reduce_motion', 'rsvped']);
@@ -87,7 +89,7 @@ function directQuery(sql, params = []) {
   } catch (e) {
     if (e.code === 'SQLITE_CONSTRAINT_UNIQUE' || e.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') e.code = '23505';
     else if (e.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') e.code = '23503';
-    else if (e.code === 'SQLITE_CONSTRAINT_CHECK') e.code = '23514';
+    else if (e.code === 'SQLITE_CONSTRAINT_CHECK' || e.code === 'SQLITE_CONSTRAINT_TRIGGER') e.code = '23514';
     else if (e.code === 'SQLITE_CONSTRAINT_NOTNULL') e.code = '23502';
     throw e;
   }
@@ -100,20 +102,31 @@ function enqueue(fn) {
 }
 
 async function q(sql, params = []) {
+  const context = transactionContext.getStore();
+  if (context) {
+    if (!context.active) throw new Error('SQLite transaction has finished');
+    return directQuery(sql, params);
+  }
   await ensureReady();
   return enqueue(() => directQuery(sql, params));
 }
 
 async function tx(fn) {
+  if (transactionContext.getStore()) throw new Error('Nested SQLite transactions are not supported');
   await ensureReady();
   return enqueue(async () => {
     const d = open();
+    const context = { active: true };
     d.exec('BEGIN IMMEDIATE');
     try {
-      const value = await fn({ query: async (sql, params = []) => directQuery(sql, params) });
+      const value = await transactionContext.run(context, () => fn({ query: async (sql, params = []) => {
+        if (!context.active) throw new Error('SQLite transaction has finished');
+        return directQuery(sql, params);
+      } }));
       d.exec('COMMIT');
       return value;
     } catch (e) { d.exec('ROLLBACK'); throw e; }
+    finally { context.active = false; }
   });
 }
 
