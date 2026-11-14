@@ -8,6 +8,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.js",
+    "seed": "node scripts/seed.js load",
+    "seed:remove": "node scripts/seed.js remove",
     "test": "node --test test/*.test.js",
     "icons": "python3 scripts/build-icons.py",
     "migrate:sqlite-to-pg": "node scripts/migrate-sqlite-to-pg.js",

@@ -68,7 +68,10 @@ const DEUTERO_BOOKS = [
   ['1MA', '1 Maccabees', 16], ['2MA', '2 Maccabees', 15], ['DAG', 'Daniel (Greek)', 14],
 ].map(([id, name, chapters]) => ({ id, name, chapters, testament: 'DC' }));
 
-// Qur’an — 114 surahs: [number, Arabic name, ayah count, English meaning]
+// Surah names in Arabic script (checked against api.alquran.cloud/v1/surah)
+const SURAH_AR = 'الفاتحة البقرة آل_عمران النساء المائدة الأنعام الأعراف الأنفال التوبة يونس هود يوسف الرعد إبراهيم الحجر النحل الإسراء الكهف مريم طه الأنبياء الحج المؤمنون النور الفرقان الشعراء النمل القصص العنكبوت الروم لقمان السجدة الأحزاب سبأ فاطر يس الصافات ص الزمر غافر فصلت الشورى الزخرف الدخان الجاثية الأحقاف محمد الفتح الحجرات ق الذاريات الطور النجم القمر الرحمن الواقعة الحديد المجادلة الحشر الممتحنة الصف الجمعة المنافقون التغابن الطلاق التحريم الملك القلم الحاقة المعارج نوح الجن المزمل المدثر القيامة الإنسان المرسلات النبأ النازعات عبس التكوير الانفطار المطففين الانشقاق البروج الطارق الأعلى الغاشية الفجر البلد الشمس الليل الضحى الشرح التين العلق القدر البينة الزلزلة العاديات القارعة التكاثر العصر الهمزة الفيل قريش الماعون الكوثر الكافرون النصر المسد الإخلاص الفلق الناس'.split(' ').map((s) => s.replace(/_/g, ' '));
+
+// Qur’an — 114 surahs: [number, transliterated name, ayah count, English meaning]
 const QURAN_SURAHS = [
   [1, 'Al-Fatihah', 7, 'The Opener'], [2, 'Al-Baqarah', 286, 'The Cow'], [3, 'Ali \'Imran', 200, 'Family of Imran'],
   [4, 'An-Nisa', 176, 'The Women'], [5, 'Al-Ma\'idah', 120, 'The Table Spread'], [6, 'Al-An\'am', 165, 'The Cattle'],
@@ -111,6 +114,7 @@ const QURAN_SURAHS = [
 ].map(([n, name, ayahs, meaning]) => ({
   id: `Q${String(n).padStart(3, '0')}`,
   name,
+  nameAr: SURAH_AR[n - 1],
   meaning,
   chapters: 1, // API shape: one chapter per surah; ayahs are the verses
   ayahs,

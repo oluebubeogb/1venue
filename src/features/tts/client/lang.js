@@ -6,12 +6,15 @@
 // scripts (Cyrillic, Devanagari, Ethiopic) are NOT guessed: the read-out stays hidden instead
 // of risking, say, Igbo read in an English voice.
 
-const ALIASES = { tl: 'fil', no: 'nb', ps: 'pbt', swh: 'sw', arb: 'ar', ful: 'fuv', ff: 'fuv', khk: 'mn', zsm: 'ms', als: 'sq', uzn: 'uz' };
+const ALIASES = { tl: 'fil', no: 'nb', ps: 'pbt', swh: 'sw', arb: 'ar', ful: 'fuv', ff: 'fuv', khk: 'mn', zsm: 'ms', als: 'sq', uzn: 'uz',
+  // ISO 639-2/3 and plain names people type into TTS_LANGUAGES
+  ibo: 'ig', hau: 'ha', ara: 'ar', eng: 'en', yor: 'yo', fra: 'fr', fre: 'fr', swa: 'sw',
+  igbo: 'ig', hausa: 'ha', arabic: 'ar', english: 'en', yoruba: 'yo', french: 'fr', swahili: 'sw' };
 
 export function normLang(tag) {
   const p = String(tag || '').trim().toLowerCase().replace(/_/g, '-').split('-')[0];
-  if (!/^[a-z]{2,3}$/.test(p)) return null;
-  return ALIASES[p] || p;
+  if (ALIASES[p]) return ALIASES[p];
+  return /^[a-z]{2,3}$/.test(p) ? p : null;
 }
 
 // [regex for the script, language when the script is dominant (null = ambiguous)]
@@ -48,11 +51,17 @@ export function detectLang(text, hint) {
   return { lang: script, source: 'script' };
 }
 
-/** Which engine may read this language: 'cloud', 'browser' or null (hide the read-out icon). */
+/**
+ * Which engine reads this language:
+ *   'browser' — the device has a voice for exactly this language (free, instant; preferred)
+ *   'cloud'   — no device voice, but the server's read-out model lists the language
+ *   'signin'  — same as cloud, but the viewer must log in first (cloud audio costs money)
+ *   null      — hide the read-out icon (never read Igbo with an English voice)
+ */
 export function chooseEngine(lang, { cloudEnabled = false, cloudLanguages = [], canUseCloud = false, browserLangs = [] } = {}) {
   const l = normLang(lang);
   if (!l) return null;
-  if (cloudEnabled && canUseCloud && cloudLanguages.includes(l)) return 'cloud';
   if (browserLangs.map(normLang).includes(l)) return 'browser';
+  if (cloudEnabled && cloudLanguages.map(normLang).includes(l)) return canUseCloud ? 'cloud' : 'signin';
   return null;
 }

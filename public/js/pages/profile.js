@@ -7,7 +7,17 @@ import { composer } from './feed.js';
 export async function mount(view, params) {
   let id = params.id;
   if (params.me) { if (!requireLogin('Sign in to see your profile')) return; id = state.user.id; }
-  const u = await api(`/api/users/${id}`);
+  let u;
+  try { u = await api(`/api/users/${encodeURIComponent(id)}`); } catch (e) {
+    if (e?.status !== 404) throw e;
+    view.append(h('div', { class: 'empty' }, h('h1', null, '404'), h('p', { class: 'muted' }, `No one on 1venue goes by @${String(id).slice(0, 40)}.`),
+      h('a', { class: 'btn primary', href: '/discover', 'data-link': '', style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Discover people and events')));
+    return;
+  }
+  // Canonical public URL is /u/<username> (lower case); /u/<id> and /u/<Handle> are rewritten.
+  if (!params.me && u.username && location.pathname !== `/u/${u.username}`) history.replaceState({}, '', `/u/${encodeURIComponent(u.username)}${location.search}`);
+  document.title = `${u.name}${u.username ? ` (@${u.username})` : ''} — 1venue`;
+  id = u.username || u.id;
   const tabs = h('div', { class: 'tabs' });
   const body = h('div', { class: 'col', style: { gap: '.8rem', marginTop: '1rem' } });
   let tab = 'timeline';
@@ -23,7 +33,7 @@ export async function mount(view, params) {
   view.append(h('section', { class: 'profile-hero card' },
     h('div', { class: 'band' }),
     h('div', { class: 'in' }, avatar(u.name, u.avatarUrl, 'xxl ring'),
-      h('div', { class: 'grow' }, h('h1', null, u.name), u.handle ? h('div', { class: 'muted' }, '@' + u.handle) : null, u.bio ? h('p', { style: { marginTop: '.4rem' } }, u.bio) : null,
+      h('div', { class: 'grow' }, h('h1', null, u.name), u.username || u.handle ? h('div', { class: 'muted' }, '@' + (u.username || u.handle)) : null, u.bio ? h('p', { style: { marginTop: '.4rem' } }, u.bio) : null,
         h('div', { class: 'row wrap small', style: { gap: '1.1rem', marginTop: '.6rem' } }, h('span', null, h('strong', null, fmtNum(u.followers)), ' followers'), h('span', null, h('strong', null, fmtNum(u.following)), ' following'), h('span', null, h('strong', null, fmtNum(Array.isArray(u.events) ? u.events.length : (u.eventCount ?? u.events))), ' events'))),
       h('div', { class: 'row', style: { gap: '.4rem' } },
         u.isMe ? h('button', { class: 'btn sm', html: icon('pen', { size: 15 }) + 'Edit profile', onclick: () => edit(u) }) : state.user ? followBtn(u, (on) => { u.followers += on ? 1 : -1; }) : null,
@@ -35,13 +45,12 @@ export async function mount(view, params) {
 function edit(u) {
   const s = sheet({ title: 'Edit profile', icon: 'user', group: 'people' });
   const name = h('input', { class: 'input', value: u.name || '', placeholder: 'Display name', maxlength: 60 });
-  const handle = h('input', { class: 'input', value: u.handle || '', placeholder: 'handle (letters, numbers, _ .)', maxlength: 30 });
   const bio = h('textarea', { class: 'textarea', rows: 3, placeholder: 'Short bio', maxlength: 400 }); bio.value = u.bio || '';
   let avatarUrl = u.avatarUrl;
   const av = h('div', { class: 'row' }, avatar(u.name, avatarUrl, 'lg'));
   const f = h('input', { type: 'file', accept: 'image/*', class: 'hidden' });
   f.onchange = async () => { try { const r = await uploadFile(f.files[0], { purpose: 'avatar' }); avatarUrl = r.url; av.firstChild.replaceWith(avatar(u.name, avatarUrl, 'lg')); } catch (e) { toastErr(e); } };
   s.body.append(h('div', { class: 'col' }, h('div', { class: 'row' }, av, h('button', { class: 'btn sm', html: icon('image', { size: 15 }) + 'Change photo', onclick: () => f.click() }), f),
-    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Display name'), name), h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Handle'), handle), h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Bio'), bio),
-    h('button', { class: 'btn primary', onclick: async () => { try { await api('/api/profile', { method: 'PATCH', body: { displayName: name.value.trim(), handle: handle.value.trim(), bio: bio.value.trim(), avatarUrl } }); toast('Profile saved', { icon: 'check' }); s.close(); await refreshSession(); navigate('/me', { replace: true }); } catch (e) { toastErr(e); } } }, 'Save')));
+    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Display name'), name), h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Public link'), h('div', { class: 'row small', style: { gap: '.5rem' } }, h('code', null, `${location.host}/u/${u.username}`), h('a', { href: '/settings#account', 'data-link': '', onclick: () => s.close() }, 'Change username'))), h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Bio'), bio),
+    h('button', { class: 'btn primary', onclick: async () => { try { await api('/api/profile', { method: 'PATCH', body: { displayName: name.value.trim(), bio: bio.value.trim(), avatarUrl } }); toast('Profile saved', { icon: 'check' }); s.close(); await refreshSession(); navigate('/me', { replace: true }); } catch (e) { toastErr(e); } } }, 'Save')));
 }

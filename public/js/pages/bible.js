@@ -4,7 +4,7 @@ import { state, setPrefs, navigate } from '../app.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
 import { sharePassageToFeed } from '../passage.js';
 import { shareLink } from '../components.js';
-import { readOut, readOutEngine, stopReadOut, isReadingOut, onReadOutChange, detectLang } from '/features/tts/readout.js';
+import { readOut, readOutEngine, stopReadOut, isReadingOut, isPreparing, onReadOutChange, detectLang } from '/features/tts/readout.js';
 
 let TR = null, BOOKS = null;
 export async function bibleMeta() {
@@ -78,7 +78,8 @@ export function makeListenBtn(getPayload, { headers } = {}) {
     if (!starting && !isReadingOut()) mine = false;
     const on = mine;
     btn.classList.toggle('on', on);
-    btn.setAttribute('data-tip', on ? 'Stop' : 'Listen');
+    btn.classList.toggle('busy', on && isPreparing());
+    btn.setAttribute('data-tip', on ? (isPreparing() ? 'Preparing audio… (tap to stop)' : 'Stop') : engine === 'signin' ? 'Log in to listen' : 'Listen');
     btn.setAttribute('aria-label', on ? 'Stop' : 'Listen');
     btn.innerHTML = icon(on ? 'volumeX' : 'volume', { size: 18 });
   };
@@ -89,7 +90,7 @@ export function makeListenBtn(getPayload, { headers } = {}) {
     const sample = p.text || (p.verses || []).map((v) => v.text).join(' ');
     lang = detectLang(sample, hint).lang;
     engine = lang ? await readOutEngine(lang, { headers }) : null;
-    if (engine) { btn.style.display = ''; btn.dataset.engine = engine; }
+    if (engine) { btn.style.display = ''; btn.dataset.engine = engine; sync(); }
     else btn.remove();
   })().catch(() => btn.remove());
   const off = onReadOutChange(() => { if (!btn.isConnected) { off(); return; } sync(); });

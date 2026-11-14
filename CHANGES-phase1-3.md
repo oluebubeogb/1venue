@@ -473,3 +473,27 @@ from the Google name or email, and can add or change both in Settings → Accoun
 * Phone: stored in E.164, validated with libphonenumber-js, country selector defaults to
   Nigeria (+234). Not unique, not verified by SMS (`phone_verified` stays false). Not shared
   and not used for marketing. The privacy policy mentions both fields.
+
+---
+
+## Premium sign-in, demo data, read-out fix, Qur'an bar, public profiles (14 Nov 2026)
+
+**Set in Coolify, then redeploy** (the new migration runs on start):
+- `ADMIN_EMAILS=<your email>` — opens /admin (demo data + read-out check). The email must be confirmed.
+- `TTS_LANGUAGES=ig,ha,ar` — cloud voice only where devices have no voice. Keep `REPLICATE_API_TOKEN`.
+
+What changed:
+- **Log in is an overlay** over the blurred page ("Log in or sign up", Google, OR, email/username →
+  password, forgot password → "Check your inbox" with Resend). `/login` links still work. **Sign up**
+  stays one page with floating-label fields; the helper texts are gone. Reset/verify pages match.
+- **Demo data** — 10 complete accounts (password `@1venued`) with events, posts, comments, venues,
+  materials, whiteboards, DMs and past sessions; load/remove from /admin or `npm run seed` /
+  `npm run seed:remove`. See `docs/SEED.md`.
+- **Read-out (TTS)** — device voice first, cloud only otherwise; icon shown to signed-out readers
+  (tap → log in); faster first audio; iOS playback unlock; clearer errors. Diagnosis in `docs/TTS.md` §7.
+- **Qur'an in the / bar** — "quran" or "q" lists all 114 surahs with Arabic names; "q 18",
+  "kahf 10", "2:255", "الكهف", "q cave" jump straight to the surah/ayah.
+- **Public profiles at `/u/<username>`** — case-insensitive; old `/u/<id>` and handle links 301 to
+  the username; real 404 page for unknown users; share previews (og tags). Profile links app-wide
+  use the username.
+- Service worker v17.

@@ -1,7 +1,8 @@
 // 1venue SPA shell: session, persisted preferences/theme, router, global commands.
 import { icon, LOGO } from './icons.js';
-import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTopSheet, toastErr, errText } from './ui.js';
-import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar } from './commands.js';
+import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTopSheet, toastErr, errText, profilePath } from './ui.js';
+import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar, refreshBar } from './commands.js';
+import { surahCommands, loadSurahs, looksLikeQuran } from './quran-cmd.js';
 import { initPwa, promptInstall } from './pwa.js';
 
 export const state = { config: null, user: null, session: null, prefs: null, route: null, inRoom: false };
@@ -59,12 +60,14 @@ export function signupUrl(nextPath) {
   const path = nextPath && String(nextPath).startsWith('/') ? nextPath : (location.pathname + location.search);
   return `/signup?next=${encodeURIComponent(path)}`;
 }
-export function goLogin(nextPath, { signup = false } = {}) {
-  navigate(signup ? signupUrl(nextPath) : loginUrl(nextPath));
+/** Log in = an overlay over the current (blurred) page; sign up = its own page. */
+export function goLogin(nextPath, { signup = false, mode } = {}) {
+  if (signup) return navigate(signupUrl(nextPath));
+  const next = nextPath && String(nextPath).startsWith('/') ? nextPath : location.pathname + location.search;
+  import('./pages/login.js').then((m) => m.openAuth({ next, mode })).catch(() => navigate(loginUrl(next)));
 }
-export function requireLogin(msg = 'Sign in to continue') {
+export function requireLogin() {
   if (state.user) return true;
-  toast(msg, { icon: 'login', group: 'nav' });
   goLogin();
   return false;
 }
@@ -115,6 +118,7 @@ const ROUTES = [
   [/^\/session\/(\d+)\/?$/, () => import('./pages/session.js'), 'id'],
   [/^\/whiteboard\/?$/, () => import('./pages/whiteboard.js')],
   [/^\/login\/?$/, () => import('./pages/login.js')],
+  [/^\/admin\/?$/, () => import('./pages/admin.js')],
   [/^\/signup\/?$/, () => import('./pages/login.js'), { mode: 'signup' }],
   [/^\/forgot-password\/?$/, () => import('./pages/login.js'), { mode: 'forgot' }],
   [/^\/reset-password\/?$/, () => import('./pages/reset.js')],
@@ -251,19 +255,20 @@ function renderUserSlot() {
   if (state.user) {
     const b = h('button', { class: 'icon-btn', 'data-tip': state.user.displayName, 'aria-label': 'Account menu', style: { width: 'auto', padding: '0 2px' } }, avatar(state.user.displayName, state.user.avatarUrl, 'sm ring'));
     b.onclick = () => menu(b, [
-      { label: state.user.displayName, icon: 'user', run: () => navigate('/me') },
+      { label: state.user.displayName, icon: 'user', hint: '@' + state.user.username, run: () => navigate(profilePath(state.user)) },
       { label: 'Dashboard', icon: 'dashboard', run: () => navigate('/dashboard') },
       { label: 'My sessions', icon: 'history', run: () => navigate('/sessions') },
       { label: 'My whiteboard', icon: 'board', group: 'content', run: () => navigate('/whiteboard') },
-      { label: 'Settings', icon: 'settings', group: 'settings', run: () => navigate('/settings') }, '-',
+      { label: 'Settings', icon: 'settings', group: 'settings', run: () => navigate('/settings') },
+      state.user.isAdmin ? { label: 'Admin', icon: 'shield', group: 'admin', run: () => navigate('/admin') } : null, '-',
       { label: 'Sign out', icon: 'logout', group: 'admin', run: logout },
     ]);
     slot.append(b);
   } else {
-    slot.append(h('a', { class: 'btn sm primary', href: loginUrl('/'), 'data-link': '' }, frag(icon('login', { size: 16 })), 'Sign in'));
+    slot.append(h('a', { class: 'btn sm primary', href: loginUrl(location.pathname + location.search), 'data-link': '' }, frag(icon('login', { size: 16 })), 'Log in'));
   }
   const meTab = document.querySelector('.bottomnav [data-nav="/me"] span');
-  if (meTab) meTab.textContent = state.user ? 'Me' : 'Sign in';
+  if (meTab) meTab.textContent = state.user ? 'Me' : 'Log in';
 }
 const frag = (s) => document.createRange().createContextualFragment(s);
 function buildShell() {
@@ -319,15 +324,20 @@ export const CODE_RE = /^\s*([a-z0-9]{3})[\s-]?([a-z0-9]{3})\s*$/i;
 export const parseCode = (v) => { const m = String(v || '').match(CODE_RE); return m ? (m[1] + m[2]).toLowerCase() : null; };
 export function globalBarContext(pinnedOverride) {
   return {
-    placeholders: ['Search events, people, verses…', 'Try “go live”', 'Try “John 3:16”', 'Try “dark mode”', 'Join with a code: y5yi87', 'Try “bigger text”', 'Try “sermons live now”', 'Try “my whiteboard”'],
-    pinned: () => pinnedOverride ? pinnedOverride() : ['create', 'join', 'discover', 'live', 'feed', 'bible', 'dashboard', 'materials', 'whiteboard', 'theme', 'settings'].map(cmdById),
+    placeholders: ['Search events, people, verses…', 'Try “go live”', 'Try “John 3:16”', 'Try “quran” for every surah', 'Try “Al-Kahf 10”', 'Try “dark mode”', 'Join with a code: y5yi87', 'Try “bigger text”', 'Try “sermons live now”', 'Try “my whiteboard”'],
+    pinned: () => pinnedOverride ? pinnedOverride() : ['create', 'join', 'discover', 'live', 'feed', 'bible', 'quran', 'dashboard', 'materials', 'whiteboard', 'theme', 'settings'].map(cmdById),
     dynamic: (q) => {
       const out = [];
       const c = /\d/.test(q) ? parseCode(q) : null;
       if (c) out.push({ id: 'dyn-join', label: `Join ${c}`, icon: 'login', group: 'people', run: () => navigate(`/${c}`) });
+      // Qur'an: "quran"/"q"/"surah …", Arabic, "2:255" or "Kahf 10" lead; a bare name ("kahf") is offered after Search.
+      const surahs = surahCommands(q, loadSurahs(refreshBar), navigate);
+      const quranFirst = surahs.length && (looksLikeQuran(q) || (surahs.length === 1 && /\d/.test(q)));
       const b = q.match(BIBLE_REF);
-      if (b && b[1].length > 1) out.push({ id: 'dyn-bible', label: `Open ${q.trim()}`, icon: 'bookOpen', group: 'faith', run: () => navigate('/books?ref=' + encodeURIComponent(q.trim())) });
+      if (b && b[1].length > 1 && !quranFirst) out.push({ id: 'dyn-bible', label: `Open ${q.trim()}`, icon: 'bookOpen', group: 'faith', run: () => navigate('/books?ref=' + encodeURIComponent(q.trim())) });
+      if (quranFirst) out.push(...surahs);
       out.push({ id: 'dyn-search', label: `Search “${q.trim().slice(0, 24)}”`, short: 'Search all', icon: 'search', group: 'nav', tail: true, run: () => navigate('/search?q=' + encodeURIComponent(q.trim())) });
+      if (!quranFirst) out.push(...surahs.slice(0, 6).map((c) => ({ ...c, tail: true })));
       return out;
     },
     fallback: (q) => navigate('/search?q=' + encodeURIComponent(q)),
@@ -352,13 +362,13 @@ function registerGlobal() {
     { id: 'post', label: 'New post', icon: 'pen', group: 'social', keywords: ['write', 'share update', 'status'], run: go('/feed?compose=1') },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', group: 'nav', keywords: ['stats', 'analytics'], run: go('/dashboard') },
     { id: 'materials', label: 'Materials library', short: 'Materials', icon: 'folder', group: 'content', keywords: ['decks', 'slides', 'pdf', 'pptx', 'present', 'library', 'uploads'], when: () => !!state.user, run: go('/materials') },
-    { id: 'profile', label: 'My profile', icon: 'user', group: 'people', keywords: ['me', 'account', 'timeline'], run: go('/me') },
+    { id: 'profile', label: 'My profile', icon: 'user', group: 'people', keywords: ['me', 'account', 'timeline', 'public page'], run: () => navigate(state.user ? profilePath(state.user) : '/me') },
     { id: 'edit-profile', label: 'Edit profile', icon: 'pen', group: 'people', keywords: ['bio', 'avatar', 'name', 'handle'], run: go('/me?edit=1') },
     { id: 'people', label: 'Find people', icon: 'users', group: 'people', keywords: ['follow', 'friends', 'search users'], run: go('/search?tab=people') },
     { id: 'my-events', label: 'My events', icon: 'calendar', group: 'engage', keywords: ['hosting', 'scheduled', 'upcoming'], run: go('/dashboard#hosting') },
     { id: 'sessions', label: 'Past sessions & transcripts', short: 'Sessions', icon: 'history', group: 'content', keywords: ['history', 'transcripts', 'summaries', 'recordings'], run: go('/sessions') },
     { id: 'bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: ['scripture', 'read', 'verse', 'books'], run: go('/books?corpus=bible') },
-    { id: 'quran', label: 'Qur’an', icon: 'book', group: 'faith', keywords: ['quran', 'koran', 'surah', 'ayah', 'islam', 'books'], run: go('/books?corpus=quran') },
+    { id: 'quran', label: 'Qur’an', short: 'Qur’an', icon: 'book', group: 'faith', keywords: ['quran', 'koran', 'surah', 'surahs', 'ayah', 'islam', 'books', 'القرآن'], run: go('/books?corpus=quran') },
     { id: 'bible-tr', label: 'Bible translation', icon: 'languages', group: 'faith', keywords: ['kjv', 'web', 'yoruba', 'version'], run: go('/settings#bible') },
     { id: 'whiteboard', label: 'My whiteboards', short: 'Whiteboard', icon: 'board', group: 'content', keywords: ['draw', 'sketch', 'personal', 'saved boards'], when: () => !state.inRoom, run: go('/whiteboard') },
     { id: 'qr', label: 'Make a QR code', icon: 'qr', group: 'content', keywords: ['invite', 'poster'], run: () => import('./pages/event.js').then((m) => m.qrMaker()) },
@@ -377,6 +387,7 @@ function registerGlobal() {
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard', group: 'nav', keywords: ['hotkeys', 'keys', 'help'], run: showShortcuts },
     { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'google'], when: () => !state.user, run: () => goLogin() },
     { id: 'signup', label: 'Create account', icon: 'user', group: 'nav', keywords: ['sign up', 'register', 'join'], when: () => !state.user, run: () => goLogin(undefined, { signup: true }) },
+    { id: 'admin', label: 'Admin: demo data', icon: 'shield', group: 'admin', keywords: ['seed', 'sample', 'demo'], when: () => !!state.user?.isAdmin, run: go('/admin') },
     { id: 'logout', label: 'Sign out', icon: 'logout', group: 'admin', keywords: ['log out'], when: () => !!state.user, run: logout },
   ];
   registerCommands('global', GLOBAL);
@@ -403,7 +414,12 @@ async function boot() {
     if (!a || a.target || a.hasAttribute('download') || e.metaKey || e.ctrlKey || e.shiftKey) return;
     const url = new URL(a.href, location.href);
     if (url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/') || url.pathname.startsWith('/auth/') || /^\/(privacy|terms)(\.html)?\/?$/.test(url.pathname)) return;
-    e.preventDefault(); navigate(url.pathname + url.search + url.hash);
+    e.preventDefault();
+    if (/^\/(login|forgot-password)\/?$/.test(url.pathname) && !state.inRoom) { // log in opens as an overlay
+      const p = Object.fromEntries(url.searchParams);
+      return goLogin(p.next || location.pathname + location.search, { mode: url.pathname.startsWith('/forgot') || p.mode === 'forgot' ? 'forgot' : 'login' });
+    }
+    navigate(url.pathname + url.search + url.hash);
   });
   window.addEventListener('popstate', route);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTopSheet(); });

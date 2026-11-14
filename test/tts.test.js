@@ -176,15 +176,26 @@ test('client detectLang: metadata wins; only unambiguous scripts are guessed; La
   assert.equal(detectLang('In the beginning, اللَّه').lang, null, 'mixed scripts below 60% are not guessed');
 });
 
-test('client chooseEngine: cloud for allowlisted languages, device voice only for an exact match, else hidden', async () => {
+test('client chooseEngine: device voice first; cloud only for languages the device cannot speak', async () => {
   const { chooseEngine } = await langModule();
   const cloud = { cloudEnabled: true, cloudLanguages: ['en', 'ar', 'ha', 'ig'], canUseCloud: true, browserLangs: ['en-US', 'fr-FR'] };
-  assert.equal(chooseEngine('ig', cloud), 'cloud');
+  assert.equal(chooseEngine('en', cloud), 'browser', 'English has a device voice: free, no cloud call');
+  assert.equal(chooseEngine('ig', cloud), 'cloud', 'no Igbo device voice -> cloud');
   assert.equal(chooseEngine('ar-SA', cloud), 'cloud');
+  assert.equal(chooseEngine('ar', { ...cloud, browserLangs: ['ar-SA'] }), 'browser', 'Arabic device voice wins over cloud');
   assert.equal(chooseEngine('fr', cloud), 'browser', 'not on the allowlist, but the device has a French voice');
   assert.equal(chooseEngine('yo', cloud), null, 'Yorùbá: no cloud support and no device voice -> hidden');
   assert.equal(chooseEngine(null, cloud), null);
-  assert.equal(chooseEngine('ig', { ...cloud, canUseCloud: false }), null, 'signed-out visitor, no Igbo device voice -> hidden');
+  assert.equal(chooseEngine('ig', { ...cloud, canUseCloud: false }), 'signin', 'signed-out visitor sees the icon; tapping asks them to log in');
   assert.equal(chooseEngine('en', { ...cloud, cloudEnabled: false }), 'browser');
   assert.equal(chooseEngine('ha', { ...cloud, cloudEnabled: false, browserLangs: ['en-GB'] }), null, 'never an English voice for Hausa');
+  assert.equal(chooseEngine('ig', { ...cloud, cloudLanguages: ['ig-NG', 'ha', 'ar-XA'] }), 'cloud', 'full codes in the list match too');
+});
+
+test('TTS_LANGUAGES accepts short codes, full BCP-47 tags, ISO 639-2 codes and names', () => {
+  assert.deepEqual(allowedLanguages('ig,ha,ar'), ['ig', 'ha', 'ar']);
+  assert.deepEqual(allowedLanguages('ig-NG, ha-NG, ar-XA'), ['ig', 'ha', 'ar']);
+  assert.deepEqual(allowedLanguages('ibo,hau,ara'), ['ig', 'ha', 'ar']);
+  assert.deepEqual(allowedLanguages('Igbo, Hausa, Arabic'), ['ig', 'ha', 'ar']);
+  for (const c of ['ig', 'ha', 'ar']) assert.ok(DOCUMENTED.some(([code]) => code === c), `${c} is on Google’s Gemini TTS list`);
 });

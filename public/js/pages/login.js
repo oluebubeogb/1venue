@@ -75,13 +75,13 @@ export function bindUsernameCheck(input, status, { current } = {}) {
     clearTimeout(t);
     if (ac) ac.abort();
     if (!u) { paint('', ''); return; }
-    if (current && u === String(current).toLowerCase()) { paint('✓ current username', 'ok'); return; }
+    if (current && u === String(current).toLowerCase()) { paint('✓ Current username', 'ok'); return; }
     t = setTimeout(async () => {
       ac = new AbortController();
       try {
         const r = await fetch('/api/auth/username-available?u=' + encodeURIComponent(u), { signal: ac.signal, credentials: 'same-origin' });
         const body = await r.json();
-        if (body.available) paint('✓ available', 'ok');
+        if (body.available) paint(`✓ @${u} is available`, 'ok');
         else paint((body.message || 'Not available') + (body.suggestions?.length ? ' · try ' + body.suggestions.join(', ') : ''), 'err');
       } catch (e) { if (e.name !== 'AbortError') paint('', ''); }
     }, 300);
@@ -98,125 +98,254 @@ export function usernameField(opts = {}) {
   return { input, status, el: h('div', { class: 'col', style: { gap: '.15rem' } }, input, status) };
 }
 
+const flag = (iso) => String.fromCodePoint(...[...iso.toUpperCase()].map((ch) => 0x1f1a5 + ch.charCodeAt(0)));
+
 export function phoneField({ required = true, value = '', country = DEFAULT_PHONE_COUNTRY } = {}) {
   const select = h('select', { class: 'input', name: 'country', 'aria-label': 'Country calling code' },
-    ...PHONE_COUNTRIES.map((c) => h('option', { value: c.iso }, c.iso ? `${c.name} (${c.dial})` : c.name)));
+    ...PHONE_COUNTRIES.map((c) => h('option', { value: c.iso, title: c.name }, c.iso ? `${flag(c.iso)} ${c.dial}` : '🌐 Other')));
   select.value = country;
-  const input = h('input', { class: 'input', type: 'tel', name: 'phone', placeholder: '803 123 4567', autocomplete: 'tel', inputmode: 'tel', 'aria-label': 'Phone number' });
+  const input = h('input', { class: 'input', type: 'tel', name: 'phone', placeholder: 'Phone number', autocomplete: 'tel-national', inputmode: 'tel', 'aria-label': 'Phone number' });
   if (required) input.required = true;
   if (value) input.value = value;
   return { input, select, el: h('div', { class: 'phone-row' }, select, input) };
 }
 
-export const legalLinks = () => h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } },
-  h('a', { href: '/privacy' }, 'Privacy policy'), ' · ', h('a', { href: '/terms' }, 'Terms of service'));
+export const legalLinks = () => h('p', { class: 'au-legal' },
+  h('a', { href: '/terms' }, 'Terms of use'), h('span', { 'aria-hidden': 'true' }, ' | '), h('a', { href: '/privacy' }, 'Privacy policy'));
 
-export const authCard = (title, subtitle, ...kids) => h('div', { class: 'auth-wrap' }, h('div', { class: 'card pad-lg auth-card' },
-  h('div', { class: 'auth-logo', html: LOGO(56) }),
-  h('h1', { style: { textAlign: 'center', fontSize: '1.6rem' } }, title),
-  subtitle ? h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.3rem 0 1.3rem' } }, subtitle) : null,
+/** Standalone auth page card (sign-up, verify, reset): logo, title, one short line, content. */
+export const authCard = (title, subtitle, ...kids) => h('div', { class: 'au-page' }, h('div', { class: 'au-card' },
+  h('div', { class: 'au-logo', html: LOGO(44) }),
+  h('h1', { class: 'au-title' }, title),
+  subtitle ? h('p', { class: 'au-sub' }, subtitle) : null,
   ...kids, legalLinks()));
 
 export const notice = (kind, text) => h('div', { class: `auth-note ${kind}`, role: kind === 'error' ? 'alert' : 'status', html: icon(kind === 'error' ? 'alert' : kind === 'ok' ? 'check' : 'mail', { size: 18 }) }, h('span', null, text));
 
+/** Outlined field with a floating label (ChatGPT-style). Returns { el, input, err, setError }. */
+export function field(input, label) {
+  input.classList.add('au-in');
+  if (!input.placeholder || input.placeholder === label) input.placeholder = ' ';
+  const err = h('p', { class: 'au-err', role: 'alert' });
+  const el = h('div', { class: 'au-field' }, h('label', { class: 'au-float' }, input, h('span', null, label)), err);
+  const setError = (t) => { err.textContent = t || ''; el.classList.toggle('bad', !!t); };
+  input.addEventListener('input', () => setError(''));
+  return { el, input, err, setError };
+}
+const brandBtn = (text, type = 'submit') => h('button', { class: 'au-btn au-primary', type }, text);
+const orLine = () => h('div', { class: 'au-or' }, h('span', null, 'OR'));
+export const AUTH_SUB = 'Get the full 1venue experience: host live rooms, share files and images, and more.';
+
+function googlePill(next) {
+  if (!state.config?.auth?.google) return null;
+  return h('a', { class: 'au-btn au-outline', href: '/auth/google/start?next=' + encodeURIComponent(next), html: GOOGLE_G + '<span>Continue with Google</span>' });
+}
+
+async function finishSignIn(next, { signup = false } = {}) {
+  await refreshSession();
+  if (!state.user) throw new Error('You are signed in, but this browser did not keep the session. Check that cookies are allowed for this site.');
+  toast(signup ? `Welcome to 1venue, ${state.user.displayName}` : `You’re in, ${state.user.displayName}`, { icon: 'check' });
+  const here = location.pathname + location.search;
+  if (/^\/(login|signup|forgot-password)\b/.test(location.pathname) || next !== here) navigate(next, { replace: true });
+  else navigate(here, { replace: true }); // re-render the page now that we are signed in
+}
+
+/* ---------------------------------------------------------------- login overlay */
+let open = null; // the one overlay on screen
+const MESSAGES = { verified: ['ok', 'Email confirmed. Log in to continue.'], reset: ['ok', 'Password saved. Log in with your new password.'] };
+
+/**
+ * Log-in overlay over a blurred page. mode: 'login' | 'forgot'. Opening again reuses it.
+ * Closing returns to the page underneath (or home when it was opened from /login).
+ */
+export function openAuth({ next, mode = 'login', email = '', error = '', message = '' } = {}) {
+  next = safeNext(next || (/^\/(login|signup)/.test(location.pathname) ? '/dashboard' : location.pathname + location.search));
+  if (open) { open.go(mode === 'forgot' ? 'forgot' : 'start', { email, next }); return open; }
+  const cfg = state.config || {};
+  const canSignup = cfg.auth?.allowSignup !== false;
+  const scrim = h('div', { class: 'au-scrim' });
+  const closeBtn = h('button', { class: 'icon-btn au-x', type: 'button', 'aria-label': 'Close', html: icon('x', { size: 20 }) });
+  const box = h('div', { class: 'au-body' });
+  const modal = h('div', { class: 'au-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'au-title' }, closeBtn, box);
+  const prevFocus = document.activeElement;
+  let ident = email || '';
+
+  const close = (signedIn = false) => {
+    if (!open) return;
+    open = null;
+    modal.classList.add('out'); scrim.classList.add('out');
+    document.removeEventListener('keydown', onKey, true);
+    setTimeout(() => { modal.remove(); scrim.remove(); }, 200);
+    document.documentElement.classList.remove('au-lock');
+    if (!signedIn && /^\/(login|forgot-password)\b/.test(location.pathname)) navigate('/', { replace: true });
+    else prevFocus?.focus?.();
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    if (e.key === 'Tab') { // keep focus inside the dialog
+      const f = [...modal.querySelectorAll('a[href],button:not([disabled]),input,select')].filter((x) => x.offsetParent);
+      if (!f.length) return;
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    }
+  };
+  scrim.onclick = () => close();
+  closeBtn.onclick = () => close();
+
+  const head = (title, sub) => [h('div', { class: 'au-logo', html: LOGO(40) }), h('h2', { class: 'au-title', id: 'au-title' }, title), sub ? h('p', { class: 'au-sub' }, sub) : null];
+  const top = (kind, text) => (text ? h('div', { class: `au-msg ${kind}`, role: kind === 'error' ? 'alert' : 'status' }, text) : null);
+
+  function start({ msg } = {}) {
+    const inp = h('input', { type: 'text', inputmode: 'email', autocomplete: 'username', 'aria-label': 'Email or username', placeholder: 'Email or username', class: 'au-pill', maxlength: 320, value: ident });
+    const err = h('p', { class: 'au-err', role: 'alert' });
+    const form = h('form', { class: 'au-form', novalidate: true }, inp, err, brandBtn('Continue'));
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const v = inp.value.trim();
+      if (!v) { err.textContent = 'Enter your email or username.'; inp.focus(); return; }
+      ident = v; password();
+    };
+    inp.oninput = () => { err.textContent = ''; };
+    const google = googlePill(next);
+    box.replaceChildren(...head('Log in or sign up', AUTH_SUB).filter(Boolean), msg || '', google || '', google ? orLine() : '', form,
+      canSignup ? h('p', { class: 'au-swap' }, 'New to 1venue? ', h('a', { href: `/signup?next=${encodeURIComponent(next)}`, 'data-link': '', onclick: () => close(true) }, 'Create an account')) : '',
+      legalLinks());
+    setTimeout(() => inp.focus(), 40);
+  }
+
+  function password() {
+    const pw = passwordInput('Password', 'current-password');
+    const f = field(pw.input, 'Password');
+    f.el.querySelector('.au-float').append(pw.el.querySelector('.pw-eye'));
+    const user = h('input', { type: 'text', name: 'username', autocomplete: 'username', value: ident, hidden: true, readonly: true }); // lets password managers pair the login
+    const btn = brandBtn('Log in');
+    const form = h('form', { class: 'au-form', novalidate: true }, user, f.el,
+      h('div', { class: 'au-row' }, h('a', { href: '#', class: 'au-link', onclick: (e) => { e.preventDefault(); forgot(); } }, 'Forgot password?')), btn);
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!pw.input.value) { f.setError('Enter your password.'); pw.input.focus(); return; }
+      btn.disabled = true;
+      try {
+        await api('/api/login', { method: 'POST', body: { login: ident, password: pw.input.value } });
+        await finishSignIn(next);
+        close(true);
+      } catch (er) {
+        if (er.status === 401) f.setError([er.message, er.data?.hint].filter(Boolean).join(' '));
+        else if (er.status === 403 && er.data?.code === 'email-unverified') f.setError(er.message);
+        else if (er.status && er.status < 500) f.setError(er.message);
+        else toastErr(er);
+      } finally { btn.disabled = false; }
+    };
+    box.replaceChildren(...head('Enter your password').filter(Boolean),
+      h('button', { class: 'au-ident', type: 'button', onclick: () => start(), 'aria-label': 'Change email or username' }, h('span', null, ident), h('span', { class: 'au-link' }, 'Edit')),
+      form, legalLinks());
+    setTimeout(() => pw.input.focus(), 40);
+  }
+
+  function forgot() {
+    const em = h('input', { type: 'email', autocomplete: 'email', inputmode: 'email', maxlength: 320, value: /@/.test(ident) ? ident : '' });
+    const f = field(em, 'Email address');
+    const btn = brandBtn('Continue');
+    const form = h('form', { class: 'au-form', novalidate: true }, f.el, btn);
+    const send = async () => {
+      const v = em.value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(v)) { f.setError('Enter the email you signed up with.'); em.focus(); return false; }
+      btn.disabled = true;
+      try { await api('/api/auth/forgot', { method: 'POST', body: { email: v } }); ident = v; return true; } catch (er) { if (er.status && er.status < 500) f.setError(er.message); else toastErr(er); return false; } finally { btn.disabled = false; }
+    };
+    form.onsubmit = async (e) => { e.preventDefault(); if (await send()) inbox(send); };
+    box.replaceChildren(...head('Reset your password', 'We’ll email you a link to choose a new one.').filter(Boolean), form,
+      h('p', { class: 'au-swap' }, h('a', { href: '#', class: 'au-link', onclick: (e) => { e.preventDefault(); start(); } }, 'Back to log in')), legalLinks());
+    setTimeout(() => em.focus(), 40);
+  }
+
+  function inbox(resend) {
+    const again = h('button', { class: 'au-plain', type: 'button' }, 'Resend email');
+    again.onclick = async () => { again.disabled = true; if (await resend()) toast('Sent again', { icon: 'mail' }); setTimeout(() => { again.disabled = false; }, 30000); };
+    box.replaceChildren(...head('Check your inbox', `If ${ident} has a 1venue account, a reset link is on its way.`).filter(Boolean),
+      h('button', { class: 'au-btn au-primary', type: 'button', onclick: () => start() }, 'Back to log in'), again, legalLinks());
+  }
+
+  const go = (m, o = {}) => { if (o.email) ident = o.email; if (o.next) next = safeNext(o.next); if (m === 'forgot') forgot(); else start(); };
+  document.body.append(scrim, modal);
+  document.documentElement.classList.add('au-lock');
+  document.addEventListener('keydown', onKey, true);
+  const msg = error ? top('error', GOOGLE_ERRORS[error] || GOOGLE_ERRORS.google) : MESSAGES[message] ? top(...MESSAGES[message]) : null;
+  if (mode === 'forgot') forgot(); else start({ msg });
+  open = { close, go, el: modal };
+  return open;
+}
+export const authOpen = () => !!open;
+
+/* ---------------------------------------------------------------- /login, /signup, /forgot-password */
 export async function mount(view, params) {
   const next = safeNext(params.next);
   if (!state.user) { try { await refreshSession(); } catch { /* offline */ } }
   if (state.user) { navigate(next, { replace: true }); return; }
-  const cfg = state.config || {};
-  const canSignup = cfg.auth?.allowSignup !== false;
-  let mode = params.mode === 'signup' || location.pathname.startsWith('/signup') ? 'signup' : params.mode === 'forgot' ? 'forgot' : 'login';
-  if (mode === 'signup' && !canSignup) mode = 'login';
-  const min = cfg.auth?.passwordMin || 8;
-
-  const msg = h('div', { class: 'auth-msg' });
-  const show = (kind, text) => { msg.replaceChildren(text ? notice(kind, text) : ''); };
-
-  const name = h('input', { class: 'input', placeholder: 'Your name', autocomplete: 'name', 'aria-label': 'Your name', maxlength: 80 });
-  const uname = usernameField();
-  const phone = phoneField();
-  const email = h('input', { class: 'input', type: 'text', inputmode: 'email', placeholder: 'Email', autocomplete: 'username', 'aria-label': 'Email', required: true, maxlength: 320 });
-  if (params.email) email.value = params.email;
-  const pw = passwordInput();
-  const btn = h('button', { class: 'btn primary block lg', type: 'submit' });
-  const rules = h('p', { class: 'tiny faint', style: { margin: '-.2rem 0 0' } }, `At least ${min} characters. A short sentence is easy to remember.`);
-  const forgot = h('a', { href: '#', class: 'tiny muted', onclick: (e) => { e.preventDefault(); setMode('forgot'); } }, 'Forgot password?');
-  const swap = h('p', { class: 'small muted', style: { textAlign: 'center', margin: '.9rem 0 0' } });
-  const title = h('h1', { style: { textAlign: 'center', fontSize: '1.6rem' } });
-  const sub = h('p', { class: 'muted small', style: { textAlign: 'center', margin: '.3rem 0 1.1rem' } });
-  const google = googleButton(next, 'Continue with Google');
-  const or = google ? h('div', { class: 'auth-or' }, h('span', null, 'or')) : null;
-  const form = h('form', { class: 'col', style: { gap: '.7rem' }, novalidate: true });
-
-  function setMode(m) {
-    mode = m; show();
-    const titles = { login: ['Sign in to 1venue', 'Welcome back.'], signup: ['Create your account', 'Free. Host and join events in minutes.'], forgot: ['Reset your password', 'We’ll email you a link to choose a new one.'] };
-    title.textContent = titles[m][0]; sub.textContent = titles[m][1];
-    btn.textContent = m === 'signup' ? 'Create account' : m === 'forgot' ? 'Email me a link' : 'Sign in';
-    email.autocomplete = m === 'signup' ? 'email' : 'username';
-    email.placeholder = m === 'login' ? 'Email or username' : 'Email';
-    pw.input.autocomplete = m === 'signup' ? 'new-password' : 'current-password';
-    pw.input.placeholder = m === 'signup' ? 'Create a password' : 'Password';
-    form.replaceChildren(...[
-      m === 'signup' ? name : null,
-      m === 'signup' ? uname.el : null,
-      email,
-      m === 'signup' ? phone.el : null,
-      m !== 'forgot' ? pw.el : null, m === 'signup' ? rules : null,
-      m === 'login' ? h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '-.2rem' } }, forgot) : null,
-      btn,
-    ].filter(Boolean));
-    swap.replaceChildren(...(m === 'login'
-      ? (canSignup ? ['New here? ', link('Create an account', 'signup')] : [])
-      : ['Have an account? ', link('Sign in', 'login')]));
-    if (google) { google.style.display = m === 'forgot' ? 'none' : ''; or.style.display = m === 'forgot' ? 'none' : ''; }
-    history.replaceState({}, '', m === 'signup' ? `/signup?next=${encodeURIComponent(next)}` : `/login?${m === 'forgot' ? 'mode=forgot&' : ''}next=${encodeURIComponent(next)}`);
-    document.title = `${titles[m][0]} — 1venue`;
+  const canSignup = state.config?.auth?.allowSignup !== false;
+  const mode = (params.mode === 'signup' || location.pathname.startsWith('/signup')) && canSignup ? 'signup'
+    : (params.mode === 'forgot' || location.pathname.startsWith('/forgot')) ? 'forgot' : 'login';
+  if (mode !== 'signup') {
+    // Deep link: the home page sits blurred underneath the log-in overlay.
+    document.title = 'Log in — 1venue';
+    const home = await import('./home.js');
+    const bg = await home.mount(view, {});
+    openAuth({ next, mode, email: params.email || '', error: params.error || '', message: params.verified ? 'verified' : params.reset ? 'reset' : '' });
+    return { unmount() { open?.close(true); (bg || home).unmount?.(); } };
   }
-  const link = (text, m) => h('a', { href: '#', onclick: (e) => { e.preventDefault(); setMode(m); } }, text);
+  document.title = 'Create your account — 1venue';
+  return signupPage(view, next, params);
+}
+
+function signupPage(view, next, params) {
+  const min = state.config?.auth?.passwordMin || 8;
+  const name = field(h('input', { autocomplete: 'name', maxlength: 80 }), 'Full name');
+  const un = usernameField();
+  un.input.removeAttribute('placeholder');
+  const uname = field(un.input, 'Username');
+  uname.el.append(un.status);
+  const email = field(h('input', { type: 'email', inputmode: 'email', autocomplete: 'email', maxlength: 320, value: params.email || '' }), 'Email address');
+  const ph = phoneField();
+  ph.select.classList.add('au-cc');
+  const phone = field(ph.input, 'Phone number');
+  const phoneRow = h('div', { class: 'au-phone' }, ph.select, phone.el);
+  const pw = passwordInput('Password', 'new-password');
+  const pass = field(pw.input, 'Password');
+  pass.el.querySelector('.au-float').append(pw.el.querySelector('.pw-eye'));
+  const btn = brandBtn('Continue');
+  const formErr = h('p', { class: 'au-err', role: 'alert' });
+  const form = h('form', { class: 'au-form', novalidate: true }, name.el, uname.el, email.el, phoneRow, pass.el, formErr, btn);
 
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const em = email.value.trim();
-    if (!em) { email.focus(); return show('error', mode === 'login' ? 'Enter your email or username.' : 'Enter your email address.'); }
-    if (mode !== 'forgot' && !pw.input.value) { pw.input.focus(); return show('error', 'Enter your password.'); }
-    if (mode === 'signup' && !uname.input.value.trim()) { uname.input.focus(); return show('error', 'Choose a username.'); }
-    if (mode === 'signup' && !phone.input.value.trim()) { phone.input.focus(); return show('error', 'Enter your phone number.'); }
-    if (mode === 'signup' && pw.input.value.length < min) { pw.input.focus(); return show('error', `Use at least ${min} characters for your password.`); }
-    btn.disabled = true; show();
+    formErr.textContent = '';
+    const bad = (f, t) => { f.setError(t); f.input.focus(); return true; };
+    if (!un.input.value.trim() && bad(uname, 'Choose a username.')) return;
+    if (!/^\S+@\S+\.\S+$/.test(email.input.value.trim()) && bad(email, 'Enter a valid email address.')) return;
+    if (!ph.input.value.trim() && bad(phone, 'Enter your phone number.')) return;
+    if (pw.input.value.length < min && bad(pass, `Use at least ${min} characters.`)) return;
+    btn.disabled = true;
     try {
-      if (mode === 'forgot') {
-        const r = await api('/api/auth/forgot', { method: 'POST', body: { email: em } });
-        show('info', r.message);
+      const r = await api('/api/signup', { method: 'POST', body: { email: email.input.value.trim(), password: pw.input.value, displayName: name.input.value.trim() || undefined, username: un.input.value.trim(), phone: ph.input.value.trim(), country: ph.select.value } });
+      if (r.checkEmail) {
+        view.replaceChildren(authCard('Check your inbox', r.message || `We sent a link to ${email.input.value.trim()}. Open it to finish creating your account.`,
+          h('button', { class: 'au-btn au-primary', type: 'button', onclick: () => openAuth({ next, email: email.input.value.trim() }) }, 'Continue to log in')));
         return;
       }
-      if (mode === 'signup') {
-        const r = await api('/api/signup', { method: 'POST', body: { email: em, password: pw.input.value, displayName: name.value.trim() || undefined, username: uname.input.value.trim(), phone: phone.input.value.trim(), country: phone.select.value } });
-        if (r.checkEmail) { show('info', r.message || 'Check your inbox to continue.'); return; }
-      } else {
-        await api('/api/login', { method: 'POST', body: { login: em, password: pw.input.value } });
-      }
-      await refreshSession();
-      if (!state.user) throw new Error('You are signed in, but this browser did not keep the session. Check that cookies are allowed for this site.');
-      toast(mode === 'signup' ? `Welcome to 1venue, ${state.user.displayName}` : `Welcome back, ${state.user.displayName}`, { icon: 'check' });
-      navigate(next, { replace: true });
+      await finishSignIn(next, { signup: true });
     } catch (er) {
-      if (er.status === 401) show('error', [er.message, er.data?.hint].filter(Boolean).join(' '));
-      else if (er.status === 403 && er.data?.code === 'email-unverified') show('info', er.message);
-      else if (er.status === 400 || er.status === 409 || er.status === 429) show('error', er.message);
+      const m = er.message || '';
+      if (er.status === 409 && /username/i.test(m)) uname.setError(m);
+      else if (er.status === 409 || /email/i.test(m)) email.setError(m);
+      else if (/phone/i.test(m)) phone.setError(m);
+      else if (/password/i.test(m)) pass.setError(m);
+      else if (er.status && er.status < 500) formErr.textContent = m;
       else toastErr(er);
     } finally { btn.disabled = false; }
   };
 
-  const card = h('div', { class: 'card pad-lg auth-card' },
-    h('div', { class: 'auth-logo', html: LOGO(56) }), title, sub, msg,
-    google, or, form, swap,
-    h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } }, 'You can still join any room as a guest with just a name.'),
-    legalLinks());
-  view.append(h('div', { class: 'auth-wrap' }, card));
-  setMode(mode);
-  if (params.error) show('error', GOOGLE_ERRORS[params.error] || GOOGLE_ERRORS.google);
-  else if (params.verified) show('ok', 'Email confirmed. Sign in to continue.');
-  else if (params.reset) show('ok', 'Password saved. You are signed out everywhere else.');
-  (mode === 'signup' ? name : email).focus();
+  const google = googlePill(next);
+  view.append(authCard('Create your account', 'One account for every event, room and community.',
+    google || '', google ? orLine() : '', form,
+    h('p', { class: 'au-swap' }, 'Already have an account? ', h('a', { href: `/login?next=${encodeURIComponent(next)}`, class: 'au-link' }, 'Log in'))));
+  setTimeout(() => (params.email ? un.input : name.input).focus(), 40);
 }

@@ -125,11 +125,11 @@ the icon at all:
 3. **Latin-script text without metadata is never guessed.** Igbo, Hausa, Yorùbá, and English all
    use Latin letters, and a guess would be wrong too often. Cyrillic, Devanagari, and Ethiopic are
    shared by several languages, so they aren't guessed either. These need metadata.
-4. Then:
-   - Language on the allowlist, cloud on, and the viewer allowed (signed in, or a room participant)
-     → **cloud voice**.
-   - Otherwise, if the device has a built-in voice for **exactly that language** → **device voice**
-     (free).
+4. Then (since 14 Nov 2026 — device first, cloud only where the device has no voice):
+   - The device has a built-in voice for **exactly that language** → **device voice** (free,
+     instant). English, French and most big languages land here on phones and laptops.
+   - Otherwise, language on the allowlist and cloud on → **cloud voice** (Gemini). Signed-out
+     viewers still see the icon; tapping it opens the log-in overlay (cloud audio costs money).
    - Otherwise → **no icon**.
 
 The code is `src/features/tts/client/lang.js` (detection and the decision) and
@@ -169,7 +169,26 @@ The code is `src/features/tts/client/lang.js` (detection and the decision) and
 - Only signed-in users and room participants can generate audio. Anonymous visitors get
   "Sign in to listen".
 
-## 7. Good to know
+## 7. Igbo / Hausa / Arabic not reading aloud (diagnosis, 14 Nov 2026)
+
+- **Not the short codes.** 1venue never sends a language code to Google: the Replicate model
+  `google/gemini-3.8-flash-tts` takes only `text`, `voice`, `second_voice`, `style`, `output_format`
+  and detects the language from the text. `TTS_LANGUAGES` is 1venue's own allowlist. Google's
+  language table lists Igbo (`ig`), Hausa (`ha`) and Arabic (`ar`) as supported, so `ig,ha,ar` is
+  correct. Full tags (`ig-NG`, `ar-XA`), ISO 639-2 (`ibo`, `hau`, `ara`) and names (`igbo`) are now
+  accepted too; the server logs a warning at start-up for any code Google does not list.
+- **The real causes (fixed):** the cloud voice was offered only to signed-in users, so signed-out
+  readers on a device without an Igbo/Hausa voice got no icon at all; the first chunk could be
+  1,500 characters (slow, looked broken); and iOS/Safari blocked playback that started after the
+  network wait. Now: icon for everyone, a first chunk of ~300 characters, the audio element is
+  unlocked on the tap, and a spinner shows while the first clip is prepared.
+- **Recommended:** `TTS_LANGUAGES=ig,ha,ar` (English uses the device voice). `REPLICATE_API_TOKEN`
+  must be set or the cloud voice is off.
+- **Check it:** sign in as an admin and open **/admin → Read-out check**: it shows, for this device,
+  whether each language uses the device or cloud voice, and "Test cloud" plays a real clip or shows
+  the exact provider error (bad token, billing, …).
+
+## 8. Good to know
 
 - **Privacy:** the text being read is sent to Replicate and Google to make the audio. Don't enable
   read-out on private content you wouldn't send to a third party.
