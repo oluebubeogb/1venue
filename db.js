@@ -1,20 +1,45 @@
 /**
- * 1venue data layer: PostgreSQL in deployment, SQLite for local testing.
- * Meet's query API is kept intact (same function names and shapes) so the
- * plugins and routes inherited from Meet keep working. Schema changes live in
- * /migrations as numbered SQL files. They are applied once, in order, under an
- * advisory lock, so several replicas can boot at the same time safely.
+ * 1venue data layer: PostgreSQL only.
+ * Room, chat and history queries used by the WebSocket plugins and routes. Schema changes live in
+ * /migrations (core) and src/features/<id>/migrations (per feature) as SQL files named
+ * <number>_<name>.sql. New files use a UTC timestamp (YYYYMMDDHHMMSS_name.sql, see
+ * `npm run migration:new`) so two developers never pick the same number. All files are
+ * sorted together by name (the old 001_…013_ files sort first), applied once each, and
+ * tracked by file name in schema_migrations, under an advisory lock so several replicas
+ * can boot at the same time safely.
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Pool } = require('pg');
-const USE_PG = process.env.DB_DRIVER !== 'sqlite';
-const sqlite = USE_PG ? null : require('./src/db/sqlite');
 
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+const FEATURES_DIR = path.join(__dirname, 'src', 'features');
+const MIGRATION_RE = /^\d+_.+\.sql$/;
+
+/** Every migration file (core + features), sorted by file name. Duplicate names are an error. */
+function migrationFiles() {
+  const dirs = [MIGRATIONS_DIR];
+  if (fs.existsSync(FEATURES_DIR)) {
+    for (const d of fs.readdirSync(FEATURES_DIR, { withFileTypes: true })) {
+      if (!d.isDirectory() || /^[_.]/.test(d.name)) continue;
+      const dir = path.join(FEATURES_DIR, d.name, 'migrations');
+      if (fs.existsSync(dir)) dirs.push(dir);
+    }
+  }
+  const byName = new Map();
+  for (const dir of dirs) {
+    for (const f of fs.readdirSync(dir).filter((x) => MIGRATION_RE.test(x))) {
+      if (byName.has(f)) throw new Error(`Duplicate migration name ${f} (${path.relative(__dirname, byName.get(f))} and ${path.relative(__dirname, path.join(dir, f))})`);
+      byName.set(f, path.join(dir, f));
+    }
+  }
+  return [...byName.keys()].sort().map((name) => ({ name, file: byName.get(name) }));
+}
+const USE_PG = process.env.DB_DRIVER !== 'sqlite';
+const sqlite = USE_PG ? null : require('./src/db/sqlite');
 const DB_PATH = sqlite ? sqlite.DB_PATH : null;
 
 let pool = null;
@@ -60,11 +85,10 @@ async function migrate({ log = console.log } = {}) {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`);
     const done = new Set((await client.query('SELECT version FROM schema_migrations')).rows.map((r) => r.version));
-    const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => /^\d+_.+\.sql$/.test(f)).sort();
     const applied = [];
-    for (const f of files) {
+    for (const { name: f, file } of migrationFiles()) {
       if (done.has(f)) continue;
-      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
+      const sql = fs.readFileSync(file, 'utf8');
       await client.query('BEGIN');
       try {
         await client.query(sql);
@@ -777,6 +801,7 @@ async function getChatGroup(groupId) {
 module.exports = {
   ensureReady,
   migrate,
+  migrationFiles,
   q,
   tx,
   close,

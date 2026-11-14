@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { Readable } = require('stream');
 const config = require('../config');
 
 const S = config.STORAGE;
@@ -62,12 +63,14 @@ async function putS3(key, buf, mime) {
   const r = await fetch(url, { method: 'PUT', headers, body: buf });
   if (!r.ok) throw new Error(`S3 upload failed (${r.status})`);
 }
+/** Stream an object from the bucket (no whole-file buffering in the app's memory). */
 async function getS3(key) {
   const url = s3Url(key);
   const headers = sign('GET', url, {}, sha(''));
   const r = await fetch(url, { headers });
-  if (!r.ok) throw new Error(`S3 read failed (${r.status})`);
-  return Buffer.from(await r.arrayBuffer());
+  if (!r.ok) { try { await r.body?.cancel(); } catch (_) {} throw new Error(`S3 read failed (${r.status})`); }
+  const len = Number(r.headers.get('content-length'));
+  return { stream: Readable.fromWeb(r.body), size: Number.isFinite(len) && len >= 0 ? len : undefined };
 }
 
 /** Save a buffer and return a file record + public URL. */
@@ -88,7 +91,7 @@ function publicUrl(rec) {
   return `/files/${rec.id}/${encodeURIComponent(rec.filename)}`;
 }
 async function open(row) {
-  if (row.driver === 's3') return { buffer: await getS3(row.object_key) };
+  if (row.driver === 's3') return getS3(row.object_key);
   const p = localPath(row.object_key);
   await fs.promises.access(p);
   return { stream: fs.createReadStream(p), size: (await fs.promises.stat(p)).size };

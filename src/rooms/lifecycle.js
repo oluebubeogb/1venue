@@ -75,7 +75,29 @@ function cleanupInactiveMeetings() {
   }
 }
 
+/**
+ * Forget participants who left more than LEFT_PARTICIPANT_PRUNE_MINUTES ago so long events with
+ * lots of churn don't grow without bound. Hosts and co-hosts are kept (they keep their role when
+ * they come back); blocks live in meeting.blocked, and rejoin history lives in meeting_membership.
+ */
+function pruneLeftParticipants(now = Date.now()) {
+  const grace = config.MEMORY.leftPruneMs;
+  if (!grace) return 0;
+  let n = 0;
+  for (const [, meeting] of allMeetings()) {
+    for (const [pid, p] of meeting.participants) {
+      if (p.status !== 'LEFT' || p.role === 'host' || p.role === 'cohost') continue;
+      if (getClient(pid)) continue;
+      if (now - (p.leftAt || 0) < grace) continue;
+      meeting.participants.delete(pid);
+      n++;
+    }
+  }
+  return n;
+}
+
 module.exports = {
+  pruneLeftParticipants,
   syncViewerCounts,
   endMeeting,
   cleanupInactiveMeetings,

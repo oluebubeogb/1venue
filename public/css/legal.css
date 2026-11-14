@@ -1,0 +1,77 @@
+/* Shared layout for /privacy and /terms. Brand colours come from app.css. */
+/* Contact email (change in privacy.html and terms.html too): legal@1venue.live */
+@media (prefers-color-scheme: dark) {
+  html {
+    color-scheme: dark;
+    --bg: #07090f;
+    --text: #e8ecf4;
+    --muted: #9aa4b8;
+    --faint: #6b7489;
+    --line: rgba(255,255,255,.07);
+    --line-2: rgba(255,255,255,.13);
+    --s1: #0f131c;
+    --s2: #151a25;
+    --s3: #1c2230;
+    --s4: #252c3c;
+    --glass: rgba(15,19,28,.78);
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 10px 30px -10px rgba(0,0,0,.7);
+    --shadow-3: 0 30px 70px -20px rgba(0,0,0,.85);
+    --art-opacity: .4;
+  }
+}
+.legal {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: calc(1rem + var(--safe-t, 0px)) 1.25rem calc(2.75rem + var(--safe-b, 0px));
+}
+.legal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: .35rem 0 1.1rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.6rem;
+}
+.legal-top .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  font-weight: 750;
+  font-size: 1.05rem;
+  color: var(--text);
+  text-decoration: none;
+}
+.legal-top .brand img { width: 32px; height: 32px; display: block; }
+.legal-nav { display: flex; gap: .3rem; }
+.legal-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: .9rem;
+  font-weight: 600;
+  padding: .35rem .7rem;
+  border-radius: 999px;
+}
+.legal-nav a:hover { color: var(--text); background: var(--s2); }
+.legal-nav a[aria-current="page"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.legal h1 { font-size: 1.85rem; line-height: 1.2; margin: 0 0 .35rem; letter-spacing: -.02em; }
+.legal .lede { margin: 0 0 1.4rem; }
+.legal h2 { font-size: 1.15rem; margin: 1.7rem 0 .45rem; }
+.legal p, .legal li { line-height: 1.65; }
+.legal p { margin: 0 0 .8rem; }
+.legal ul { margin: 0 0 .9rem; padding-left: 1.2rem; }
+.legal li { margin: 0 0 .35rem; }
+.legal a { color: var(--accent); }
+.legal footer {
+  margin-top: 2.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: .85rem;
+  color: var(--muted);
+}
+.legal footer p { margin: 0 0 .4rem; }

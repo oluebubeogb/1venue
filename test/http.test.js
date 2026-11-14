@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
+const { signupPayload } = require('./helpers/server');
 
 let base = process.env.TEST_BASE_URL;
 let child;
@@ -33,14 +34,15 @@ test.after(async () => {
 
 test('GET /health', { skip }, async () => {
   const r = await fetch(base + '/health'); assert.equal(r.status, 200);
-  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, process.env.DB_DRIVER === 'sqlite' ? 'sqlite' : 'postgresql');
+  const j = await r.json(); assert.equal(j.ok, true); assert.equal(j.db, undefined);
+  const ready = await (await fetch(base + '/ready')).json(); assert.equal(ready.db, process.env.DB_DRIVER === 'sqlite' ? 'sqlite' : 'postgresql');
 });
 test('GET /api/config', { skip }, async () => {
   const r = await fetch(base + '/api/config'); assert.equal(r.status, 200); assert.equal(typeof (await r.json()), 'object');
 });
 test('sqlite local mode offers local sign-in without Collab Accounts', { skip: skip || process.env.DB_DRIVER !== 'sqlite' }, async () => {
   const r = await fetch(base + '/api/config');
-  assert.equal((await r.json()).accountsEnabled, false);
+  assert.equal((await r.json()).auth.allowSignup, true);
 });
 test('sqlite local mode serves configured meeting templates', { skip: skip || process.env.DB_DRIVER !== 'sqlite' }, async () => {
   const r = await fetch(base + '/api/templates');
@@ -59,7 +61,7 @@ test('optional event lookup by room code returns null, strict returns 404', { sk
 });
 test('local signup sets session cookie, /api/me works', { skip }, async () => {
   const u = 't' + Date.now().toString(36);
-  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' }) });
+  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(signupPayload({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' })) });
   assert.equal(r.status, 201);
   const cookie = (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')]).map((c) => c.split(';')[0]).join('; ');
   const me = await fetch(base + '/api/me', { headers: { cookie } }); assert.equal(me.status, 200);
@@ -67,7 +69,7 @@ test('local signup sets session cookie, /api/me works', { skip }, async () => {
 
 async function signup() {
   const u = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' }) });
+  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(signupPayload({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' })) });
   return (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')]).map((c) => c.split(';')[0]).join('; ');
 }
 test('uploads: content purpose accepted, unknown purpose normalised, video refused, limits exposed', { skip }, async () => {

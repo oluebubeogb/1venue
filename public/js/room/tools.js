@@ -179,7 +179,6 @@ export function buildTools(R) {
         const body = (x.verses && x.verses.length)
           ? versesEl({ verses: x.verses }, { selectable: false, compact: true })
           : (text ? h('div', { class: 'scr-hit-text' }, text) : null);
-        const lang = x.lang || (/^quran_/i.test(x.translation || R.bibleTr()) ? 'ar' : 'en');
         return h('div', { class: 'scr-hit' },
           h('button', { class: 'scr-hit-ref', type: 'button', onclick: () => openHit(x) }, x.reference || x),
           x.why ? h('div', { class: 'tiny muted' }, x.why) : null,
@@ -190,8 +189,9 @@ export function buildTools(R) {
             makeListenBtn(() => ({
               verses: x.verses?.length ? x.verses : null,
               text: text || null,
-              lang,
-            })),
+              lang: x.lang,
+              translation: x.translation || R.bibleTr(),
+            }), { headers: R.headers() }),
             h('button', {
               class: 'icon-btn has-bg sm', type: 'button',
               'data-tip': 'Copy', 'aria-label': 'Copy',
@@ -210,7 +210,7 @@ export function buildTools(R) {
           const p = await api(`/api/bible/passage?ref=${encodeURIComponent(q)}&t=${trId}`);
           const head = h('div', { class: 'row between', style: { alignItems: 'center', gap: '.4rem' } },
             h('b', { class: 'small' }, `${p.reference} · ${p.translation?.short || ''}`),
-            makeListenBtn(() => ({ verses: p.verses, lang: p.translation?.lang || (corpus === 'quran' ? 'ar' : 'en') })));
+            makeListenBtn(() => ({ verses: p.verses, lang: p.translation?.lang, translation: trId }), { headers: R.headers() }));
           out.replaceChildren(head, versesEl(p, { selectable: false }));
         } catch {
           try {
@@ -522,7 +522,7 @@ export function buildTools(R) {
     },
     shortcuts() {
       const keys = [['M', 'Mute / unmute'], ['V', 'Camera on / off'], ['S', 'Share screen'], ['H', 'Raise / lower hand'], ['C', 'Chat'], ['P', 'People'], ['E', 'Engage (polls, Q&A)'], ['G', 'Cycle layout'], ['F', 'Fullscreen'], ['/', 'Command bar'], ['Ctrl K', 'Command bar'], ['Esc', 'Close panel / sheet']];
-      return h('div', { class: 'list' }, keys.map(([k, l]) => h('div', { class: 'set-row' }, h('span', { class: 'kbd' }, k), h('span', { class: 'grow' }, l))), note('Text-size shortcuts were removed — use Settings → Text size for a comfortable reading size.'));
+      return h('div', { class: 'list' }, keys.map(([k, l]) => h('div', { class: 'set-row' }, h('span', { class: 'kbd' }, k), h('span', { class: 'grow' }, l))), note('For a comfortable reading size, use Settings → Text size.'));
     },
   };
 }

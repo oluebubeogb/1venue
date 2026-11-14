@@ -1,6 +1,6 @@
 -- 011: events.code must match the current 6-char lowercase alnum format used by
 -- generateCode() / randCode() (same as meeting codes). The original check from
--- 002 required the old Meet-style ^[A-Z]{3}[0-9]{3}$ pattern and blocks inserts.
+-- 002 required the older ^[A-Z]{3}[0-9]{3}$ pattern and blocks inserts.
 DO $$
 BEGIN
   ALTER TABLE events DROP CONSTRAINT IF EXISTS events_code_check;

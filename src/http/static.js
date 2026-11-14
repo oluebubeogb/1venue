@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const config = require('../config');
+const clientAssets = require('../core/client-assets');
 
 const ROOT = config.PUBLIC;
 const VENDOR = {
@@ -85,6 +86,7 @@ function serveStatic(req, res, urlPath) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'Not found' }));
   }
+  if (clientAssets.serve(req, res, urlPath)) return;
   if (VENDOR[urlPath]) return send(req, res, VENDOR[urlPath], urlPath);
   let p = urlPath === '/' ? '/index.html' : urlPath;
   let decoded;
@@ -93,6 +95,13 @@ function serveStatic(req, res, urlPath) {
   if (!filePath.startsWith(ROOT)) {
     res.writeHead(403);
     return res.end('Forbidden');
+  }
+  // Extensionless paths with a matching .html file (e.g. /privacy → privacy.html)
+  if (!path.extname(decoded.replace(/\/+$/, '')) && urlPath !== '/') {
+    const htmlPath = filePath.replace(/\/+$/, '') + '.html';
+    if (htmlPath.startsWith(ROOT) && fs.existsSync(htmlPath)) {
+      return send(req, res, htmlPath, urlPath.replace(/\/+$/, '') + '.html');
+    }
   }
   return send(req, res, filePath, urlPath);
 }

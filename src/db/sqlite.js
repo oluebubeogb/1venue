@@ -4,8 +4,8 @@ const path = require('path');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const transactionContext = new AsyncLocalStorage();
 
-const JSON_COLUMNS = new Set(['attachments', 'data', 'ev_theme', 'extra', 'host_answers', 'media', 'moderation', 'options', 'payload', 'settings', 'tags', 'theme']);
-const BOOL_COLUMNS = new Set(['anonymous', 'is_custom', 'is_following', 'is_live', 'is_public', 'multi', 'ok', 'peer_is_guest', 'reduce_motion', 'rsvped']);
+const JSON_COLUMNS = new Set(['attachments', 'data', 'ev_theme', 'extra', 'host_answers', 'media', 'moderation', 'options', 'payload', 'settings', 'state', 'tags', 'theme']);
+const BOOL_COLUMNS = new Set(['anonymous', 'is_custom', 'is_following', 'is_live', 'is_public', 'multi', 'ok', 'peer_is_guest', 'reduce_motion', 'rsvped', 'phone_verified', 'needs_password_setup']);
 const MIGRATIONS = path.join(__dirname, '..', '..', 'migrations', 'sqlite');
 const DB_PATH = path.resolve(process.env.SQLITE_PATH || path.join(__dirname, '..', '..', 'data', 'venue.sqlite'));
 let handle = null;
@@ -24,8 +24,8 @@ function open() {
   handle.pragma('foreign_keys = ON');
   handle.pragma('journal_mode = WAL');
   handle.pragma('busy_timeout = 5000');
-  handle.function('GREATEST', { varargs: true }, (...v) => Math.max(...v.filter((x) => x != null)));
-  handle.function('LEAST', { varargs: true }, (...v) => Math.min(...v.filter((x) => x != null)));
+  handle.function('GREATEST', { varargs: true }, (...v) => v.filter((x) => x != null).reduce((a, b) => a == null || b > a ? b : a, null));
+  handle.function('LEAST', { varargs: true }, (...v) => v.filter((x) => x != null).reduce((a, b) => a == null || b < a ? b : a, null));
   handle.function('split_part', (value, delimiter, part) => String(value || '').split(String(delimiter))[Number(part) - 1] || '');
   handle.function('regexp', (pattern, value) => value != null && new RegExp(String(pattern), 'i').test(String(value)) ? 1 : 0);
   return handle;
@@ -41,11 +41,14 @@ function migrate({ log = console.log } = {}) {
     if (done.has(f)) continue;
     const sql = fs.readFileSync(path.join(MIGRATIONS, f), 'utf8');
     try {
+      d.pragma('foreign_keys = OFF');
       d.transaction(() => {
         d.exec(sql);
+        if (d.pragma('foreign_key_check').length) throw new Error('SQLite migration violates foreign keys');
         d.prepare('INSERT INTO schema_migrations(version) VALUES (?)').run(f);
       })();
     } catch (e) { throw new Error(`SQLite migration ${f} failed: ${e.message}`); }
+    finally { d.pragma('foreign_keys = ON'); }
     applied.push(f);
     log(`[db] sqlite migrated ${f}`);
   }

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
 const { getContentState } = require('../src/rooms/store');
-const plugin = require('../src/plugins/content');
+const plugin = require('../src/features/content/ws');
 
 function harness() {
   const handlers = new Map(), events = [], registrations = [];

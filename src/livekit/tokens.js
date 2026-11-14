@@ -12,7 +12,7 @@ try {
 }
 
 /**
- * Create a LiveKit access token with grants derived from Meet permissions.
+ * Create a LiveKit access token with grants derived from room permissions.
  * @param {string} identity
  * @param {string} name
  * @param {string} roomName
@@ -62,7 +62,7 @@ async function createLiveKitToken(identity, name, roomName, opts = {}) {
 }
 
 /**
- * Map Meet permission object → LiveKit grant flags.
+ * Map a room permission object → LiveKit grant flags.
  */
 function grantsFromPermissions(perms = {}) {
   const canPublish =

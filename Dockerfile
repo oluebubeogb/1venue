@@ -6,7 +6,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 FROM node:22-bookworm-slim
-ENV NODE_ENV=production PORT=3000 DATA_DIR=/data STORAGE_DIR=/data/uploads NODE_OPTIONS=--max-old-space-size=384
+# NODE_MAX_OLD_SPACE_MB = V8 heap limit. Keep it ~65% of the container memory limit
+# (docker-compose mem_limit / Coolify "Maximum Memory"): 2048 MB heap for a 3 GB container.
+ENV NODE_ENV=production PORT=3000 DATA_DIR=/data STORAGE_DIR=/data/uploads NODE_MAX_OLD_SPACE_MB=2048
 WORKDIR /app
 
 # LibreOffice headless (nogui) + poppler for pdftoppm — same recipe as teams.
@@ -29,8 +31,11 @@ COPY --chown=node:node . .
 USER node
 EXPOSE 3000
 VOLUME ["/data"]
+# /health = liveness (process up, no DB). /ready = database reachable (use it for external monitors).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -fsS http://127.0.0.1:${PORT}/health >/dev/null || exit 1
+# Docker/Coolify send SIGTERM on deploy: the app snapshots live rooms and asks clients to reconnect.
+STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/bin/tini", "--"]
 # Migrations run automatically on boot (AUTO_MIGRATE=true by default).
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "exec node --max-old-space-size=${NODE_MAX_OLD_SPACE_MB:-2048} server.js"]

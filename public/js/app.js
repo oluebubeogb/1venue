@@ -47,34 +47,20 @@ export async function refreshSession() {
     try { const p = await api('/api/prefs'); const local = loadLocalPrefs(); state.prefs = { ...DEFAULT_PREFS, ...p }; if (p.anonymous) state.prefs = local; applyPrefs(); localStorage.setItem(LS_PREFS, JSON.stringify(state.prefs)); } catch { /* keep local */ }
   }
   renderUserSlot();
+  renderVerifyBanner();
   return state.user;
 }
-export function absReturnUrl(path) {
-  const p = path && String(path).startsWith('/') ? path : (location.pathname + location.search);
-  return (state.config?.publicUrl || location.origin) + p;
-}
-/** Collab Accounts login URL when configured; otherwise local `/login`. Optional path becomes `?next=`. */
+/** Local sign-in page. Optional path becomes `?next=`. */
 export function loginUrl(nextPath) {
   const path = nextPath && String(nextPath).startsWith('/') ? nextPath : (location.pathname + location.search);
-  const base = state.config?.accountsLoginUrl;
-  if (base) return `${base}?next=${encodeURIComponent(absReturnUrl(path))}`;
   return `/login?next=${encodeURIComponent(path)}`;
 }
-/** Collab Accounts signup URL derived from accountsLoginUrl; otherwise local `/login?mode=signup`. */
 export function signupUrl(nextPath) {
   const path = nextPath && String(nextPath).startsWith('/') ? nextPath : (location.pathname + location.search);
-  const login = state.config?.accountsLoginUrl;
-  if (login) {
-    const signup = login.replace(/\/login\/?$/, '/signup');
-    return `${signup}?next=${encodeURIComponent(absReturnUrl(path))}`;
-  }
-  return `/login?mode=signup&next=${encodeURIComponent(path)}`;
+  return `/signup?next=${encodeURIComponent(path)}`;
 }
-/** Navigate to Accounts (full page) or local `/login`. */
 export function goLogin(nextPath, { signup = false } = {}) {
-  const url = signup ? signupUrl(nextPath) : loginUrl(nextPath);
-  if (/^https?:/i.test(url)) location.href = url;
-  else navigate(url);
+  navigate(signup ? signupUrl(nextPath) : loginUrl(nextPath));
 }
 export function requireLogin(msg = 'Sign in to continue') {
   if (state.user) return true;
@@ -84,10 +70,28 @@ export function requireLogin(msg = 'Sign in to continue') {
 }
 export async function logout() {
   try { await api('/api/logout', { method: 'POST' }); } catch { /* ignore */ }
-  state.user = null; renderUserSlot();
-  const out = state.session?.logoutUrl;
-  if (state.config?.accountsEnabled && out && /^https?:/.test(out)) location.href = out.replace(/next=[^&]*/, 'next=' + encodeURIComponent(location.origin + '/'));
-  else navigate('/');
+  state.user = null; state.session = { authenticated: false }; renderUserSlot();
+  navigate('/');
+}
+
+/* ---------- "confirm your email" banner ---------- */
+function renderVerifyBanner() {
+  document.getElementById('verify-banner')?.remove();
+  const pending = state.session?.pendingVerification;
+  const u = state.user;
+  if (state.inRoom || (!pending && (!u || u.emailVerified))) return;
+  const email = pending ? pending.email : u.email;
+  const send = h('button', { class: 'btn sm', type: 'button' }, 'Resend link');
+  send.onclick = async () => {
+    send.disabled = true;
+    try { const r = await api('/api/auth/resend-verification', { method: 'POST' }); toast(r.message || 'Sent', { icon: 'mail' }); } catch (e) { toastErr(e); } finally { setTimeout(() => { send.disabled = false; }, 30000); }
+  };
+  const bar = h('div', { id: 'verify-banner', class: 'verify-banner', role: 'status' },
+    h('span', { html: icon('mail', { size: 18 }) }),
+    h('span', { class: 'grow' }, pending ? `Confirm ${email} to start using 1venue. Check your inbox.` : `Please confirm your email (${email}). We sent you a link.`),
+    send,
+    pending ? null : h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Dismiss', html: icon('x', { size: 16 }), onclick: () => bar.remove() }));
+  $('#view')?.before(bar);
 }
 
 /* ---------- router ---------- */
@@ -112,6 +116,9 @@ const ROUTES = [
   [/^\/whiteboard\/?$/, () => import('./pages/whiteboard.js')],
   [/^\/login\/?$/, () => import('./pages/login.js')],
   [/^\/signup\/?$/, () => import('./pages/login.js'), { mode: 'signup' }],
+  [/^\/forgot-password\/?$/, () => import('./pages/login.js'), { mode: 'forgot' }],
+  [/^\/reset-password\/?$/, () => import('./pages/reset.js')],
+  [/^\/verify-email\/?$/, () => import('./pages/verify.js')],
   [/^\/venues\/?$/, () => import('./pages/venue.js'), { list: true }],
   [/^\/v\/([A-Za-z0-9]{2,16}(?:-venue)?)\/?$/, () => import('./pages/venue.js'), 'slug'],
   [/^\/(?=[A-Za-z]*\d)(?=\d*[A-Za-z])([A-Za-z0-9]{7})\/?$/, () => import('./pages/venue.js'), 'slug'],
@@ -155,9 +162,7 @@ async function route() {
       view.replaceChildren();
       if (e?.status === 404) { view.append(h('div', { class: 'empty' }, frag404())); window.scrollTo(0, 0); return; }
       if (e?.status === 401) {
-        const href = loginUrl(location.pathname);
-        const a = h('a', { class: 'btn primary', href, style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Sign in');
-        if (!/^https?:/i.test(href)) a.setAttribute('data-link', '');
+        const a = h('a', { class: 'btn primary', href: loginUrl(location.pathname), 'data-link': '', style: { margin: '1rem auto 0', width: 'fit-content' } }, 'Sign in');
         view.append(h('div', { class: 'empty' }, h('h2', null, 'Sign in to continue'), h('p', { class: 'muted' }, 'This page needs an account.'), a));
         return;
       }
@@ -255,10 +260,7 @@ function renderUserSlot() {
     ]);
     slot.append(b);
   } else {
-    const href = loginUrl('/');
-    const a = h('a', { class: 'btn sm primary', href }, frag(icon('login', { size: 16 })), 'Sign in');
-    if (!/^https?:/i.test(href)) a.setAttribute('data-link', '');
-    slot.append(a);
+    slot.append(h('a', { class: 'btn sm primary', href: loginUrl('/'), 'data-link': '' }, frag(icon('login', { size: 16 })), 'Sign in'));
   }
   const meTab = document.querySelector('.bottomnav [data-nav="/me"] span');
   if (meTab) meTab.textContent = state.user ? 'Me' : 'Sign in';
@@ -373,8 +375,8 @@ function registerGlobal() {
     { id: 'captions-lang', label: 'Caption language', icon: 'captions', group: 'settings', keywords: ['transcript language', 'yoruba', 'igbo', 'hausa', 'pidgin'], run: go('/settings#captions'), when: () => !state.inRoom },
     { id: 'install', label: 'Install 1venue app', short: 'Install', icon: 'install', group: 'nav', keywords: ['pwa', 'add to home screen'], run: promptInstall },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: 'keyboard', group: 'nav', keywords: ['hotkeys', 'keys', 'help'], run: showShortcuts },
-    { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'collab'], when: () => !state.user, run: () => goLogin() },
-    { id: 'signup', label: 'Create account', icon: 'user', group: 'nav', keywords: ['sign up', 'register', 'collab'], when: () => !state.user, run: () => goLogin(undefined, { signup: true }) },
+    { id: 'login', label: 'Sign in', icon: 'login', group: 'nav', keywords: ['log in', 'account', 'google'], when: () => !state.user, run: () => goLogin() },
+    { id: 'signup', label: 'Create account', icon: 'user', group: 'nav', keywords: ['sign up', 'register', 'join'], when: () => !state.user, run: () => goLogin(undefined, { signup: true }) },
     { id: 'logout', label: 'Sign out', icon: 'logout', group: 'admin', keywords: ['log out'], when: () => !!state.user, run: logout },
   ];
   registerCommands('global', GLOBAL);
@@ -400,7 +402,7 @@ async function boot() {
     const a = e.target.closest('a[href]');
     if (!a || a.target || a.hasAttribute('download') || e.metaKey || e.ctrlKey || e.shiftKey) return;
     const url = new URL(a.href, location.href);
-    if (url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/')) return;
+    if (url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/') || url.pathname.startsWith('/auth/') || /^\/(privacy|terms)(\.html)?\/?$/.test(url.pathname)) return;
     e.preventDefault(); navigate(url.pathname + url.search + url.hash);
   });
   window.addEventListener('popstate', route);

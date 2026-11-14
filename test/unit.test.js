@@ -109,7 +109,7 @@ test('whiteboard core: v1 .mwb import, normalisation and v2 round-trip', async (
 });
 
 test('content sharing: only youtube/slides/image with safe sources', () => {
-  const { sanitizeContent } = require('../src/plugins/content.js');
+  const { sanitizeContent } = require('../src/features/content/ws.js');
   assert.equal(sanitizeContent({ contentType: 'url', url: 'https://example.com' }), null);
   assert.equal(sanitizeContent({ contentType: 'video', url: '/files/a/b.mp4' }), null);
   assert.equal(sanitizeContent({ contentType: 'youtube', videoId: 'bad id' }), null);
