@@ -25,7 +25,8 @@ export function safeNext(raw) {
   return '/dashboard';
 }
 
-/** "Continue with Google" button (only when the server has it configured). */
+/** "Continue with Google" button (only when the server has it configured).
+ *  Full-page href: /auth/* is excluded from the SPA click interceptor and the service worker. */
 export function googleButton(next, label = 'Continue with Google') {
   if (!state.config?.auth?.google) return null;
   return h('a', { class: 'btn block lg google-btn', href: '/auth/google/start?next=' + encodeURIComponent(next), html: GOOGLE_G + '<span>' + label + '</span>' });
@@ -37,6 +38,75 @@ export const passwordInput = (placeholder = 'Password', autocomplete = 'current-
   eye.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; eye.innerHTML = icon(show ? 'eyeOff' : 'eye', { size: 18 }); eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); };
   return { input: inp, el: h('div', { class: 'pw-wrap' }, inp, eye) };
 };
+
+export const DEFAULT_PHONE_COUNTRY = 'NG';
+export const PHONE_COUNTRIES = [
+  { iso: 'NG', dial: '+234', name: 'Nigeria' },
+  { iso: 'GH', dial: '+233', name: 'Ghana' },
+  { iso: 'KE', dial: '+254', name: 'Kenya' },
+  { iso: 'ZA', dial: '+27', name: 'South Africa' },
+  { iso: 'EG', dial: '+20', name: 'Egypt' },
+  { iso: 'CM', dial: '+237', name: 'Cameroon' },
+  { iso: 'TZ', dial: '+255', name: 'Tanzania' },
+  { iso: 'UG', dial: '+256', name: 'Uganda' },
+  { iso: 'US', dial: '+1', name: 'United States' },
+  { iso: 'GB', dial: '+44', name: 'United Kingdom' },
+  { iso: 'CA', dial: '+1', name: 'Canada' },
+  { iso: 'IN', dial: '+91', name: 'India' },
+  { iso: 'AE', dial: '+971', name: 'United Arab Emirates' },
+  { iso: 'DE', dial: '+49', name: 'Germany' },
+  { iso: 'FR', dial: '+33', name: 'France' },
+  { iso: 'NL', dial: '+31', name: 'Netherlands' },
+  { iso: 'AU', dial: '+61', name: 'Australia' },
+  { iso: 'BR', dial: '+55', name: 'Brazil' },
+  { iso: '', dial: '+', name: 'Other (full number with country code)' },
+];
+
+/** Live availability check (~300ms debounce) under a username input. */
+export function bindUsernameCheck(input, status, { current } = {}) {
+  let t = 0, ac = null;
+  const paint = (text, kind) => {
+    status.textContent = text;
+    status.className = 'tiny username-status' + (kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : ' faint');
+  };
+  const check = () => {
+    const u = input.value.trim().toLowerCase();
+    if (input.value !== u) input.value = u;
+    clearTimeout(t);
+    if (ac) ac.abort();
+    if (!u) { paint('', ''); return; }
+    if (current && u === String(current).toLowerCase()) { paint('✓ current username', 'ok'); return; }
+    t = setTimeout(async () => {
+      ac = new AbortController();
+      try {
+        const r = await fetch('/api/auth/username-available?u=' + encodeURIComponent(u), { signal: ac.signal, credentials: 'same-origin' });
+        const body = await r.json();
+        if (body.available) paint('✓ available', 'ok');
+        else paint((body.message || 'Not available') + (body.suggestions?.length ? ' · try ' + body.suggestions.join(', ') : ''), 'err');
+      } catch (e) { if (e.name !== 'AbortError') paint('', ''); }
+    }, 300);
+  };
+  input.addEventListener('input', check);
+  return check;
+}
+
+export function usernameField(opts = {}) {
+  const input = h('input', { class: 'input', type: 'text', name: 'username', placeholder: 'Username', autocomplete: 'username', 'aria-label': 'Username', maxlength: 30, spellcheck: 'false', autocapitalize: 'none', required: true });
+  if (opts.value) input.value = opts.value;
+  const status = h('p', { class: 'tiny faint username-status', role: 'status' });
+  bindUsernameCheck(input, status, opts);
+  return { input, status, el: h('div', { class: 'col', style: { gap: '.15rem' } }, input, status) };
+}
+
+export function phoneField({ required = true, value = '', country = DEFAULT_PHONE_COUNTRY } = {}) {
+  const select = h('select', { class: 'input', name: 'country', 'aria-label': 'Country calling code' },
+    ...PHONE_COUNTRIES.map((c) => h('option', { value: c.iso }, c.iso ? `${c.name} (${c.dial})` : c.name)));
+  select.value = country;
+  const input = h('input', { class: 'input', type: 'tel', name: 'phone', placeholder: '803 123 4567', autocomplete: 'tel', inputmode: 'tel', 'aria-label': 'Phone number' });
+  if (required) input.required = true;
+  if (value) input.value = value;
+  return { input, select, el: h('div', { class: 'phone-row' }, select, input) };
+}
 
 export const legalLinks = () => h('p', { class: 'tiny faint', style: { textAlign: 'center', marginTop: '1rem' } },
   h('a', { href: '/privacy' }, 'Privacy policy'), ' · ', h('a', { href: '/terms' }, 'Terms of service'));
@@ -63,6 +133,8 @@ export async function mount(view, params) {
   const show = (kind, text) => { msg.replaceChildren(text ? notice(kind, text) : ''); };
 
   const name = h('input', { class: 'input', placeholder: 'Your name', autocomplete: 'name', 'aria-label': 'Your name', maxlength: 80 });
+  const uname = usernameField();
+  const phone = phoneField();
   const email = h('input', { class: 'input', type: 'text', inputmode: 'email', placeholder: 'Email', autocomplete: 'username', 'aria-label': 'Email', required: true, maxlength: 320 });
   if (params.email) email.value = params.email;
   const pw = passwordInput();
@@ -86,7 +158,10 @@ export async function mount(view, params) {
     pw.input.autocomplete = m === 'signup' ? 'new-password' : 'current-password';
     pw.input.placeholder = m === 'signup' ? 'Create a password' : 'Password';
     form.replaceChildren(...[
-      m === 'signup' ? name : null, email,
+      m === 'signup' ? name : null,
+      m === 'signup' ? uname.el : null,
+      email,
+      m === 'signup' ? phone.el : null,
       m !== 'forgot' ? pw.el : null, m === 'signup' ? rules : null,
       m === 'login' ? h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '-.2rem' } }, forgot) : null,
       btn,
@@ -105,6 +180,8 @@ export async function mount(view, params) {
     const em = email.value.trim();
     if (!em) { email.focus(); return show('error', mode === 'login' ? 'Enter your email or username.' : 'Enter your email address.'); }
     if (mode !== 'forgot' && !pw.input.value) { pw.input.focus(); return show('error', 'Enter your password.'); }
+    if (mode === 'signup' && !uname.input.value.trim()) { uname.input.focus(); return show('error', 'Choose a username.'); }
+    if (mode === 'signup' && !phone.input.value.trim()) { phone.input.focus(); return show('error', 'Enter your phone number.'); }
     if (mode === 'signup' && pw.input.value.length < min) { pw.input.focus(); return show('error', `Use at least ${min} characters for your password.`); }
     btn.disabled = true; show();
     try {
@@ -114,7 +191,7 @@ export async function mount(view, params) {
         return;
       }
       if (mode === 'signup') {
-        const r = await api('/api/signup', { method: 'POST', body: { email: em, password: pw.input.value, displayName: name.value.trim() || undefined } });
+        const r = await api('/api/signup', { method: 'POST', body: { email: em, password: pw.input.value, displayName: name.value.trim() || undefined, username: uname.input.value.trim(), phone: phone.input.value.trim(), country: phone.select.value } });
         if (r.checkEmail) { show('info', r.message || 'Check your inbox to continue.'); return; }
       } else {
         await api('/api/login', { method: 'POST', body: { login: em, password: pw.input.value } });

@@ -81,7 +81,7 @@ test('POST /api/tts: auth, language gating, caching, limits, polling (mock Repli
     assert.equal((await post({ text: 'Ndewo', lang: 'ig' })).status, 401, 'anonymous outside a room');
 
     const u = 't' + Date.now().toString(36);
-    const su = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@ex.test`, password: 'Passw0rd!long' }) });
+    const su = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@ex.test`, password: 'Passw0rd!long', phone: '+2348031234567', country: 'NG' }) });
     const cookie = su.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 
     const yo = await post({ text: 'Ní àtètèkọ́ṣe', lang: 'yo' }, { cookie });

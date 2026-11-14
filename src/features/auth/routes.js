@@ -8,6 +8,8 @@ const config = require('../../config');
 const data = require('./data');
 const mail = require('../mail/mailer');
 const google = require('./google');
+const { parseUsername } = require('./username');
+const { normalizePhone } = require('./phone');
 
 const A = config.AUTH;
 const BAD_LOGIN = 'Email or password is incorrect.';
@@ -15,7 +17,7 @@ const LOGIN_HINT = 'No password yet, or signed up with Google? Use “Forgot pas
 const FORGOT_OK = 'If that email has an account, a link is on its way. Check your inbox (and spam).';
 
 module.exports = function routes(route, kit) {
-  const { httpError, rateLimit, clientIp, isValidEmail, isValidUsername } = kit;
+  const { httpError, rateLimit, clientIp, isValidEmail } = kit;
   const link = (ctx, path, token) => `${ctx.origin}${path}?token=${encodeURIComponent(token)}`;
   const limit = (key, perMin, msg = 'Too many attempts. Wait a minute and try again.') => { if (!rateLimit(key, perMin)) throw httpError(429, msg); };
   const str = (v, max = 320) => (typeof v === 'string' ? v : '').slice(0, max);
@@ -45,15 +47,15 @@ module.exports = function routes(route, kit) {
     const email = data.normEmail(str(b.email));
     const password = str(b.password, 200);
     const displayName = str(b.displayName || b.display_name || b.name, 80).trim() || null;
-    let username = str(b.username, 40).trim();
+    const parsed = parseUsername(str(b.username, 40));
+    const phone = normalizePhone(str(b.phone, 40), str(b.country, 8));
     limit('signup:' + clientIp(ctx.req), Math.max(1, Math.ceil(A.ratePerMin / 4)), 'Too many new accounts from this network. Try again in a minute.');
     if (!isValidEmail(email)) throw httpError(400, 'Enter a valid email address');
     const weak = auth.passwordProblem(password);
     if (weak) throw httpError(400, weak);
-    if (username) {
-      if (!isValidUsername(username)) throw httpError(400, 'Usernames are 3–24 letters, numbers or underscores');
-      if (await data.usernameTaken(username)) throw httpError(409, 'That username is taken');
-    } else username = await data.freeUsername(email.split('@')[0]);
+    if (!parsed.ok) throw httpError(400, parsed.message);
+    if (!phone.ok) throw httpError(400, phone.message);
+    if (await data.usernameTaken(parsed.username)) throw httpError(409, 'That username is taken');
 
     const existing = await data.userByEmail(email);
     if (existing) {
@@ -63,7 +65,16 @@ module.exports = function routes(route, kit) {
       }
       return { $status: 202, $body: { ok: true, checkEmail: true, message: 'Check your inbox to continue.' } };
     }
-    const row = await data.createUser({ username, email, passwordHash: await auth.hashPassword(password), displayName });
+    let row;
+    try {
+      row = await data.createUser({
+        username: parsed.username, email, passwordHash: await auth.hashPassword(password), displayName,
+        phone: phone.e164, phoneVerified: false,
+      });
+    } catch (e) {
+      if (data.isUsernameTakenError(e)) throw httpError(409, 'That username is taken');
+      throw e;
+    }
     syncInvites(row.id, email);
     await sendVerify(ctx, row);
     if (A.requireVerifiedEmail) return { $status: 202, $body: { ok: true, checkEmail: true, message: 'Check your inbox to confirm your email, then sign in.' } };
@@ -128,13 +139,63 @@ module.exports = function routes(route, kit) {
   /* ---------- account ---------- */
   route('GET', '/api/auth/account', async (ctx) => {
     const u = await me(ctx, { allowUnverified: true });
+    const row = await auth.userById(u.id);
     return {
-      user: auth.publicUser(u),
+      user: { ...auth.publicUser(u), phone: row.phone || null, phoneVerified: !!row.phone_verified },
       identities: (await data.identitiesFor(u.id)).map((i) => ({ provider: i.provider, email: i.email, linkedAt: i.created_at })),
       google: google.enabled(),
       requireVerifiedEmail: A.requireVerifiedEmail,
       passwordMin: A.passwordMin,
     };
+  });
+
+  route('GET', '/api/auth/username-available', async (ctx) => {
+    limit('username-available:' + clientIp(ctx.req), Number(process.env.USERNAME_RATE_PER_MIN || 60));
+    const raw = str((ctx.url && ctx.url.searchParams.get('u')) || '', 40);
+    const parsed = parseUsername(raw);
+    let exceptId = null;
+    try {
+      const meUser = await auth.getAuthUser(ctx.req, ctx.res, { allowUnverified: true });
+      if (meUser) exceptId = meUser.id;
+    } catch (_) { /* anonymous check */ }
+    if (!parsed.ok) return { available: false, reason: parsed.reason, message: parsed.message };
+    if (await data.usernameTaken(parsed.username, exceptId)) {
+      return {
+        available: false, reason: 'taken', message: 'That username is taken',
+        suggestions: await data.usernameSuggestions(parsed.username, exceptId),
+      };
+    }
+    return { available: true, username: parsed.username };
+  });
+
+  route('POST', '/api/auth/change-username', async (ctx) => {
+    const u = await me(ctx, { allowUnverified: true });
+    const b = await ctx.body(4096);
+    limit('chun:' + u.id, 8);
+    const parsed = parseUsername(str(b.username, 40));
+    if (!parsed.ok) throw httpError(400, parsed.message);
+    const row = await auth.userById(u.id);
+    if (String(row.username || '').toLowerCase() === parsed.username) return { ok: true, username: row.username };
+    if (await data.usernameTaken(parsed.username, u.id)) throw httpError(409, 'That username is taken');
+    try {
+      await data.setUsername(u.id, parsed.username);
+    } catch (e) {
+      if (data.isUsernameTakenError(e)) throw httpError(409, 'That username is taken');
+      throw e;
+    }
+    auth.forgetUser(u.id);
+    return { ok: true, username: parsed.username };
+  });
+
+  route('POST', '/api/auth/change-phone', async (ctx) => {
+    const u = await me(ctx, { allowUnverified: true });
+    const b = await ctx.body(4096);
+    limit('chph:' + u.id, 8);
+    const phone = normalizePhone(str(b.phone, 40), str(b.country, 8));
+    if (!phone.ok) throw httpError(400, phone.message);
+    await data.setPhone(u.id, phone.e164, false);
+    auth.forgetUser(u.id);
+    return { ok: true, phone: phone.e164, phoneVerified: false };
   });
 
   /* ---------- email verification ---------- */

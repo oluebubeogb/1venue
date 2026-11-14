@@ -69,4 +69,18 @@ function client(base, j = jar()) {
   return { jar: j, get: (p, h) => call('GET', p, null, h), post: (p, b, h) => call('POST', p, b || {}, h), del: (p) => call('DELETE', p) };
 }
 
-module.exports = { boot, jar, client, freePort };
+/** Unique, valid local-signup body (username + Nigerian E.164 phone). Extra overrides any field. */
+function signupPayload(extra = {}) {
+  const username = extra.username !== undefined ? extra.username : ('u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).slice(0, 30);
+  return {
+    username,
+    email: extra.email || `${username || 'u' + Date.now().toString(36)}@ex.test`,
+    password: extra.password || 'Passw0rd!long',
+    phone: extra.phone !== undefined ? extra.phone : '+2348031234567',
+    country: extra.country !== undefined ? extra.country : 'NG',
+    ...extra,
+  };
+}
+
+module.exports = { boot, jar, client, freePort, signupPayload };
+

@@ -51,7 +51,7 @@ test('optional event lookup by room code returns null, strict returns 404', { sk
 });
 test('local signup sets session cookie, /api/me works', { skip }, async () => {
   const u = 't' + Date.now().toString(36);
-  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' }) });
+  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long', phone: '+2348031234567', country: 'NG' }) });
   assert.equal(r.status, 201);
   const cookie = (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')]).map((c) => c.split(';')[0]).join('; ');
   const me = await fetch(base + '/api/me', { headers: { cookie } }); assert.equal(me.status, 200);
@@ -59,7 +59,7 @@ test('local signup sets session cookie, /api/me works', { skip }, async () => {
 
 async function signup() {
   const u = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long' }) });
+  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@example.test`, password: 'Passw0rd!long', phone: '+2348031234567', country: 'NG' }) });
   return (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')]).map((c) => c.split(';')[0]).join('; ');
 }
 test('uploads: content purpose accepted, unknown purpose normalised, video refused, limits exposed', { skip }, async () => {

@@ -2,7 +2,7 @@
 import { icon } from '../icons.js';
 import { h, api, toast, toastErr, sheet, confirmDlg, timeAgo } from '../ui.js';
 import { logout, refreshSession, navigate } from '../app.js';
-import { passwordInput, notice, GOOGLE_G } from './login.js';
+import { passwordInput, notice, GOOGLE_G, usernameField, phoneField } from './login.js';
 
 function deviceName(ua) {
   const s = String(ua || '');
@@ -37,6 +37,33 @@ export async function accountCard(card, row) {
     const chip = h('span', { class: 'chip', style: { '--g': verified ? '#059669' : '#d97706', color: 'var(--g)', fontSize: '.7rem', padding: '.1rem .45rem', minHeight: 0 } }, verified ? 'Confirmed' : 'Not confirmed');
     const resend = !verified ? h('button', { class: 'btn sm', type: 'button', onclick: async (e) => { e.currentTarget.disabled = true; try { const r = await api('/api/auth/resend-verification', { method: 'POST' }); toast(r.message, { icon: 'mail' }); } catch (er) { toastErr(er); } } }, 'Resend link') : null;
 
+    const changeUsername = () => {
+      const field = usernameField({ value: u.username, current: u.username });
+      formSheet({
+        title: 'Change username', ic: 'user', submit: 'Save username',
+        fields: [field.el],
+        note: '3–30 characters. Lowercase letters, numbers, underscores or periods.',
+        onSubmit: async (s) => {
+          await api('/api/auth/change-username', { method: 'POST', body: { username: field.input.value.trim() } });
+          s.close(); toast('Username saved', { icon: 'check' });
+          await refreshSession(); paint();
+        },
+      });
+    };
+    const changePhone = () => {
+      const field = phoneField({ required: true, value: u.phone || '', country: 'NG' });
+      formSheet({
+        title: u.phone ? 'Change phone number' : 'Add a phone number', ic: 'user', submit: 'Save phone number',
+        fields: [field.el],
+        note: 'Stored only as contact information for your account. We do not share it or use it for marketing.',
+        onSubmit: async (s) => {
+          const r = await api('/api/auth/change-phone', { method: 'POST', body: { phone: field.input.value.trim(), country: field.select.value } });
+          s.close(); toast('Phone number saved', { icon: 'check' });
+          u.phone = r.phone;
+          paint();
+        },
+      });
+    };
     const changeEmail = () => {
       const em = h('input', { class: 'input', type: 'email', placeholder: 'New email address', autocomplete: 'email', 'aria-label': 'New email' });
       const pw = passwordInput('Current password');
@@ -85,6 +112,8 @@ export async function accountCard(card, row) {
 
     box.replaceChildren(
       row('user', 'people', u.displayName, '@' + u.username, h('a', { class: 'btn sm', href: '/me?edit=1', 'data-link': '' }, 'Edit profile')),
+      row('user', 'people', 'Username', '@' + u.username, h('button', { class: 'btn sm', type: 'button', onclick: changeUsername }, 'Change')),
+      row('mail', 'people', 'Phone', u.phone || 'Not set', h('button', { class: 'btn sm', type: 'button', onclick: changePhone }, u.phone ? 'Change' : 'Add')),
       row('mail', 'people', h('span', { class: 'row', style: { gap: '.4rem', flexWrap: 'wrap' } }, 'Email', chip), h('span', { style: { wordBreak: 'break-all' } }, u.email),
         h('div', { class: 'col', style: { gap: '.3rem', alignItems: 'flex-end' } }, h('button', { class: 'btn sm', type: 'button', onclick: changeEmail }, 'Change'), resend)),
       row('key', 'admin', 'Password', u.hasPassword ? 'Used with your email or username' : 'Not set: you sign in with Google', h('button', { class: 'btn sm', type: 'button', onclick: changePassword }, u.hasPassword ? 'Change' : 'Set password')),

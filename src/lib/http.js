@@ -75,7 +75,7 @@ function isValidEmail(email) {
 }
 
 function isValidUsername(username) {
-  return /^[a-zA-Z0-9_]{3,24}$/.test(username);
+  return require('../features/auth/username').isValidUsername(username);
 }
 
 function clientIp(req) {

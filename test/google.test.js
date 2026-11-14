@@ -6,14 +6,14 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
-const { boot, client } = require('./helpers/server');
+const { boot, client, signupPayload } = require('./helpers/server');
 
 const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
 const uid = () => 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const CLIENT_ID = 'test-client.apps.googleusercontent.com';
 const SECRET = 'test-google-secret';
 
-async function mockGoogle() {
+async function mockGoogle(opts = {}) {
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const rogue = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey;
   const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'k1', alg: 'RS256', use: 'sig' };
@@ -26,7 +26,7 @@ async function mockGoogle() {
     calls.push({ path: u.pathname, body: raw });
     const json = (s, b, h = {}) => { res.writeHead(s, { 'content-type': 'application/json', ...h }); res.end(JSON.stringify(b)); };
     if (u.pathname === '/.well-known/openid-configuration') {
-      return json(200, { issuer: 'https://accounts.google.com', authorization_endpoint: base + '/o/oauth2/v2/auth', token_endpoint: base + '/token', jwks_uri: base + '/certs' }, { 'cache-control': 'public, max-age=3600' });
+      return json(200, { issuer: 'https://accounts.google.com', authorization_endpoint: opts.authorizationEndpoint || (base + '/o/oauth2/v2/auth'), token_endpoint: base + '/token', jwks_uri: base + '/certs' }, { 'cache-control': 'public, max-age=3600' });
     }
     if (u.pathname === '/certs') return json(200, { keys: [jwk] }, { 'cache-control': 'public, max-age=3600' });
     if (u.pathname === '/token' && req.method === 'POST') {
@@ -94,6 +94,10 @@ test('Google sign-in: PKCE+state+nonce request, new user, returning user, linkin
     const me = (await f.c.get('/api/session')).body.user;
     assert.equal(me.email, email); assert.equal(me.emailVerified, true); assert.equal(me.hasPassword, false);
     assert.equal(me.displayName, 'Ngozi Okafor');
+    assert.ok(me.username, 'Google sign-up auto-generates a username');
+    assert.match(me.username, /^[a-z0-9._]{3,30}$/);
+    assert.ok(!me.username.startsWith('.') && !me.username.endsWith('.'));
+    assert.match(me.username, /^ngozi/);
     assert.ok(await s.mailLink(email, /Welcome/) !== null);
     const ids = (await db.q('SELECT provider, subject FROM oauth_identities WHERE user_id = $1', [me.id])).rows;
     assert.deepEqual(ids, [{ provider: 'google', subject: sub }]);
@@ -105,7 +109,7 @@ test('Google sign-in: PKCE+state+nonce request, new user, returning user, linkin
     // existing verified local account with the same email: linked, password kept
     const le = `${uid()}@ex.test`;
     const local = client(s.base);
-    await local.post('/api/signup', { email: le, password: 'local password 1' });
+    await local.post('/api/signup', signupPayload({ email: le, password: 'local password 1' }));
     await db.q('UPDATE users SET email_verified_at = NOW() WHERE email = $1', [le]);
     const lk = await signInWithGoogle(s, g, { sub: 'sub-' + uid(), email: le.toUpperCase() });
     const lu = (await lk.c.get('/api/session')).body.user;
@@ -116,7 +120,7 @@ test('Google sign-in: PKCE+state+nonce request, new user, returning user, linkin
     // unverified account with a password (could be a squatter): password and sessions dropped
     const se = `${uid()}@ex.test`;
     const squatter = client(s.base);
-    await squatter.post('/api/signup', { email: se, password: 'squatter pass 1' });
+    await squatter.post('/api/signup', signupPayload({ email: se, password: 'squatter pass 1' }));
     const owner = await signInWithGoogle(s, g, { sub: 'sub-' + uid(), email: se });
     assert.equal((await owner.c.get('/api/session')).body.user.emailVerified, true);
     assert.equal((await squatter.get('/api/me')).status, 401, "squatter's session revoked");
@@ -166,5 +170,24 @@ test('GOOGLE_ALLOW_SIGNUP=false: only existing accounts can use Google', { skip 
   try {
     const f = await signInWithGoogle(s, g, { sub: 'sub-' + uid(), email: `${uid()}@gmail.test` });
     assert.equal(f.location, '/login?error=google-signup-closed');
+  } finally { await s.stop(); g.srv.close(); }
+});
+
+
+test('GET /auth/google/start?next=/ returns 302 to accounts.google.com when configured', { skip }, async () => {
+  const g = await mockGoogle({ authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth' });
+  const s = await boot({ GOOGLE_CLIENT_ID: CLIENT_ID, GOOGLE_CLIENT_SECRET: SECRET, GOOGLE_DISCOVERY_URL: g.url });
+  try {
+    const r = await client(s.base).get('/auth/google/start?next=%2F');
+    assert.equal(r.status, 302);
+    const loc = r.res.headers.get('location');
+    assert.ok(loc, 'Location header');
+    const u = new URL(loc);
+    assert.equal(u.origin, 'https://accounts.google.com');
+    assert.equal(u.pathname, '/o/oauth2/v2/auth');
+    assert.equal(u.searchParams.get('client_id'), CLIENT_ID);
+    assert.equal(u.searchParams.get('redirect_uri'), s.base + '/auth/google/callback');
+    assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
+    assert.ok(u.searchParams.get('code_challenge'));
   } finally { await s.stop(); g.srv.close(); }
 });

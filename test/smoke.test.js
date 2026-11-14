@@ -32,7 +32,7 @@ test('smoke: every layer answers', { skip }, async () => {
 
   // sign up, then a signed-in feature route (dashboard) and a raw feature handler (schedule)
   const u = 's' + Date.now().toString(36);
-  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@ex.test`, password: 'Passw0rd!long' }) });
+  const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, email: `${u}@ex.test`, password: 'Passw0rd!long', phone: '+2348031234567', country: 'NG' }) });
   assert.ok(r.ok, 'signup ' + r.status);
   const cookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   assert.equal((await fetch(base + '/api/dashboard', { headers: { cookie } })).status, 200);

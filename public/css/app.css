@@ -911,6 +911,13 @@ strong, b { font-weight: 600; }
 .auth-card form .btn.block { margin-top: .35rem; position: static; }
 .auth-card form .btn.ghost { align-self: center; margin-top: .25rem; position: static; height: auto; min-height: 36px; }
 .auth-card p, .auth-card .small { line-height: 1.5; }
+.phone-row { display: flex; gap: .5rem; align-items: stretch; }
+.phone-row select.input { flex: 0 1 11.5rem; max-width: 13rem; padding-right: 1.6rem; }
+.phone-row .input[type="tel"] { flex: 1; min-width: 0; }
+.username-status { margin: .2rem 0 0; min-height: 1.1em; }
+.username-status.ok { color: #087443; }
+.username-status.err { color: #b42318; }
+
 
 /* v6: Stripe-like translation select */
 select.tr-select { appearance: none; -webkit-appearance: none; height: 30px; min-height: 30px; padding: 0 1.8rem 0 .65rem; font-size: .82rem; font-weight: 500; border: 1px solid color-mix(in srgb, var(--line) 85%, transparent); border-radius: 8px; background-color: var(--s1, #fff); box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 0 0 0 transparent; cursor: pointer; width: auto; max-width: 9rem;

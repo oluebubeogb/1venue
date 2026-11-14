@@ -1,6 +1,7 @@
 /** Queries for accounts: users, one-time email tokens, OAuth identities. */
 const { q } = require('../../../db');
 const { sha256, newSecret } = require('../../lib/auth');
+const { parseUsername, slugHint } = require('./username');
 
 const one = async (sql, args) => (await q(sql, args)).rows[0] || null;
 const normEmail = (e) => String(e || '').trim().toLowerCase();
@@ -10,25 +11,62 @@ const userByLogin = async (login) => {
   const s = String(login || '').trim();
   return s.includes('@') ? userByEmail(s) : one('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [s]);
 };
-const usernameTaken = async (u) => !!(await one('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)', [u]));
+const usernameTaken = async (u, exceptId) => !!(await one(
+  exceptId
+    ? 'SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) AND id <> $2'
+    : 'SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)',
+  exceptId ? [u, exceptId] : [u]));
 
-/** A free username based on a hint (email local part, a name). */
-async function freeUsername(hint) {
-  let base = String(hint || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
-  if (base.length < 3) base = (base + 'user').slice(0, 18);
-  if (!(await usernameTaken(base))) return base;
-  for (let i = 0; i < 20; i++) {
-    const c = `${base}_${Math.floor(100 + Math.random() * 9900)}`;
-    if (!(await usernameTaken(c))) return c;
-  }
-  return `${base}_${Date.now().toString(36)}`;
+function isUsernameTakenError(e) {
+  if (!e || e.code !== '23505') return false;
+  return /username/i.test(`${e.constraint || ''} ${e.detail || ''} ${e.message || ''}`);
 }
 
-async function createUser({ username, email, passwordHash = null, displayName = null, avatarUrl = null, verified = false }) {
+async function okUsername(c, exceptId) {
+  return parseUsername(c).ok && !(await usernameTaken(c, exceptId));
+}
+
+/** A free, valid username based on a hint (email local part, a name). */
+async function freeUsername(hint) {
+  let base = slugHint(hint);
+  if (!parseUsername(base).ok) {
+    const padded = (base + 'user').slice(0, 24);
+    base = parseUsername(padded).ok ? padded : 'user';
+  }
+  if (await okUsername(base)) return base;
+  for (let i = 0; i < 20; i++) {
+    const c = `${base.slice(0, 24)}_${Math.floor(100 + Math.random() * 9900)}`.slice(0, 30);
+    if (await okUsername(c)) return c;
+  }
+  return `${base.slice(0, 18)}_${Date.now().toString(36)}`.slice(0, 30);
+}
+
+async function usernameSuggestions(base, exceptId) {
+  const parsed = parseUsername(base);
+  let stem = (parsed.ok ? parsed.username : slugHint(base) || 'user').replace(/_+$/g, '');
+  if (stem.length < 3) stem = 'user';
+  stem = stem.slice(0, 24);
+  const out = [];
+  for (let i = 2; out.length < 3 && i < 80; i++) {
+    const c = `${stem}${i}`.slice(0, 30);
+    if (await okUsername(c, exceptId)) out.push(c);
+  }
+  return out;
+}
+
+async function createUser({ username, email, passwordHash = null, displayName = null, avatarUrl = null, verified = false, phone = null, phoneVerified = false }) {
   return one(
-    `INSERT INTO users (username, email, password_hash, display_name, avatar_url, email_verified_at, password_changed_at)
-     VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN NOW() END, CASE WHEN $3::text IS NOT NULL THEN NOW() END) RETURNING *`,
-    [username, normEmail(email), passwordHash, displayName, avatarUrl, !!verified]);
+    `INSERT INTO users (username, email, password_hash, display_name, avatar_url, email_verified_at, password_changed_at, phone, phone_verified)
+     VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN NOW() END, CASE WHEN $3::text IS NOT NULL THEN NOW() END, $7, $8) RETURNING *`,
+    [username, normEmail(email), passwordHash, displayName, avatarUrl, !!verified, phone || null, !!phoneVerified]);
+}
+
+async function setUsername(userId, username) {
+  return one('UPDATE users SET username = $2, updated_at = NOW() WHERE id = $1 RETURNING *', [userId, username]);
+}
+
+async function setPhone(userId, e164, verified = false) {
+  return one('UPDATE users SET phone = $2, phone_verified = $3, updated_at = NOW() WHERE id = $1 RETURNING *', [userId, e164, !!verified]);
 }
 
 async function setPassword(userId, passwordHash) {
@@ -66,6 +104,7 @@ const linkIdentity = (provider, subject, userId, email) => q(
 const identitiesFor = async (userId) => (await q('SELECT provider, email, created_at FROM oauth_identities WHERE user_id = $1 ORDER BY created_at', [userId])).rows;
 
 module.exports = {
-  normEmail, userByEmail, userByLogin, usernameTaken, freeUsername, createUser, setPassword, markVerified,
+  normEmail, userByEmail, userByLogin, usernameTaken, usernameSuggestions, freeUsername, isUsernameTakenError,
+  createUser, setUsername, setPhone, setPassword, markVerified,
   issueToken, consumeToken, recentToken, identity, linkIdentity, identitiesFor,
 };

@@ -451,3 +451,25 @@ For Google Auth Platform → Branding, use:
 * Privacy policy: `https://1venue.live/privacy`
 * Terms of service: `https://1venue.live/terms`
 * Authorised domain: `1venue.live`
+
+## Google 404 fix, username + phone on sign-up (14 Nov 2026)
+
+**Continue with Google 404.** The server was already correct: `GET /auth/google/start` 302s to
+Google with PKCE. The 404 (“This page drifted off the venue.”) came from the client: the SPA
+click interceptor treated the button as an in-app route, and an installed service worker could
+also intercept the navigation. `/auth/*` is now excluded from the click interceptor (the button
+does a full-page load) and is network-only in the service worker. The SW version is
+`v16-2026-11-14`. No Coolify env change is needed; redeploy so browsers pick up the new client
+and service worker. (`curl -sI` on that path is misleading: the handler is GET-only, so HEAD
+falls through to the SPA shell.)
+
+**Sign-up** now requires a username and a phone number (Google accounts get a unique username
+from the Google name or email, and can add or change both in Settings → Account):
+
+* Username: 3–30 characters, lowercase letters, digits, underscore or period; cannot start or
+  end with a period; reserved names (admin, support, login, signup, 1venue, and route names)
+  are blocked. Live availability is checked at `GET /api/auth/username-available?u=`. A unique
+  index on `LOWER(username)` makes races safe (migration `20261114080000_username_phone.sql`).
+* Phone: stored in E.164, validated with libphonenumber-js, country selector defaults to
+  Nigeria (+234). Not unique, not verified by SMS (`phone_verified` stays false). Not shared
+  and not used for marketing. The privacy policy mentions both fields.

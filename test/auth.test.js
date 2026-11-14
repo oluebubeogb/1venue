@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const { boot, client } = require('./helpers/server');
+const { boot, client, signupPayload } = require('./helpers/server');
 
 const skip = !process.env.DATABASE_URL ? 'set DATABASE_URL' : false;
 const uid = () => 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -21,9 +21,10 @@ test('sign up, verify email, sign in/out, generic errors, cookies', { skip }, as
   try {
     const u = uid(); const email = `${u}@ex.test`;
     const c = client(s.base);
-    const su = await c.post('/api/signup', { email, password: 'correct horse 1', displayName: 'Ada L' });
+    const su = await c.post('/api/signup', signupPayload({ email, password: 'correct horse 1', displayName: 'Ada L' }));
     assert.equal(su.status, 201);
     assert.equal(su.body.user.emailVerified, false);
+    assert.match(su.body.user.username, /^[a-z0-9._]{3,30}$/);
     assert.equal(su.body.token, undefined, 'tokens never go to the page');
     const cookies = su.res.headers.getSetCookie();
     for (const name of ['1v_at=', '1v_rt=']) {
@@ -45,7 +46,7 @@ test('sign up, verify email, sign in/out, generic errors, cookies', { skip }, as
     assert.equal((await c.get('/api/session')).body.user.emailVerified, true);
 
     // same email again: no account created, no hint on the page, owner is told by email
-    const again = await client(s.base).post('/api/signup', { email: email.toUpperCase(), password: 'another pass 22' });
+    const again = await client(s.base).post('/api/signup', signupPayload({ email: email.toUpperCase(), password: 'another pass 22' }));
     assert.equal(again.status, 202);
     assert.equal(again.body.checkEmail, true);
     assert.ok(await s.mailLink(email, /already have/));
@@ -80,7 +81,7 @@ test('refresh token rotation, grace period, reuse detection; sessions; sign out 
   try {
     const email = `${uid()}@ex.test`;
     const a = client(s.base);
-    assert.equal((await a.post('/api/signup', { email, password: 'rotate me please' })).status, 201);
+    assert.equal((await a.post('/api/signup', signupPayload({ email, password: 'rotate me please' }))).status, 201);
     const rt0 = a.jar.get('1v_rt');
     // access cookie expired (browser dropped it): only the refresh cookie is sent
     a.jar.delete('1v_at');
@@ -124,7 +125,7 @@ test('forgot / reset password: generic answer, single-use link, every session re
   try {
     const email = `${uid()}@ex.test`;
     const a = client(s.base);
-    await a.post('/api/signup', { email, password: 'first password 1' });
+    await a.post('/api/signup', signupPayload({ email, password: 'first password 1' }));
     const other = client(s.base);
     await other.post('/api/login', { login: email, password: 'first password 1' });
 
@@ -160,7 +161,7 @@ test('change password keeps this device, signs out others; change email needs th
   try {
     const email = `${uid()}@ex.test`; const newEmail = `${uid()}@ex.test`;
     const a = client(s.base); const b = client(s.base);
-    await a.post('/api/signup', { email, password: 'change me now 1' });
+    await a.post('/api/signup', signupPayload({ email, password: 'change me now 1' }));
     await b.post('/api/login', { login: email, password: 'change me now 1' });
     assert.equal((await a.post('/api/auth/change-password', { currentPassword: 'nope nope nope', newPassword: 'brand new pass 2' })).status, 400);
     const ch = await a.post('/api/auth/change-password', { currentPassword: 'change me now 1', newPassword: 'brand new pass 2' });
@@ -183,7 +184,7 @@ test('change password keeps this device, signs out others; change email needs th
 
     // changing to an address that already has an account answers the same, sends nothing
     const taken = `${uid()}@ex.test`;
-    await client(s.base).post('/api/signup', { email: taken, password: 'someone else 1' });
+    await client(s.base).post('/api/signup', signupPayload({ email: taken, password: 'someone else 1' }));
     const m = s.mark();
     const ce2 = await a.post('/api/auth/change-email', { email: taken, password: 'brand new pass 2' });
     assert.equal(ce2.status, 200);
@@ -236,7 +237,7 @@ test('AUTH_REQUIRE_VERIFIED_EMAIL=true and rate limits', { skip }, async () => {
   try {
     const email = `${uid()}@ex.test`;
     const c = client(s.base);
-    const su = await c.post('/api/signup', { email, password: 'verify first 1' });
+    const su = await c.post('/api/signup', signupPayload({ email, password: 'verify first 1' }));
     assert.equal(su.status, 202); assert.equal(su.body.checkEmail, true);
     assert.equal(c.jar.get('1v_rt'), undefined, 'no session before verifying');
     const li = await c.post('/api/login', { login: email, password: 'verify first 1' });
@@ -264,5 +265,67 @@ test('CANONICAL_HOST 301-redirects other hosts; health checks stay reachable', {
     assert.equal(r.headers.location, 'https://1venue.example.com/e/abc?x=1');
     assert.equal((await get('/health', 'www.1venue.example.com')).statusCode, 200);
     assert.equal((await get('/', '1venue.example.com')).statusCode, 200);
+  } finally { await s.stop(); }
+});
+
+
+test('local signup requires a valid unique username and a valid phone', { skip }, async () => {
+  const s = await boot();
+  try {
+    const base = { email: `${uid()}@ex.test`, password: 'correct horse 1', displayName: 'Ada L' };
+    assert.equal((await client(s.base).post('/api/signup', signupPayload({ ...base, username: '' }))).status, 400);
+    assert.equal((await client(s.base).post('/api/signup', signupPayload({ ...base, phone: '' }))).status, 400);
+    assert.equal((await client(s.base).post('/api/signup', signupPayload({ ...base, username: 'admin' }))).status, 400);
+    assert.equal((await client(s.base).post('/api/signup', signupPayload({ ...base, username: '.dotty' }))).status, 400);
+    assert.equal((await client(s.base).post('/api/signup', signupPayload({ ...base, phone: '123', country: 'NG' }))).status, 400);
+
+    const username = 'ada.' + uid().slice(0, 10);
+    const c = client(s.base);
+    const su = await c.post('/api/signup', signupPayload({ ...base, username, phone: '08031234567', country: 'NG' }));
+    assert.equal(su.status, 201);
+    assert.equal(su.body.user.username, username);
+    const acc = await c.get('/api/auth/account');
+    assert.equal(acc.status, 200);
+    assert.equal(acc.body.user.phone, '+2348031234567');
+    assert.equal(acc.body.user.phoneVerified, false);
+
+    const taken = await client(s.base).post('/api/signup', signupPayload({ email: `${uid()}@ex.test`, password: 'correct horse 1', username }));
+    assert.equal(taken.status, 409);
+
+    const avail = await client(s.base).get('/api/auth/username-available?u=' + encodeURIComponent(username));
+    assert.equal(avail.status, 200);
+    assert.equal(avail.body.available, false);
+    assert.equal(avail.body.reason, 'taken');
+    assert.ok(Array.isArray(avail.body.suggestions) && avail.body.suggestions.length >= 1);
+
+    const free = await client(s.base).get('/api/auth/username-available?u=' + encodeURIComponent('free_' + uid()));
+    assert.equal(free.status, 200);
+    assert.equal(free.body.available, true);
+
+    const reserved = await client(s.base).get('/api/auth/username-available?u=support');
+    assert.equal(reserved.body.available, false);
+    assert.equal(reserved.body.reason, 'reserved');
+
+    const mine = await c.get('/api/auth/username-available?u=' + encodeURIComponent(username));
+    assert.equal(mine.body.available, true, 'your own username stays available to you');
+
+    const ch = await c.post('/api/auth/change-username', { username: 'new.' + uid().slice(0, 12) });
+    assert.equal(ch.status, 200);
+    const ph = await c.post('/api/auth/change-phone', { phone: '08021234567', country: 'NG' });
+    assert.equal(ph.status, 200);
+    assert.equal(ph.body.phone, '+2348021234567');
+  } finally { await s.stop(); }
+});
+
+test('two signups racing for the same username: one wins, the other is 409', { skip }, async () => {
+  const s = await boot();
+  try {
+    const username = 'race_' + uid();
+    const [a, b] = await Promise.all([
+      client(s.base).post('/api/signup', signupPayload({ username, email: `${uid()}@ex.test`, password: 'correct horse 1' })),
+      client(s.base).post('/api/signup', signupPayload({ username, email: `${uid()}@ex.test`, password: 'correct horse 1' })),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    assert.deepEqual(statuses, [201, 409]);
   } finally { await s.stop(); }
 });
