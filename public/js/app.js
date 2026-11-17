@@ -1,4 +1,5 @@
 // 1venue SPA shell: session, persisted preferences/theme, router, global commands.
+import { creditBadge, setCreditUser } from './credits.js';
 import { icon, LOGO } from './icons.js';
 import { h, $, api, toast, sheet, menu, avatar, initTooltips, debounce, closeTopSheet, toastErr, errText, profilePath } from './ui.js';
 import { mountCommandBar, registerCommands, setBarContext, barVisible, focusBar, refreshBar } from './commands.js';
@@ -263,9 +264,12 @@ function openBooksPicker(anchor) {
     document.addEventListener('keydown', onKey, true);
   }, 0);
 }
+let creditControl;
 function renderUserSlot() {
   const slot = $('#userslot'); if (!slot) return;
+  creditControl?.unsubscribe(); creditControl=null;
   slot.innerHTML = '';
+  setCreditUser(state.user?.id || null);
   if (state.user) {
     const b = h('button', { class: 'icon-btn', 'data-tip': state.user.displayName, 'aria-label': 'Account menu', style: { width: 'auto', padding: '0 2px' } }, avatar(state.user.displayName, state.user.avatarUrl, 'sm ring'));
     b.onclick = () => menu(b, [
@@ -280,7 +284,8 @@ function renderUserSlot() {
       state.user.isAdmin ? { label: 'Admin', icon: 'shield', group: 'admin', run: () => navigate('/admin') } : null, '-',
       { label: 'Sign out', icon: 'logout', group: 'admin', run: logout },
     ]);
-    slot.append(b);
+    creditControl=creditBadge();
+    slot.append(creditControl.badge,b);
   } else {
     slot.append(h('a', { class: 'btn sm primary', href: loginUrl(location.pathname + location.search), 'data-link': '' }, frag(icon('login', { size: 16 })), 'Log in'));
   }

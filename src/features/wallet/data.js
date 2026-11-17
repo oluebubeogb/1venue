@@ -27,6 +27,7 @@ async function settle(purchase, verified) {
     if (!user) throw fail(409, 'This payment needs support review because its account is unavailable');
     const payment = (await c.query('SELECT * FROM credit_payments WHERE reference=$1 FOR UPDATE', [purchase.reference])).rows[0];
     if (payment.status === 'paid') return paymentOut(payment);
+    await require('./billing-data').reconcileLocked(c, user.id);
     await c.query('INSERT INTO credit_wallets(user_id) VALUES ($1) ON CONFLICT DO NOTHING', [user.id]);
     const wallet = (await c.query(`UPDATE credit_wallets SET balance_units=balance_units+$2,updated_at=NOW()
       WHERE user_id=$1 AND balance_units<=$3 RETURNING balance_units`, [user.id, Number(payment.credit_units), Number.MAX_SAFE_INTEGER - Number(payment.credit_units)])).rows[0];
@@ -46,14 +47,15 @@ async function payments(userId, before) {
 }
 async function history(userId, before) {
   if (before != null && (!/^\d{1,15}$/.test(String(before)) || Number(before) < 1)) throw fail(400, 'Invalid history page');
-  const rows = (await q(`SELECT l.*,p.reference FROM credit_ledger l JOIN credit_payments p ON p.id=l.payment_id
+  const rows = (await q(`SELECT l.*,p.reference,b.code AS meeting_code FROM credit_ledger l LEFT JOIN credit_payments p ON p.id=l.payment_id LEFT JOIN credit_billing_sessions b ON b.id=l.billing_session_id
     WHERE l.user_id=$1 ${before ? 'AND l.id<$2' : ''} ORDER BY l.id DESC LIMIT 31`, before ? [userId, before] : [userId])).rows;
   const page = rows.slice(0, 30);
-  return { entries: page.map((r) => ({ id: String(r.id), type: r.kind, credits: credits(r.delta_units), balanceAfter: credits(r.balance_after_units), reference: r.reference, createdAt: r.created_at })), nextBefore: rows.length > 30 ? String(page[page.length - 1].id) : null };
+  return { entries: page.map((r) => ({ id: String(r.id), type: r.kind, credits: credits(r.delta_units), balanceAfter: credits(r.balance_after_units), reference: r.reference, meetingCode: r.meeting_code || null, createdAt: r.created_at })), nextBefore: rows.length > 30 ? String(page[page.length - 1].id) : null };
 }
 async function assertCanDelete(c, userId) {
   const wallet = (await c.query('SELECT balance_units FROM credit_wallets WHERE user_id=$1', [userId])).rows[0];
   const unsettled = (await c.query("SELECT 1 FROM credit_payments WHERE user_id=$1 AND status IN ('pending','review') LIMIT 1", [userId])).rows[0];
-  if (Number(wallet?.balance_units || 0) > 0 || unsettled) throw fail(409, 'Resolve your credit balance and unfinished purchases before deleting your account. Please contact support if you need help.');
+  const active = (await c.query("SELECT id FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed' LIMIT 1", [userId])).rows[0];
+  if (Number(wallet?.balance_units || 0) > 0 || unsettled || active) throw fail(409, 'Resolve your credit balance and unfinished purchases before deleting your account. Please contact support if you need help.');
 }
 module.exports = { assertCanDelete, balance, createPayment, getPayment, checkoutReady, mark, settle, payments, history, paymentOut };

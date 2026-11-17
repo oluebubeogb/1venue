@@ -1,5 +1,6 @@
 'use strict';
 // Text-to-speech feature against a mocked Replicate API (no network, no cost).
+const { fundTestWallet } = require('./helpers/server');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -127,7 +128,8 @@ test('POST /api/tts: auth, language gating, caching, limits, polling (mock Repli
 
     // room participants (guests) can use it with their room credential
     const pid = 'host-tts-' + Date.now();
-    const cr = await (await fetch(base + '/api/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'TTS room', participantName: 'Guest Host', participantId: pid }) })).json();
+    await fundTestWallet(base, cookie);
+    const cr = await (await fetch(base + '/api/create', { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ name: 'TTS room', participantName: 'Guest Host', participantId: pid }) })).json();
     const roomHeaders = { 'X-Room-Code': cr.code, 'X-Participant-Id': pid, 'X-Room-Credential': cr.wsCredential };
     const rr = await post({ text: 'Hello from the room' + n, lang: 'en' }, roomHeaders);
     assert.equal(rr.status, 200);

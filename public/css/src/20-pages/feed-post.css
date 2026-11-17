@@ -1,0 +1,142 @@
+/* Feed page: post cards, event notices, the calendar leaf and scripture on paper.
+   postCard() is only rendered on the feed, so these rules sit under .page-feed. */
+
+.page-feed .feed-post {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  padding: 1.25rem 1.25rem .75rem;
+  border-radius: var(--r-md);
+  box-shadow: none;
+  overflow: visible;
+}
+.page-feed .feed-post-head { display: flex; align-items: center; gap: .75rem; }
+.page-feed .feed-post-av { flex: none; }
+.page-feed .feed-post-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .375rem; min-width: 0; font-size: var(--fs-md); line-height: 1.25rem; }
+.page-feed .feed-post-meta .name { font-weight: 600; font-size: var(--fs-body); color: var(--text); }
+.page-feed .feed-post-meta .name:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.page-feed .feed-post-kind { color: var(--muted); }
+.page-feed .feed-post-time { color: var(--faint); font-variant-numeric: tabular-nums; }
+.page-feed .feed-post-kind + .feed-post-time::before { content: "·"; margin-right: .375rem; }
+.page-feed .feed-more { margin-left: auto; flex: none; color: var(--faint); border-radius: var(--r-xs); }
+.page-feed .feed-more:hover { background: var(--s2); color: var(--text); }
+.page-feed .feed-post-text { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-body); line-height: 1.55; color: var(--text); text-wrap: pretty; }
+/* AI-summary posts also carry .prose: keep its looser line height */
+.page-feed .feed-post-text.prose { line-height: 1.65; }
+.page-feed .feed-post-img { width: 100%; max-height: 26rem; object-fit: cover; border-radius: var(--r-sm); display: block; border: 1px solid var(--line); }
+.page-feed .feed-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  max-width: 100%;
+  margin-top: .25rem;
+  padding: .25rem .5rem;
+  border-radius: 6px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.page-feed .feed-link-chip:hover { color: var(--text); border-color: var(--line-2); }
+.page-feed .feed-link-ic { display: inline-flex; color: var(--faint); flex: none; }
+.page-feed .feed-link-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28rem; }
+.page-feed .feed-thread { margin-top: 0; }
+.page-feed .feed-thread:empty { display: none; }
+
+/* post actions: quiet until used, counts hidden at zero */
+.page-feed .feed-post-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0 -.5rem; }
+.page-feed .feed-post .acts { display: flex; align-items: center; gap: .25rem; margin: 0; }
+.page-feed .feed-post .act {
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0 .5rem;
+  gap: .375rem;
+  justify-content: center;
+  border-radius: var(--r-xs);
+  color: var(--faint);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  transition: background-color .15s var(--ease-out), color .15s var(--ease-out);
+}
+.page-feed .act span:empty { display: none; }
+.page-feed .feed-post .act:hover { background: var(--s2); color: var(--text); }
+.page-feed .feed-post .act.liked { color: var(--live); }
+.page-feed .act.liked .ic { fill: currentColor; animation: none; }
+
+/* the calendar leaf: month over day, the feed's one signature detail */
+.page-feed .date-leaf {
+  flex: none;
+  width: 3rem;
+  height: 3.25rem;
+  display: grid;
+  grid-template-rows: 1.125rem 1fr;
+  border-radius: var(--r-xs);
+  overflow: hidden;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.page-feed .date-leaf-m {
+  font-size: var(--fs-2xs);
+  line-height: 1.125rem;
+  font-weight: 500;
+  letter-spacing: .01em;
+  color: var(--muted);
+  background: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+.page-feed .date-leaf-d { display: grid; place-items: center; font-size: var(--fs-xl); line-height: 1; font-weight: 500; color: var(--text); }
+.page-feed .date-leaf.sm { width: 2.5rem; height: 2.75rem; grid-template-rows: 1rem 1fr; }
+.page-feed .date-leaf.sm .date-leaf-m { line-height: 1rem; }
+.page-feed .date-leaf.sm .date-leaf-d { font-size: var(--fs-lg); }
+.page-feed .date-leaf.is-live .date-leaf-m { color: var(--live); }
+.page-feed .date-leaf-dot {
+  place-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 18%, transparent);
+}
+.page-feed .date-leaf.is-empty { grid-template-rows: none; place-items: center; color: var(--faint); }
+
+/* event notice: leaf, title, kind and time; cover only when there is a real one */
+.page-feed .feed-event {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--s2);
+  transition: border-color .15s var(--ease-out);
+}
+.page-feed .feed-event:hover { border-color: var(--line-2); }
+.page-feed .feed-event-cover { aspect-ratio: 2 / 1; background: var(--s3); border-bottom: 1px solid var(--line); }
+.page-feed .feed-event-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.page-feed .feed-event-row { display: flex; align-items: center; gap: .875rem; padding: .75rem; }
+.page-feed .feed-event-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.page-feed .feed-event-title { font-weight: 500; font-size: var(--fs-base); line-height: 1.375rem; color: var(--text); }
+.page-feed .feed-event-meta { font-size: var(--fs-sm); line-height: 1.25rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.page-feed .feed-event.is-live .feed-event-meta { color: var(--live); }
+.page-feed .feed-event-go { flex: none; color: var(--faint); display: inline-flex; transition: transform .15s var(--ease-out), color .15s var(--ease-out); }
+.page-feed .feed-event:hover .feed-event-go { color: var(--text); transform: translateX(2px); }
+
+/* scripture in posts and the composer: a printed page */
+.page-feed .passage-card { margin: 0; padding: 1rem 1.25rem; border-radius: 10px; background: var(--paper); border: 1px solid var(--paper-line); color: var(--paper-ink); }
+.page-feed .passage-card .pc-head { gap: .5rem; font-size: var(--fs-sm); line-height: 1.25rem; }
+.page-feed .passage-card .pc-ic { color: var(--paper-muted); }
+.page-feed .passage-card .pc-ref { font-weight: 500; color: var(--paper-ink); }
+.page-feed .passage-card .pc-tr { padding: 0; background: none; font-size: var(--fs-sm); color: var(--paper-muted); }
+.page-feed .passage-card .pc-tr::before { content: "· "; }
+.page-feed .passage-card .pc-text { margin: .5rem 0 0; font-family: var(--serif); font-size: var(--fs-lg); line-height: 1.65; color: var(--paper-ink); text-wrap: pretty; }
+.page-feed .passage-card .pc-more { color: var(--paper-muted); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.page-feed .passage-card.compact { padding: .75rem 1rem; }
+.page-feed .passage-card.compact .pc-text { font-size: var(--fs-base); }
+
+@media (max-width: 600px) {
+  .page-feed .feed-post { padding: 1rem 1rem .5rem; }
+  .page-feed .passage-card { padding: .875rem 1rem; }
+  .page-feed .passage-card .pc-text { font-size: var(--fs-base); }
+  .page-feed .feed-link-url { max-width: 14rem; }
+}

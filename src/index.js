@@ -18,6 +18,8 @@ async function start() {
   if (process.env.AUTO_MIGRATE !== 'false') {
     await db.ensureReady();
   }
+  const billing = require('./features/wallet/billing');
+  await billing.recover();
   const handleRequest = createRequestHandler();
   const server = http.createServer((req, res) => {
     Promise.resolve(handleRequest(req, res)).catch((err) => {
@@ -49,6 +51,7 @@ async function start() {
   }
 
   const timers = [
+    setInterval(() => billing.tick().catch(e => console.error('[billing]', e.message)), 1000),
     setInterval(() => { cleanupInactiveMeetings(); snapshot.expireSnapshots().catch(() => {}); }, config.MEETING_CLEANUP_INTERVAL_MS),
     setInterval(syncViewerCounts, 15000),
     setInterval(pruneLeftParticipants, 60_000),
@@ -75,6 +78,7 @@ async function start() {
     server.close(); // stop accepting new connections
     timers.forEach((t) => clearInterval(t));
     try { console.log(`[shutdown] saved ${await snapshot.snapshotAll()} snapshot(s)`); } catch (e) { console.error('[shutdown] snapshot failed', e.message); }
+    await billing.stop().catch(e => console.error('[billing] shutdown', e.message));
     wss.notifyRestart(config.RESTART.shutdownGraceMs);
     await new Promise((r) => setTimeout(r, Math.min(config.RESTART.shutdownGraceMs, 5000)));
     for (const ws of wss.clients) { try { ws.terminate(); } catch (_) {} }

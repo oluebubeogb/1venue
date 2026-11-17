@@ -29,6 +29,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node . .
 
 USER node
+# Rebuild the joined stylesheet from public/css/src (committed app.css is the fallback).
+RUN node scripts/build-css.js
 EXPOSE 3000
 VOLUME ["/data"]
 # /health = liveness (process up, no DB). /ready = database reachable (use it for external monitors).

@@ -1,0 +1,17 @@
+.compose-card {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  padding: .7rem;
+  border-radius: var(--r-lg);
+  background: var(--s1);
+  border: 1px solid var(--line-2);
+}
+.compose-card textarea { width: 100%; resize: vertical; border: 0; outline: 0; background: transparent; min-height: 60px; }
+.tline { display: flex; gap: .6rem; line-height: 1.5; padding: .2rem 0; }
+.tline .ts { flex: none; width: 3.4rem; color: var(--faint); font-size: .75rem; font-variant-numeric: tabular-nums; padding-top: 3px; }
+.transcript { display: flex; flex-direction: column; gap: .2rem; }
+.flash { animation: flash 1s ease; }
+@keyframes flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } }
+.picked { outline: 2px solid var(--accent); }
+.msgs { display: flex; flex-direction: column; gap: .5rem; }

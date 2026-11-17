@@ -91,3 +91,15 @@ function signupPayload(extra = {}) {
 }
 
 module.exports = { boot, jar, client, freePort, signupPayload };
+
+/** Explicit test fixture funding; deliberately not an application endpoint or automatic signup grant. */
+async function fundTestWallet(base, cookie, credits = 120, databaseEnv = {}) {
+  const response = await fetch(base + '/api/session', { headers: { cookie } });
+  const { user } = await response.json();
+  if (!user) throw new Error('Test wallet funding requires a signed-in fixture');
+  const { promisify } = require('node:util');
+  const execFile = promisify(require('node:child_process').execFile);
+  const script = "const db=require('./db'); db.q('INSERT INTO credit_wallets(user_id,balance_units) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET balance_units=$2',[Number(process.argv[1]),Number(process.argv[2])]).then(()=>db.close()).catch(e=>{console.error(e.message);process.exit(1)});";
+  await execFile(process.execPath, ['-e', script, String(user.id), String(Math.round(credits * 60000))], { cwd: path.join(__dirname, '../..'), env: { ...process.env, ...databaseEnv } });
+}
+module.exports.fundTestWallet = fundTestWallet;

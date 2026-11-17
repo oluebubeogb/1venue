@@ -9,9 +9,19 @@ const {
   touchMeeting,
 } = require('./store');
 
-async function endMeeting(code, reason = 'ended') {
+const ending = new Map();
+function endMeeting(code, reason = 'ended') {
+  if (ending.has(code)) return ending.get(code);
+  const promise = finishMeeting(code,reason,Date.now()).finally(() => ending.delete(code));
+  ending.set(code,promise);
+  return promise;
+}
+async function finishMeeting(code, reason, endedAt) {
   const meeting = getMeeting(code);
   if (!meeting) return;
+  const billing = require('../features/wallet/billing');
+  const session = await billing.end(meeting,reason,endedAt);
+  if (session?.end_reason) reason=session.end_reason;
   clearInterval(meeting.content?.slideshowTimer);
   if (meeting.historyId) {
     try {
@@ -48,6 +58,7 @@ async function endMeeting(code, reason = 'ended') {
     }
   }
   deleteMeeting(code);
+  if (session) billing.closeMedia(session).catch(e => console.warn('[billing] queued media cleanup', e.message));
   console.log(`[meeting] ended ${code} (${reason})`);
 }
 

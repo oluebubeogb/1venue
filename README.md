@@ -108,7 +108,7 @@ Every setting is an environment variable, documented in [.env.example](.env.exam
 
 ## Credit wallets
 
-Open `/wallet` from the account menu, Settings or the command bar. The first payment increment supports non-expiring credits at ₦500 each, the 10/30/60/120 bundles and custom whole-credit purchases through Paystack. Customer-paid processing fees are added by Paystack at checkout. Configure test/live keys, the merchant fee preference and signed webhooks as described in [docs/PAYMENTS.md](docs/PAYMENTS.md). Purchases remain disabled until configured. Meeting billing and paid admission follow in a separate increment.
+Open `/wallet` from the account menu, Settings or the command bar. The first payment increment supports non-expiring credits at ₦500 each, the 10/30/60/120 bundles and custom whole-credit purchases through Paystack. Customer-paid processing fees are added by Paystack at checkout. Configure test/live keys, the merchant fee preference and signed webhooks as described in [docs/PAYMENTS.md](docs/PAYMENTS.md). Purchases remain disabled until configured. New non-venue live meetings now require 30 credits to open and cost 1 credit per minute, with a warning at 10 credits and automatic closure at zero. Navbar and meeting headers show your balance. Paid admission, host earnings and venue billing remain deferred.
 
 ## Accounts and sign-in
 

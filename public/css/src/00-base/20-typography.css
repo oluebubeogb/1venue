@@ -1,0 +1,34 @@
+/* type scale: use these steps instead of one-off sizes */
+:root {
+  --fs-2xs: .6875rem;
+  --fs-xs: .75rem;
+  --fs-sm: .8125rem;
+  --fs-md: .875rem;
+  --fs-body: .9375rem;
+  --fs-base: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.25rem;
+  --fs-2xl: 1.5rem;
+}
+h1, h2, h3, h4 { margin: 0; line-height: 1.3; letter-spacing: -.005em; }
+h1 { font-size: 1.2rem; font-weight: 600; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+h3, h4 { font-size: .98rem; font-weight: 600; }
+strong, b { font-weight: 600; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.small { font-size: .85rem; }
+.tiny { font-size: .75rem; }
+.grad-text {
+  background: linear-gradient(100deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.prose { line-height: 1.65; }
+.prose h1, .prose h2, .prose h3 { margin: .8rem 0 .2rem; font-size: 1em; font-weight: 650; letter-spacing: 0; }
+.prose ul { padding-left: 1.2rem; margin: .4rem 0; }
+.prose p { margin: .4rem 0; }
+.eyebrow { font-weight: 500; letter-spacing: .02em; }
+.tiny.err, .muted.err { color: #dc2626; }

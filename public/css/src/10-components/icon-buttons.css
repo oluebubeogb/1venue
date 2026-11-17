@@ -1,0 +1,22 @@
+/* Icon buttons with soft background (used on AI explain actions) */
+.icon-btn.has-bg {
+  background: color-mix(in srgb, var(--g, var(--accent)) 11%, var(--s2));
+  border: 1px solid color-mix(in srgb, var(--g, var(--accent)) 18%, var(--line));
+  border-radius: 14px;
+}
+.icon-btn.has-bg:hover { background: color-mix(in srgb, var(--g, var(--accent)) 18%, var(--s2)); color: var(--g, var(--accent)); }
+.ai-explain-acts .icon-btn.has-bg { width: 44px; height: 44px; }
+.icon-btn.has-bg.sm { width: 36px; height: 36px; border-radius: 12px; }
+.glass { background: var(--glass); backdrop-filter: blur(14px); }
+
+/* read-out button while the cloud voice is being generated */
+.icon-btn.busy { position: relative; }
+.icon-btn.busy::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}

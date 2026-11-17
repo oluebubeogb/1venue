@@ -1,0 +1,43 @@
+/* Private wallet balance, shared by the application and meeting headers. */
+.credit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  color: var(--text);
+  background: var(--s1);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
+  text-decoration: none;
+}
+.credit-badge:hover { background: var(--s2); }
+.credit-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.credit-badge[hidden], .credit-warning[hidden] { display: none; }
+.credit-badge.credit-low { color: var(--text); border-color: #b7791f; }
+.credit-warning {
+  flex: none;
+  padding: 0.65rem 0.8rem;
+  color: var(--text);
+  background: color-mix(in srgb, #b7791f 14%, var(--s1));
+  border: 1px solid #b7791f;
+  border-radius: var(--r-sm);
+  font-size: 0.85rem;
+}
+.credit-warning a { text-decoration: underline; }
+
+@media (max-width: 540px) {
+  .credit-badge { padding-inline: 0.45rem; font-size: 0.73rem; }
+  .room-head { flex-wrap: wrap; }
+  .room-head .rh-title { flex: 1; min-width: 80px; }
+}
+
+@media (max-width: 420px) {
+  .credit-badge { max-width: 48vw; }
+  .credit-badge > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+}

@@ -1,0 +1,60 @@
+.ic { flex: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.row { display: flex; align-items: center; gap: .6rem; }
+.col { display: flex; flex-direction: column; gap: .7rem; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.between { justify-content: space-between; }
+.center { justify-content: center; }
+.stack > * + * { margin-top: .75rem; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hidden { display: none !important; }
+.pad { padding: 1rem; }
+.pad-lg { padding: 1.4rem; }
+.min0 { min-width: 0; }
+.split { display: grid; gap: 1.2rem; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+.sticky { position: sticky; top: calc(var(--top-h) + 1rem); }
+.kbd { font: 600 .75rem ui-monospace, monospace; padding: .1rem .4rem; border: 1px solid var(--line-2); border-radius: 6px; background: var(--s2); }
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
+  animation-duration: .001ms !important;
+  animation-delay: 0s !important;
+  transition-duration: .001ms !important;
+}
+
+/* shared helpers added for pages */
+.gap-xs { gap: .3rem; }
+.gap-s { gap: .5rem; }
+.i { display: inline-flex; }
+.divider { height: 1px; background: var(--line); margin: .6rem 0; }
+.page-head { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 1.2rem; }
+.page-head h1 { display: flex; align-items: center; gap: .5rem; font-size: 1.2rem; font-weight: 600; }
+.page-head h1 .ic { width: 22px; height: 22px; color: var(--accent); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.qr-mini { width: 96px; height: 96px; border-radius: 12px; }
+.plain { list-style: none; padding: 0; margin: 0; }
+.list { display: flex; flex-direction: column; gap: 2px; }
+.static { cursor: default; }
+.spin {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  animation: spin .8s linear infinite;
+  flex: none;
+}
+.spin.sm { width: 12px; height: 12px; border-width: 1.5px; }
+.split .card { overflow: visible; }
+
+@media (max-width: 1000px) {
+  .split { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0s !important; transition-duration: .001ms !important; }
+}
+
+@media (max-width: 820px) {
+  .grid2 { grid-template-columns: 1fr; }
+}

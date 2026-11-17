@@ -1,0 +1,53 @@
+/* Credit wallet: use the shared surface, text and control tokens. */
+.wallet-page { width: 100%; max-width: 960px; margin-inline: auto; display: grid; gap: 1rem; min-width: 0; }
+.wallet-page .page-head, .wallet-page p { margin-bottom: 0; }
+.wallet-page h2 { margin: 0 0 1rem; font-size: 1rem; font-weight: 600; }
+.wallet-summary {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  color: #fff;
+  background: radial-gradient(60rem 30rem at 0% 0%, color-mix(in srgb, var(--accent) 95%, #000), transparent), linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, #0b1020), color-mix(in srgb, var(--accent-2) 75%, #0b1020));
+}
+.wallet-summary .muted { color: rgb(255 255 255 / 88%); }
+.wallet-balance { font-size: clamp(1.6rem,5vw,2.4rem); font-weight: 600; overflow-wrap: anywhere; }
+.wallet-bundles { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .6rem; }
+.wallet-bundle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .4rem;
+  padding: 1rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  background: var(--s2);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.wallet-bundle[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--s1); }
+.wallet-bundle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.wallet-bundle span, .wallet-bundle strong { overflow-wrap: anywhere; }
+.wallet-page .field input { max-width: 100%; }
+.wallet-price { font-weight: 600; }
+.wallet-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .85rem 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.wallet-item:last-child { border-bottom: 0; }
+.wallet-item > div { min-width: 0; overflow-wrap: anywhere; }
+.wallet-value { text-align: right; flex-shrink: 0; }
+.wallet-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+.wallet-error { color: #dc2626; }
+
+@media (max-width: 540px) {
+  .wallet-bundles { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .wallet-item { align-items: flex-start; flex-wrap: wrap; }
+  .wallet-actions { justify-content: flex-start; }
+}

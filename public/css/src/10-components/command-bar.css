@@ -1,0 +1,126 @@
+/* command bar (footer search) */
+.cmdbar {
+  position: fixed;
+  z-index: 44;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(14px + var(--safe-b));
+  width: min(1200px, calc(100% - 24px));
+  height: var(--cmd-h);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px;
+  border-radius: 20px;
+  background: var(--glass);
+  backdrop-filter: saturate(1.8) blur(22px);
+  -webkit-backdrop-filter: saturate(1.8) blur(22px);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow-3);
+  transition: box-shadow .25s, border-color .25s;
+}
+.cmdbar:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--shadow-3), 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.cmdbar .cmd-in {
+  flex: 0 1 320px;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: 0 .55rem;
+  height: 100%;
+  border-right: 1px solid var(--line);
+}
+.cmdbar .cmd-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: .95rem; height: 100%; }
+.cmdbar .cmd-in input::placeholder { color: var(--faint); transition: opacity .3s; }
+.cmdbar .cmd-in .ic { color: var(--accent); }
+.cmdbar .cmd-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 .35rem;
+  scroll-snap-type: x proximity;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+.cmdbar .cmd-actions::-webkit-scrollbar { display: none; }
+.cmd-act {
+  --g: var(--g-nav);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  height: 40px;
+  padding: 0 .7rem 0 .55rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--g) 9%, transparent);
+  color: var(--g);
+  font-weight: 650;
+  font-size: .82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform .2s var(--spring), background .2s;
+  animation: actIn .3s var(--spring) both;
+  scroll-snap-align: start;
+}
+.cmd-act:hover, .cmd-act.sel {
+  background: color-mix(in srgb, var(--g) 18%, transparent);
+  border-color: color-mix(in srgb, var(--g) 35%, transparent);
+  transform: translateY(-1px);
+}
+.cmd-act.on { background: var(--g); color: #fff; }
+.cmd-act .lbl { color: var(--text); }
+.cmd-act.on .lbl { color: #fff; }
+@keyframes actIn { from { opacity: 0; transform: translateY(6px) scale(.9); } }
+.cmd-act:nth-child(2) { animation-delay: .02s; }
+.cmd-act:nth-child(3) { animation-delay: .04s; }
+.cmd-act:nth-child(4) { animation-delay: .06s; }
+.cmd-act:nth-child(5) { animation-delay: .08s; }
+.cmd-act:nth-child(n+6) { animation-delay: .1s; }
+.cmd-empty { color: var(--faint); font-size: .85rem; padding: 0 .5rem; white-space: nowrap; }
+.cmd-kbd {
+  font-size: .7rem;
+  color: var(--faint);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-right: 4px;
+  transform-origin: 50% 60%;
+}
+.cmd-act .glyph { font-size: 1.1rem; line-height: 1; width: 18px; height: 18px; display: inline-grid; place-items: center; }
+
+@media (max-width: 820px) {
+  .cmdbar { bottom: calc(var(--nav-h) + 8px + var(--safe-b)); height: 50px; border-radius: 16px; width: calc(100% - 16px); }
+  .cmdbar .cmd-in { flex: 0 0 46%; min-width: 0; }
+  .cmd-act { height: 36px; padding: 0 .55rem; }
+  .cmd-act .lbl { display: none; }
+  .cmd-kbd { display: none; }
+  .cmdbar.typing .cmd-act .lbl { display: inline; }
+  .cmd-actions.compact-lbl .cmd-act { flex-direction: column; gap: 0; height: auto; min-height: 36px; padding: 3px 6px 2px; }
+  .cmd-actions.compact-lbl .cmd-act .lbl {
+    display: block;
+    font-size: .58rem;
+    font-weight: 650;
+    line-height: 1.1;
+    max-width: 4.4rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--muted);
+  }
+}
+
+@media (min-width: 1024px) {
+  /* On Feed, span the command bar across the whole feed (the rails stop above it). */
+  body[data-page="feed"] .cmdbar {
+    left: var(--feed-cmd-left, 50%);
+    width: var(--feed-cmd-width, min(600px, calc(100% - 24px)));
+    transform: translateX(0);
+    max-width: calc(100vw - 24px);
+  }
+}

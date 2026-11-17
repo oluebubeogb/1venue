@@ -1,0 +1,20 @@
+/* Phase 2: verified host badge */
+.verified-badge {
+  background: color-mix(in srgb, var(--accent, #7c3aed) 16%, transparent);
+  color: var(--accent, #7c3aed);
+  gap: .2rem;
+  display: inline-flex;
+  align-items: center;
+  margin-left: .35rem;
+}
+.verified-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--accent, #7c3aed);
+  color: #fff;
+  margin-left: .3rem;
+  vertical-align: middle;
+}

@@ -23,6 +23,7 @@ module.exports = async function handle(req, res, parsed) {
 
       const meeting = meetings.get(code) || await getOrRestoreMeeting(code);
       if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
+      await require('../features/wallet/billing').check(meeting);
       const participant = meeting.participants.get(participantId);
       if (!participant) {
         return sendJSON(res, 403, { error: 'Not a participant of this meeting' });
@@ -32,6 +33,7 @@ module.exports = async function handle(req, res, parsed) {
         || participant.name
         || 'Participant';
 
+      if (meeting.billingId && !body.wsCredential) return sendJSON(res, 403, {error: 'A room credential is required'});
       if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId, code }).ok) {
         // Some clients omit this. Accept it but log.
         if (body.wsCredential) return sendJSON(res, 403, { error: 'Invalid credential' });
@@ -42,7 +44,7 @@ module.exports = async function handle(req, res, parsed) {
       const perms = resolvePermissions(meeting, participant);
       const grants = grantsFromPermissions(perms);
       // Breakout rooms live in their own LiveKit rooms (CODE-bo-N)
-      let roomName = code;
+      let roomName = meeting.mediaRoom || code;
       if (body.room && body.room !== code) {
         const br = meeting.breakouts && meeting.breakouts.open
           ? (meeting.breakouts.rooms || []).find((r) => r.livekitRoom === body.room)
@@ -53,6 +55,7 @@ module.exports = async function handle(req, res, parsed) {
         }
         roomName = br.livekitRoom;
       }
+      if (meeting.billingId) grants.ttl = await require('../features/wallet/billing-data').mediaToken(meeting.billingId, roomName);
       const token = await createLiveKitToken(participantId, participantName, roomName, grants);
       return sendJSON(res, 200, {
         token,
@@ -67,11 +70,13 @@ module.exports = async function handle(req, res, parsed) {
       });
     } catch (e) {
       console.error('[livekit-token]', e.message);
-      return sendJSON(res, 500, { error: publicErr(e, 'Failed to create token') });
+      return sendJSON(res, e.status || 500, { error: publicErr(e, 'Failed to create token') });
     }
   }
 
   if (urlPath === '/api/create' && req.method === 'POST') {
+    let openedBilling = null;
+    let publishedCode = null;
     try {
       const body = await parseBody(req);
       // Align with event titles (2–120). Create → go-live passes the event title as the meeting name.
@@ -130,8 +135,10 @@ module.exports = async function handle(req, res, parsed) {
         return sendJSON(res, 400, { error: 'Please enter your display name' });
       }
 
-      await discardSnapshot(code); // a leftover restart snapshot for this code is superseded
-      const historyId = await db.startMeetingHistory({
+      if (!venue) {
+        openedBilling = await require('../features/wallet/billing').start({ user: authUser, code, name, hostName });
+      } else await discardSnapshot(code); // venue funding remains deferred
+      const historyId = openedBilling ? openedBilling.historyId : await db.startMeetingHistory({
         code,
         name,
         hostUserId: authUser ? authUser.id : null,
@@ -174,8 +181,11 @@ module.exports = async function handle(req, res, parsed) {
 
       const now = Date.now();
       const inviteToken = generateInviteToken();
+      publishedCode = code;
       meetings.set(code, {
         code,
+        billingId: openedBilling?.historyId || null,
+        mediaRoom: openedBilling?.session.media_room || null,
         name,
         hostId,
         hostUserId: authUser ? authUser.id : null,
@@ -257,8 +267,12 @@ module.exports = async function handle(req, res, parsed) {
         venue: meeting.venue || null,
       });
     } catch (e) {
-      console.error('[create]', e);
-      return sendJSON(res, 400, { error: publicErr(e, 'Bad request') });
+      if (openedBilling) {
+        if (publishedCode && meetings.has(publishedCode)) await endMeeting(publishedCode, 'open-failed').catch(() => {});
+        else await require('../features/wallet/billing-data').settle(openedBilling.historyId, {now:Number(openedBilling.session.started_ms),endReason:'open-failed'}).catch(() => {});
+      }
+      console.error('[create]', e.message);
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Bad request') });
     }
   }
 
@@ -274,6 +288,7 @@ module.exports = async function handle(req, res, parsed) {
       const meeting = meetings.get(code) || await getOrRestoreMeeting(code);
       if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found. Check the code.' });
 
+      await require('../features/wallet/billing').check(meeting);
       // Secure invite key enforcement
       const providedKey = body.key || body.inviteToken || null;
       const requireKey = meeting.inviteAccess === 'approval' || meeting.requireInviteKey === true;
@@ -496,6 +511,7 @@ module.exports = async function handle(req, res, parsed) {
     const code = normCode(urlPath.split('/').pop());
     const meeting = meetings.get(code) || (isCode(code) ? await getOrRestoreMeeting(code) : null);
     if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
+    await require('../features/wallet/billing').check(meeting);
     meeting.lastActivity = Date.now();
     return sendJSON(res, 200, {
       code,
@@ -523,6 +539,7 @@ module.exports = async function handle(req, res, parsed) {
       const participantId = body.participantId;
       const meeting = meetings.get(code);
       if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
+      await require('../features/wallet/billing').check(meeting);
       const actor = meeting.participants.get(participantId);
       if (!actor || !can(meeting, actor, 'manageSecurity')) {
         return sendJSON(res, 403, { error: 'Not allowed' });
@@ -564,7 +581,7 @@ module.exports = async function handle(req, res, parsed) {
 
         const activeLeft = [...meeting.participants.values()].filter((x) => x.status === 'ACTIVE').length;
         if (activeLeft === 0) {
-          endMeeting(code, 'empty');
+          await endMeeting(code, 'empty');
         } else {
           broadcast(code, {
             type: 'participant-left',

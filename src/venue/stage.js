@@ -87,7 +87,7 @@ async function syncLiveKit(meetingCode, participantId, perms) {
       if (perms.camera) sources.push(TrackSource.CAMERA);
       if (perms.screenShare) sources.push(TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO);
     }
-    await rc.updateParticipant(meetingCode, participantId, undefined, {
+    await rc.updateParticipant(require('../rooms/store').getMeeting(meetingCode)?.mediaRoom || meetingCode, participantId, undefined, {
       canPublish: !!(perms.microphone || perms.camera || perms.screenShare),
       canSubscribe: true,
       canPublishData: true,

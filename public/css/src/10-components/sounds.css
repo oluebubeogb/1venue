@@ -1,0 +1,33 @@
+/* sounds tool */
+.sound-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: .45rem; }
+.sound-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 14px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.sound-play {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .6rem .65rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: .88rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s;
+}
+.sound-play:hover:not(:disabled) { background: var(--s3); }
+.sound-play:active:not(:disabled) .em { transform: scale(1.25); }
+.sound-play .em { font-size: 1.25rem; transition: transform .2s var(--spring); }
+.sound-play b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sound-play:disabled { opacity: .5; cursor: default; }
+.sound-card .icon-btn { align-self: center; margin-right: .3rem; }

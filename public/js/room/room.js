@@ -1,4 +1,5 @@
 // The live room: pre-join → join/create → waiting → room. The footer command bar doubles as the dock.
+import { creditBadge, refreshCredits } from '../credits.js';
 import { h, esc, api, toast, toastErr, sheet, menu, confirmDlg, promptDlg, copy, isMobile, avatar } from '../ui.js';
 import { icon, LOGO } from '../icons.js';
 import { state, navigate, requireLogin, toggleTheme } from '../app.js';
@@ -100,11 +101,12 @@ class Room {
       joinB.disabled = true; joinB.classList.add('loading');
       stopPrev();
       try { await this.join({ name: n, mic, cam, creating }); }
-      catch (err) { joinB.disabled = false; joinB.classList.remove('loading'); toastErr(err); preview(); }
+      catch (err) { if (err.status === 401) requireLogin(); if (err.status === 402) toast('Top up your wallet to at least 30 credits before opening a meeting.', {icon:'creditCard',ms:8000}); joinB.disabled = false; joinB.classList.remove('loading'); toastErr(err); preview(); }
     } }, h('div', { class: 'eyebrow' }, creating ? 'You’re hosting' : ev ? (ev.live ? '● Live now' : 'Event') : 'Joining'), h('h1', { class: 'pj-title' }, title),
       ev && ev.host ? h('div', { class: 'row gap-s muted small' }, avatar(ev.host.name, ev.host.avatarUrl, 'xs'), `Hosted by ${ev.host.name}`) : null,
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Display name'), name),
       !state.user ? h('p', { class: 'tiny muted' }, 'Joining as a guest. ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); requireLogin('Sign in to keep your history'); } }, 'Sign in'), ' to save transcripts and history.') : null,
+      (creating && !this.intent?.venue) || (ev?.isHost && !ev.live) ? h('p',{class:'small muted'},'1 credit per minute while open. Minimum 30 credits to start. ',h('a',{href:'/wallet',target:'_blank',rel:'noopener'},'Open wallet')) : null,
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
@@ -203,6 +205,7 @@ export { Room, fmtCode, ibtn, lsGet, lsSet, deviceKind };
 /* ======================================================================= in-room state & layout */
 Object.assign(Room.prototype, {
   enter(r) {
+    this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
     this.inRoom = true;
     this.roomName = r.name || fmtCode(this.code);
@@ -430,10 +433,12 @@ Object.assign(Room.prototype, {
 Object.assign(Room.prototype, {
   buildUi() {
     this.headEl = h('header', { class: 'room-head' });
+    this.creditControl=creditBadge({inRoom:true,roomCode:this.code});
+    refreshCredits();
     this.peekHost = h('div', { class: 'peeks', 'aria-live': 'polite' });
     this.netEl = h('div', { class: 'net-banner', hidden: true });
     this.main = h('div', { class: 'room-main' }, this.stageR.el, this.stageR.sideEl, this.panel.el);
-    this.root = h('div', { class: 'room', 'data-layout': this.layout }, h('div', { class: 'room-art', 'aria-hidden': 'true' }), this.headEl, this.netEl, this.main, this.peekHost);
+    this.root = h('div', { class: 'room', 'data-layout': this.layout }, h('div', { class: 'room-art', 'aria-hidden': 'true' }), this.headEl, this.creditControl.notice, this.netEl, this.main, this.peekHost);
     this.view.replaceChildren(this.root);
     this.paintHead(true); this.renderStage(true);
     if (this.netNote) this.netBanner(true, this.netNote, true);
@@ -462,6 +467,7 @@ Object.assign(Room.prototype, {
       h('span', { class: 'pill rh-cap', 'data-group': 'content', hidden: true, html: icon('captions', { size: 13 }) + 'CC' }),
       h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) }),
       h('div', { class: 'grow' }),
+      this.creditControl.badge,
       h('div', { class: 'seg rh-lay hide-sm' }, lay('grid', 'grid', 'Grid'), lay('spotlight', 'spotlight', 'Spotlight'), lay('speaker', 'speaker', 'Speaker'), lay('screenshare', 'screen', 'Screenshare')),
       h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
       h('button', { class: 'pill rh-people', 'data-group': 'people', 'data-tip': 'People', type: 'button', onclick: () => this.panel.toggle('people'), html: icon('users', { size: 14 }) + '<span class="rh-count"></span>' }),
@@ -611,7 +617,9 @@ Object.assign(Room.prototype, {
     if (this.recorder.state !== 'idle') this.recorder.stop();
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy();
-    toast('The session has ended', { icon: 'phoneOff', ms: 4000 });
+    refreshCredits();
+    toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : 'The session has ended', { icon: 'phoneOff', ms: 7000 });
+    if (m.reason === 'credits-exhausted' && this.me?.role === 'host') { navigate('/wallet'); return; }
     navigate(m.historyId ? '/session/' + m.historyId : m.eventSlug ? '/e/' + m.eventSlug : '/'); setTimeout(() => maybeShowBanner('after-room'), 1500);
   },
   kicked(m) {
@@ -620,6 +628,7 @@ Object.assign(Room.prototype, {
   },
   destroy() {
     if (!this.alive) return; this.alive = false;
+    this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
     clearInterval(this.tick); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
     try { this.ws && this.ws.close(); } catch { /* */ }

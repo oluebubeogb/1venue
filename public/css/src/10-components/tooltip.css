@@ -1,0 +1,28 @@
+/* tooltip (single floating node, coloured by function group) */
+#tip {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  padding: .38rem .62rem;
+  border-radius: 10px;
+  font-size: .78rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--tipc, #334155);
+  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--tipc, #000) 60%, transparent);
+  opacity: 0;
+  transform: translateY(4px) scale(.96);
+  transition: opacity .14s, transform .18s var(--spring);
+  max-width: 260px;
+}
+#tip.show { opacity: 1; transform: none; }
+#tip kbd { margin-left: .4rem; padding: 0 .3rem; border-radius: 5px; background: rgba(255,255,255,.22); font: inherit; font-size: .7rem; }
+#tip[data-group="media"] { --tipc: var(--g-media); }
+#tip[data-group="people"] { --tipc: var(--g-people); }
+#tip[data-group="engage"] { --tipc: var(--g-engage); }
+#tip[data-group="content"] { --tipc: var(--g-content); }
+#tip[data-group="ai"] { --tipc: linear-gradient(120deg, #7c3aed, #db2777); background: linear-gradient(120deg, #7c3aed, #c026d3); }
+#tip[data-group="faith"] { --tipc: var(--g-faith); }
+#tip[data-group="admin"] { --tipc: var(--g-admin); }
+#tip[data-group="social"] { --tipc: var(--g-social); }
+#tip[data-group="settings"] { --tipc: var(--g-settings); }

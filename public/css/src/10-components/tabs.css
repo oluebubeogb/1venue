@@ -1,0 +1,15 @@
+.tabs { display: flex; gap: .3rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; overflow-x: auto; scrollbar-width: none; }
+.tabs button {
+  border: 0;
+  background: none;
+  padding: .7rem .9rem;
+  font-weight: 650;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  display: flex;
+  gap: .4rem;
+  align-items: center;
+}
+.tabs button.on { color: var(--accent); border-color: var(--accent); }

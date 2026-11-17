@@ -1,0 +1,90 @@
+/* bible */
+.verse { padding: .15rem 0; line-height: 1.75; font-size: 1.08rem; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; }
+.verse sup { color: var(--g-faith); font-weight: 700; font-family: Inter, system-ui, sans-serif; font-size: .7em; margin-right: .3rem; }
+.verse.sel { background: color-mix(in srgb, var(--g-faith) 13%, transparent); border-radius: 6px; }
+[dir="rtl"] .verse sup { margin-right: 0; margin-left: .3rem; }
+
+/* Bible topic / phrase search results */
+.bible-hits { display: flex; flex-direction: column; }
+.bible-hit-ref {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 1.02rem;
+  color: var(--g-faith, var(--accent));
+  cursor: pointer;
+  text-align: left;
+}
+.bible-hit-ref:hover { text-decoration: underline; }
+.bible-hit .verse-wrap { margin-top: .35rem; max-height: 9em; overflow: hidden; }
+.verse-wrap.compact { font-size: 1.02rem; line-height: 1.7; margin-top: .35rem; }
+.verse-wrap.compact .verse { font-size: inherit; line-height: inherit; }
+.passage-card .verse-wrap { margin-top: .45rem; }
+.passage-card .verse-wrap .verse { font-size: 1.02rem; line-height: 1.6; }
+.bible-tools {
+  position: sticky;
+  top: calc(var(--top-h) + 8px);
+  z-index: 5;
+  display: flex;
+  margin-bottom: 1rem;
+  flex-direction: row;
+  align-items: center;
+  gap: .4rem;
+  padding: .4rem;
+  border-radius: 16px;
+}
+.bible-page { min-height: 50vh; min-width: 0; max-width: 100%; }
+.bible-title { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 1.7rem; overflow-wrap: anywhere; }
+.bible-title-block { display: flex; flex-direction: column; gap: .2rem; min-width: 0; max-width: 100%; }
+.surah-meaning {
+  font-size: .78rem;
+  font-weight: 650;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: Inter, system-ui, sans-serif;
+}
+.verse-wrap { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 1.15rem; line-height: 1.75; margin-top: 1rem; }
+.verse-wrap .v { cursor: pointer; border-radius: 6px; transition: background .15s; }
+.verse-wrap .v:hover { background: color-mix(in srgb, var(--g-faith) 8%, transparent); }
+.verse-wrap .v.picked { background: color-mix(in srgb, var(--g-faith) 20%, transparent); }
+.verse-wrap sup { color: var(--g-faith); font-weight: 700; font-family: Inter, system-ui, sans-serif; font-size: .65em; margin-right: 2px; }
+.sel-bar {
+  position: sticky;
+  bottom: calc(var(--cmd-h) + 30px);
+  z-index: 6;
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: .55rem;
+  border-radius: 16px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow-2);
+  margin: .6rem 0;
+}
+.sel-bar.hidden { display: none; }
+.sel-bar .sel-ref { display: flex; flex-direction: column; line-height: 1.15; margin-right: auto; padding-left: .3rem; }
+.sel-bar .sel-ref small { color: var(--muted); font-size: .72rem; }
+.bible-tools .bt-ic { display: inline-grid; place-items: center; width: 28px; color: var(--muted); flex: none; }
+.bible-tools .input { height: 38px; min-width: 0; }
+.bible-tools > input.input { flex: 1 1 220px; border-color: transparent; background: transparent; padding-left: 0; }
+.bible-tools > input.input:focus { box-shadow: none; }
+.bible-tools > select.input { flex: 0 1 auto; width: auto; max-width: 11rem; }
+.bible-tools > select[aria-label="Chapter"] { max-width: 5.6rem; }
+.bible-tools > select[aria-label="Bible translation"] { max-width: 6.5rem; }
+.bible-page .verse { cursor: pointer; border-radius: 6px; transition: background .15s; }
+.bible-page .verse:hover { background: color-mix(in srgb, var(--g-faith) 7%, transparent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.bible-page img, .bible-page video, .bible-page iframe { max-width: 100%; height: auto; }
+body[data-page="books"] .main { overflow-x: clip; }
+
+@media (max-width: 720px) {
+  .bible-tools { flex-wrap: wrap; }
+  .bible-tools > input.input { flex-basis: calc(100% - 40px); }
+  .bible-tools > select.input { flex: 1 1 0; max-width: none; }
+}

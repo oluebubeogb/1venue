@@ -1,0 +1,16 @@
+.list-item { display: flex; align-items: center; gap: .8rem; padding: .7rem .8rem; border-radius: var(--r-sm); transition: background .15s; }
+.list-item:hover { background: var(--s2); }
+button.list-item { width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+button.list-item:hover { background: var(--s2); }
+.list-item-name { font-weight: 700; }
+.empty { text-align: center; padding: 2.5rem 1rem; color: var(--muted); }
+.empty .ic { margin: 0 auto .6rem; color: var(--faint); }
+.skel {
+  background: linear-gradient(90deg, var(--s2), var(--s3), var(--s2));
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: var(--r-md);
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+.empty h2 { font-size: 1.1rem; }
+.empty h1 { font-size: 1.6rem; }

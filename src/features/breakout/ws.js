@@ -26,7 +26,7 @@ module.exports = {
           id: 'bo_' + (i + 1),
           name: 'Room ' + (i + 1),
           participantIds: [],
-          livekitRoom: meetingCode + '-bo-' + (i + 1),
+          livekitRoom: (meeting.mediaRoom || meetingCode) + '-bo-' + (i + 1),
         });
       }
       active.forEach((p, idx) => {

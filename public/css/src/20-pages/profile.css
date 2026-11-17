@@ -1,0 +1,8 @@
+.profile-hero .band, .speaker-card .band {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 64px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  opacity: .9;
+}
+.profile-hero > :not(.band) { position: relative; }

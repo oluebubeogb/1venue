@@ -1,0 +1,39 @@
+.chip {
+  --g: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  height: 34px;
+  padding: 0 .8rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-2);
+  background: var(--s1);
+  font-size: .86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .18s var(--ease);
+  white-space: nowrap;
+}
+.chip:hover { border-color: var(--g); color: var(--g); }
+.chip.on { background: color-mix(in srgb, var(--g) 14%, var(--s1)); border-color: color-mix(in srgb, var(--g) 50%, transparent); color: var(--g); }
+.chips { display: flex; gap: .5rem; overflow-x: auto; scrollbar-width: none; padding: 2px; scroll-snap-type: x proximity; }
+.chips::-webkit-scrollbar { display: none; }
+.seg { display: inline-flex; padding: 4px; gap: 2px; background: var(--s2); border-radius: var(--r-pill); border: 1px solid var(--line); }
+.seg button {
+  border: 0;
+  background: transparent;
+  padding: .45rem .9rem;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: .86rem;
+  color: var(--muted);
+  display: inline-flex;
+  gap: .35rem;
+  align-items: center;
+}
+.seg button.on { background: var(--s1); color: var(--text); box-shadow: var(--shadow-1); }
+
+/* free-flowing category / vibe chips (no fixed width scroll) */
+.chips.free-grid { display: flex; flex-wrap: wrap; gap: .55rem .65rem; overflow: visible; }
+.chips.free-grid .chip { flex: 0 1 auto; width: auto; min-width: 0; white-space: nowrap; }

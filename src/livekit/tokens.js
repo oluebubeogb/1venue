@@ -31,7 +31,7 @@ async function createLiveKitToken(identity, name, roomName, opts = {}) {
   const at = new AccessToken(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET, {
     identity: String(identity),
     name: String(name || identity),
-    ttl: '6h',
+    ttl: opts.ttl || '6h',
   });
 
   const canPublish = opts.canPublish !== false;

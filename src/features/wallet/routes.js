@@ -4,7 +4,7 @@ const { quote, BUNDLES, PRICE_PER_CREDIT_KOBO } = require('./rules');
 module.exports = function routes(route, { requireUser, httpError, rateLimit }) {
   route('GET', '/api/wallet', async (ctx) => {
     const u = await requireUser(ctx.req, ctx.res);
-    return { balanceCredits: await data.balance(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
+    return { userId:u.id, ...await require('./billing-data').current(u.id), pricePerCreditKobo: PRICE_PER_CREDIT_KOBO, currency: 'NGN', bundles: BUNDLES, purchasesEnabled: gateway.enabled(), expires: false };
   });
   route('POST', '/api/wallet/quote', async (ctx) => {
     await requireUser(ctx.req, ctx.res);

@@ -1,0 +1,41 @@
+.ai-verse-card { margin: 0 0 .25rem; max-width: 100%; }
+.ai-verse-card .pc-text { font-size: clamp(.95rem, 2.4vw, 1.05rem); line-height: 1.55; max-height: 9.5em; overflow: hidden; }
+
+/* passage card (feed posts, chat, composer) */
+.passage-card {
+  margin: .6rem 0 0;
+  padding: .75rem .9rem .8rem;
+  border-radius: 16px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--g-faith) 9%, var(--s1)), var(--s1) 70%);
+  border: 1px solid color-mix(in srgb, var(--g-faith) 20%, var(--line));
+  position: relative;
+}
+.passage-card .pc-head { display: flex; align-items: center; gap: .4rem; font-size: .8rem; }
+.passage-card .pc-ic { color: var(--g-faith); display: inline-grid; }
+.passage-card .pc-ref { font-weight: 650; color: var(--text); text-decoration: none; }
+.passage-card .pc-ref:hover { text-decoration: underline; }
+.passage-card .pc-tr { color: var(--muted); font-size: .72rem; padding: 1px 6px; border-radius: 6px; background: var(--s2); }
+.passage-card .pc-x { margin-left: auto; }
+.passage-card .pc-text {
+  margin: .4rem 0 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.passage-card .pc-text.clamp { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.passage-card.compact { padding: .6rem .75rem; }
+.passage-card.compact .pc-text { font-size: .95rem; }
+.passage-card.compact .pc-text.clamp { -webkit-line-clamp: 4; }
+.passage-card .pc-more {
+  border: 0;
+  background: none;
+  padding: .25rem 0 0;
+  color: var(--g-faith);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bubble .passage-card { margin-top: .3rem; min-width: 220px; max-width: 320px; }

@@ -80,6 +80,12 @@ async function restore(code) {
   if (meeting.content) { meeting.content.slideshow = false; delete meeting.content.slideshowTimer; }
   meeting.lastActivity = Date.now();
   meeting.restoredAt = Date.now();
+  if (meeting.billingId) {
+    const billingData = require('../features/wallet/billing-data');
+    if (!await billingData.claim(meeting.billingId,require('../features/wallet/billing').ownerId)) return null;
+    const session = await billingData.settle(meeting.billingId);
+    if (!session || session.state !== 'active') return null;
+  }
   store.setMeeting(code, meeting);
   await db.q('DELETE FROM meeting_snapshots WHERE code = $1', [code]).catch(() => {});
   console.log(`[snapshot] restored ${code} (${meeting.participants.size} participants)`);
@@ -95,7 +101,7 @@ async function discardSnapshot(code) {
 /** End meetings whose snapshot was never picked up (nobody came back in time). */
 async function expireSnapshots() {
   const r = await db.q(
-    `DELETE FROM meeting_snapshots WHERE created_at < ${db.USE_PG ? "NOW() - ($1::text || ' milliseconds')::interval" : "strftime('%Y-%m-%dT%H:%M:%fZ','now',(-$1/1000.0) || ' seconds')"} RETURNING code, history_id, state`,
+    `DELETE FROM meeting_snapshots WHERE created_at < ${db.USE_PG ? "NOW() - ($1::text || ' milliseconds')::interval" : "strftime('%Y-%m-%dT%H:%M:%fZ','now',(-$1/1000.0) || ' seconds')"} RETURNING code, history_id, state, created_at`,
     [String(config.RESTART.restoreMaxMs)]
   ).catch(() => ({ rows: [] }));
   for (const row of r.rows) {
@@ -105,6 +111,7 @@ async function expireSnapshots() {
     if (!(m.participants instanceof Map)) m.participants = new Map();
     if (m.content) delete m.content.slideshowTimer;
     store.setMeeting(row.code, m);
+    if (m.billingId) await require('../features/wallet/billing-data').settle(m.billingId, {now:new Date(row.created_at).getTime()+config.RESTART.restoreMaxMs,endReason:'restart-expired'});
     await require('./lifecycle').endMeeting(row.code, 'restart-expired').catch(() => store.deleteMeeting(row.code));
     console.log(`[snapshot] expired ${row.code}`);
   }

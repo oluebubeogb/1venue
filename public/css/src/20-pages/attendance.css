@@ -1,0 +1,40 @@
+/* Attendance list page */
+.att-page { max-width: 860px; margin: 0 auto; }
+.att-hero {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--s1)), color-mix(in srgb, var(--accent-2, var(--accent)) 12%, var(--s1)));
+  border-radius: var(--r-xl);
+  padding: clamp(1.6rem, 4vw, 2.8rem);
+  margin-bottom: 1.2rem;
+  text-align: center;
+}
+.att-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  font-weight: 750;
+  letter-spacing: .04em;
+  margin-bottom: .6rem;
+  color: var(--accent);
+}
+.att-hero h1 { margin: .2rem 0 .4rem; font-size: clamp(1.6rem, 4vw, 2.2rem); }
+.host-card {
+  display: inline-flex;
+  align-items: center;
+  gap: .8rem;
+  margin-top: 1rem;
+  padding: .6rem 1rem;
+  background: color-mix(in srgb, var(--s1) 80%, transparent);
+  border-radius: 999px;
+}
+.att-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.att-table th, .att-table td { padding: .65rem .5rem; text-align: left; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.att-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+
+@media print {
+  .no-print, .topbar, .bottomnav, .btn { display: none !important; }
+  .att-page { max-width: none; }
+  .att-hero { background: #f8fafc !important; color: #111; -webkit-print-color-adjust: exact; }
+  .card { box-shadow: none; border: 1px solid #ddd; }
+  body { background: #fff; }
+}

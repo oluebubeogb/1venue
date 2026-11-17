@@ -7,7 +7,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { boot, client, signupPayload } = require('./helpers/server');
+const { boot, client, signupPayload, fundTestWallet } = require('./helpers/server');
 
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -151,16 +151,16 @@ test('Whisper input mapping: auto-detect by default, language hint when set, Igb
   assert.equal(stt.replicateText({ segments: [{ text: 'a' }, { text: 'b' }] }), 'a b');
 });
 
-test('layout: / bar typing area is 50% at every width; Discover header; /u allows dots; Books API callers', () => {
+test('layout: / bar search is a fixed-size box and quick actions take the rest; Discover header; /u allows dots; Books API callers', () => {
   const css = read('public/css/app.css');
-  assert.match(css, /\.cmdbar \.cmd-in \{ flex: 0 0 50%;/);
-  assert.match(css, /\.cmdbar \.cmd-actions \{ flex: 1 1 50%;/);
-  assert.match(css, /\.cmdbar \.cmd-in \{ flex-basis: 50%; \}/);
-  assert.match(css, /width: min\(940px, calc\(100% - 24px\)\)/, 'bar width unchanged');
+  assert.match(css, /\.cmdbar \.cmd-in\s*\{\s*flex:\s*0 1 320px;\s*min-width:\s*200px;/);
+  assert.match(css, /\.cmdbar \.cmd-actions\s*\{\s*flex:\s*1 1 auto;/);
+  assert.match(css, /\.cmdbar \.cmd-in\s*\{\s*flex:\s*0 0 46%;\s*min-width:\s*0;\s*\}/, 'phone keeps a usable search box');
+  assert.match(css, /width: min\(1200px, calc\(100% - 24px\)\)/, 'bar is wide enough for the quick actions');
   assert.match(css, /@keyframes slashDance/);
-  assert.match(css, /\.dz-head \{[^}]*grid-template-areas: "title filters" "search search"/);
-  assert.match(css, /grid-template-areas: "title search filters"/);
-  assert.match(css, /prefers-reduced-motion: reduce\) \{ \.dz-txt/);
+  assert.match(css, /\.dz-head\s*\{[^}]*grid-template-areas:\s*"title filters" "search search"/);
+  assert.match(css, /grid-template-areas:\s*"title search filters"/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce\)\s*\{\s*\.dz-txt/);
   const disc = read('public/js/pages/discover.js');
   assert.match(disc, /export function filterPicker/);
   assert.ok(!/statusSeg|class: 'chips free-grid'/.test(disc), 'old rows 3–4 removed');
@@ -263,7 +263,8 @@ test('voice typing + captions via Whisper on Replicate: auth, language, caps, ro
 
     // room guest: dictation (never broadcast) and captions, with the room credential
     const pid = 'guest-stt-' + Date.now();
-    const cr = await (await fetch(s.base + '/api/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'STT room', participantName: 'Ada Guest', participantId: pid }) })).json();
+    await fundTestWallet(s.base, cookie);
+    const cr = await (await fetch(s.base + '/api/create', { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ name: 'STT room', participantName: 'Ada Guest', participantId: pid }) })).json();
     const room = { 'X-Room-Code': cr.code, 'X-Participant-Id': pid, 'X-Room-Credential': cr.wsCredential };
     assert.equal((await post(`mode=dictate&code=${cr.code}`, room)).status, 200);
     assert.equal((await post(`mode=caption&code=${cr.code}`, room)).status, 200);

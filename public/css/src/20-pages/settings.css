@@ -1,0 +1,26 @@
+.session-row { padding: .45rem 0; border-top: 1px solid var(--line); }
+.session-row:first-child { border-top: 0; }
+
+/* Settings → Danger zone (delete account) */
+.danger-zone { border: 1px solid color-mix(in srgb, #dc2626 28%, var(--line-2)); }
+.danger-zone .set-h { color: #dc2626; }
+.del-steps { display: flex; gap: .35rem; }
+.del-steps span { flex: 1; height: 4px; border-radius: 4px; background: var(--line-2); transition: background .25s; }
+.del-steps span.on { background: #dc2626; }
+.del-list { margin: 0; padding-left: 1.1rem; display: grid; gap: .25rem; }
+.del-code {
+  text-align: center;
+  font: 700 1.6rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .5em;
+  padding-left: .5em;
+}
+.del-final {
+  display: flex;
+  gap: .75rem;
+  align-items: flex-start;
+  padding: .85rem 1rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, #dc2626 9%, transparent);
+  color: var(--text);
+}
+.del-final > span { color: #dc2626; flex: none; display: flex; }

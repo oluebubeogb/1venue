@@ -1,0 +1,28 @@
+/* social post / comments */
+.post { padding: 1rem; display: flex; gap: .8rem; }
+.post .head { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+.post .name { font-weight: 700; }
+.post .text { white-space: pre-wrap; word-break: break-word; margin-top: .25rem; }
+.post .acts { display: flex; gap: .2rem; margin-top: .4rem; margin-left: -.5rem; }
+.act {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  height: 34px;
+  padding: 0 .6rem;
+  border-radius: var(--r-pill);
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: .85rem;
+  font-weight: 600;
+  transition: color .15s, background .15s;
+}
+.act:hover { background: var(--s2); color: var(--text); }
+.act.liked { color: #e11d48; }
+.act.liked .ic { fill: currentColor; animation: pop .45s var(--spring); }
+@keyframes pop { 40% { transform: scale(1.35); } }
+.replies { margin-left: 2.6rem; border-left: 2px solid var(--line); padding-left: .6rem; }
+.composer { display: flex; gap: .6rem; align-items: flex-end; padding: .7rem; }
+.composer .textarea { min-height: 46px; height: 46px; border-radius: 16px; }

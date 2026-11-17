@@ -54,7 +54,7 @@ export function followBtn(user, onChange) {
 }
 export function personRow(u, { follow = true } = {}) {
   return h('a', { class: 'list-item', href: profilePath(u), 'data-link': '' }, avatar(u.name, u.avatarUrl),
-    h('div', { class: 'grow' }, h('div', { style: { fontWeight: 700 }, class: 'ellipsis' }, u.name), h('div', { class: 'tiny muted ellipsis' }, u.handle ? '@' + u.handle : (u.username ? '@' + u.username : ''), u.followers != null ? ` · ${fmtNum(u.followers)} followers` : '')),
+    h('div', { class: 'grow' }, h('div', { class: 'list-item-name ellipsis' }, u.name), h('div', { class: 'tiny muted ellipsis' }, u.handle ? '@' + u.handle : (u.username ? '@' + u.username : ''), u.followers != null ? ` · ${fmtNum(u.followers)} followers` : '')),
     follow && state.user && state.user.id !== u.id ? followBtn(u) : null);
 }
 
@@ -65,49 +65,67 @@ const POST_KIND = {
   summary: ['shared a session summary', 'sparkles'],
 };
 
+/* Calendar leaf: month over day, the feed's mark for anything that happens at a time. */
+export function dateLeaf(ev, { size = '' } = {}) {
+  const live = ev && (ev.status === 'live' || ev.live);
+  const t = ev && ev.startsAt ? new Date(ev.startsAt) : null;
+  if (live) {
+    return h('span', { class: `date-leaf is-live ${size}`, 'aria-label': 'Live now' },
+      h('span', { class: 'date-leaf-m' }, 'Live'), h('span', { class: 'date-leaf-dot', 'aria-hidden': 'true' }));
+  }
+  if (!t || Number.isNaN(t.getTime())) {
+    return h('span', { class: `date-leaf is-empty ${size}`, 'aria-hidden': 'true', html: icon('calendar', { size: 16 }) });
+  }
+  return h('span', { class: `date-leaf ${size}`, 'aria-label': fmtDate(t, { weekday: undefined }) },
+    h('span', { class: 'date-leaf-m' }, t.toLocaleDateString(undefined, { month: 'short' })),
+    h('span', { class: 'date-leaf-d' }, String(t.getDate())));
+}
+const timeOf = (iso) => { const t = new Date(iso); return Number.isNaN(t.getTime()) ? '' : t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+
+/* Event posts read like a notice on the hall board: date leaf, title, kind and time, cover only when there is a real one. */
 function feedEventBlock(ev) {
   if (!ev) return null;
-  const [cl, ci, cc] = catOf(ev.category);
+  const [cl] = catOf(ev.category);
   const live = ev.status === 'live' || ev.live;
-  const c1 = ev.theme?.accent || cc;
-  const c2 = ev.theme?.accent2 || 'var(--accent-2)';
-  const dateLabel = live ? 'LIVE' : (ev.startsAt ? fmtDate(ev.startsAt, { weekday: undefined }) : null);
-  return h('div', { class: 'feed-event' },
-    h('div', { class: 'feed-event-cover', style: { '--c1': c1, '--c2': c2 } },
-      ev.coverUrl
-        ? h('img', { src: ev.coverUrl, alt: '', loading: 'lazy' })
-        : h('div', { class: 'feed-event-art', html: LOGO_ART }),
-      dateLabel ? h('span', { class: `feed-event-pill${live ? ' live' : ''}`, html: (live ? '' : icon('calendar', { size: 12 })) + esc(dateLabel) }) : null),
-    h('div', { class: 'feed-event-body' },
-      h('span', { class: 'feed-event-cat', style: { '--g': cc }, html: icon(ci, { size: 12 }) + esc(cl.toUpperCase()) }),
-      h('div', { class: 'feed-event-title' }, ev.title)));
+  const when = live ? 'On air now' : (ev.startsAt ? `${new Date(ev.startsAt).toLocaleDateString(undefined, { weekday: 'long' })}, ${timeOf(ev.startsAt)}` : 'Time to be announced');
+  return h('a', { class: `feed-event${live ? ' is-live' : ''}`, href: `/e/${ev.slug}`, 'data-link': '' },
+    ev.coverUrl ? h('div', { class: 'feed-event-cover' },
+      h('img', { src: ev.coverUrl, alt: '', loading: 'lazy', onerror: (e) => e.target.parentNode.remove() })) : null,
+    h('div', { class: 'feed-event-row' },
+      dateLeaf(ev),
+      h('div', { class: 'feed-event-text' },
+        h('div', { class: 'feed-event-title' }, ev.title),
+        h('div', { class: 'feed-event-meta' }, cl, h('span', { 'aria-hidden': 'true' }, ' · '), when)),
+      h('span', { class: 'feed-event-go', 'aria-hidden': 'true', html: icon('chevronRight', { size: 18 }) })));
 }
 
 export function postCard(p, { onDelete } = {}) {
   const kind = POST_KIND[p.kind];
-  const likeBtn = h('button', { class: `act${p.liked ? ' liked' : ''}`, 'data-group': 'engage', 'data-tip': 'Like', html: icon('heart', { size: 18 }) + `<span>${fmtNum(p.likeCount)}</span>` });
+  const cnt = (n) => (n > 0 ? fmtNum(n) : '');
+  const likeBtn = h('button', { class: `act${p.liked ? ' liked' : ''}`, type: 'button', 'data-group': 'engage', 'data-tip': 'Like', 'aria-label': 'Like', 'aria-pressed': p.liked ? 'true' : 'false', html: icon('heart', { size: 18 }) + `<span>${cnt(p.likeCount)}</span>` });
   likeBtn.onclick = async () => {
     if (!requireLogin('Sign in to like posts')) return;
     p.liked = !p.liked; p.likeCount += p.liked ? 1 : -1;
     likeBtn.classList.toggle('liked', p.liked);
-    likeBtn.lastChild.textContent = fmtNum(p.likeCount);
+    likeBtn.setAttribute('aria-pressed', p.liked ? 'true' : 'false');
+    likeBtn.lastChild.textContent = cnt(p.likeCount);
     try {
       const r = await api(`/api/posts/${p.id}/like`, { method: 'POST' });
-      if (r && r.likeCount != null) likeBtn.lastChild.textContent = fmtNum(r.likeCount);
+      if (r && r.likeCount != null) likeBtn.lastChild.textContent = cnt(r.likeCount);
     } catch (e) { toastErr(e); }
   };
   const thread = h('div', { class: 'feed-thread' });
-  const cBtn = h('button', { class: 'act', 'data-group': 'social', 'data-tip': 'Comments', html: icon('chat', { size: 18 }) + `<span>${fmtNum(p.commentCount)}</span>` });
+  const cBtn = h('button', { class: 'act', type: 'button', 'data-group': 'social', 'data-tip': 'Comments', 'aria-label': 'Comments', html: icon('chat', { size: 18 }) + `<span>${cnt(p.commentCount)}</span>` });
   cBtn.onclick = () => {
     if (thread.firstChild) { thread.innerHTML = ''; return; }
     thread.append(commentThread('posts', p.id, { compact: true }));
   };
-  const shareBtn = h('button', { class: 'act', 'data-group': 'content', 'data-tip': 'Share', html: icon('share', { size: 18 }) });
+  const shareBtn = h('button', { class: 'act', type: 'button', 'data-group': 'content', 'data-tip': 'Share', 'aria-label': 'Share', html: icon('share', { size: 18 }) });
   shareBtn.onclick = () => shareLink(
     p.event ? `${location.origin}/e/${p.event.slug}` : `${location.origin}${profilePath(p.author)}`,
     p.event?.title || '1venue',
   );
-  const bookmarkBtn = h('button', { class: 'act', 'data-group': 'content', 'data-tip': 'Save', html: icon('bookmark', { size: 18 }) });
+  const bookmarkBtn = h('button', { class: 'act act-save', type: 'button', 'data-group': 'content', 'data-tip': 'Save', 'aria-label': 'Save', html: icon('bookmark', { size: 18 }) });
   bookmarkBtn.onclick = () => toast('Saved for later', { icon: 'bookmark', group: 'content' });
 
   const mine = state.user && p.author && state.user.id === p.author.id;
@@ -132,10 +150,8 @@ export function postCard(p, { onDelete } = {}) {
       h('a', { class: 'feed-post-av', href: profilePath(p.author), 'data-link': '' }, avatar(p.author.name, p.author.avatarUrl)),
       h('div', { class: 'feed-post-meta grow' },
         h('a', { class: 'name', href: profilePath(p.author), 'data-link': '' }, p.author.name),
-        kind
-          ? h('span', { class: 'feed-post-kind muted small', html: icon(kind[1], { size: 13, cls: 'inline' }) + ' ' + kind[0] })
-          : null,
-        h('span', { class: 'faint small' }, (kind ? ' · ' : '') + timeAgo(p.createdAt))),
+        kind ? h('span', { class: 'feed-post-kind' }, kind[0]) : null,
+        h('time', { class: 'feed-post-time', datetime: p.createdAt || '' }, timeAgo(p.createdAt))),
       menuBtn),
     p.body && (p.kind === 'post' || !p.kind)
       ? h('div', { class: 'feed-post-text', html: linkify(p.body) })
@@ -144,13 +160,10 @@ export function postCard(p, { onDelete } = {}) {
         : null,
     ...(p.media || []).filter((m) => m.type === 'passage').slice(0, 1).map((m) => passageCard(m)),
     ...(p.media || []).filter((m) => m.type !== 'passage' && /^image\//.test(m.mime || 'image/')).slice(0, 4).map((m) =>
-      h('img', { class: 'feed-post-img', src: m.url, alt: '', loading: 'lazy' })),
+      h('img', { class: 'feed-post-img', src: m.url, alt: '', loading: 'lazy', onerror: (e) => e.target.remove() })),
     p.event ? feedEventBlock(p.event) : null,
     h('div', { class: 'feed-post-foot' },
-      h('div', { class: 'acts' }, likeBtn, cBtn, shareBtn, bookmarkBtn),
-      p.event
-        ? h('a', { class: 'btn sm feed-view-event', href: `/e/${p.event.slug}`, 'data-link': '', html: 'View Event ' + icon('arrowRight', { size: 14 }) })
-        : null),
+      h('div', { class: 'acts' }, likeBtn, cBtn, shareBtn), bookmarkBtn),
     thread);
   return el;
 }

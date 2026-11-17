@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
-const { signupPayload } = require('./helpers/server');
+const { signupPayload, fundTestWallet } = require('./helpers/server');
 
 let base = process.env.TEST_BASE_URL;
 let child;
@@ -107,6 +107,7 @@ test('sqlite local event and room flow works over HTTP without LiveKit', { skip:
   assert.equal(created.status, 200, JSON.stringify(created.body));
   const event = created.body;
   assert.equal((await request('/api/discover?q=Local')).body.events[0].id, event.id);
+  await fundTestWallet(base, cookie, 120, sqliteDir ? {SQLITE_PATH:path.join(sqliteDir, 'test.sqlite')} : {});
   const room = await request('/api/create', 'POST', { name: 'Local Seminar', participantName: 'Ada', eventId: event.id });
   assert.equal(room.status, 200, JSON.stringify(room.body));
   assert.equal(room.body.code, event.code);

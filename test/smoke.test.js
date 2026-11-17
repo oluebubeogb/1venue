@@ -2,6 +2,7 @@
 // End-to-end smoke test of the assembled app: boots server.js and walks one request through
 // each layer (health, readiness, feature JSON routes, feature raw handlers, core routes,
 // generated feature assets, static shell). Needs DATABASE_URL (or TEST_BASE_URL).
+const { fundTestWallet } = require('./helpers/server');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -38,6 +39,7 @@ test('smoke: every layer answers', { skip }, async () => {
   assert.equal((await fetch(base + '/api/dashboard', { headers: { cookie } })).status, 200);
   assert.equal((await fetch(base + '/api/dashboard')).status, 401);
 
+  await fundTestWallet(base, cookie);
   // core room flow: create a meeting and read it back
   const created = await fetch(base + '/api/create', { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ name: 'Smoke test', hostName: 'Smoke Host' }) });
   assert.ok(created.ok, 'create ' + created.status);

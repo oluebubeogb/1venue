@@ -1,0 +1,116 @@
+/* cards */
+.card {
+  position: relative;
+  background: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: transform .25s var(--ease), box-shadow .25s, border-color .25s;
+}
+.card.hover:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); border-color: var(--line-2); }
+.grid-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.ev-card .cover {
+  aspect-ratio: 16/9;
+  position: relative;
+  background: linear-gradient(135deg, var(--c1, var(--accent)), var(--c2, var(--accent-2)));
+  overflow: hidden;
+}
+.ev-card .cover img { width: 100%; height: 100%; object-fit: cover; }
+.ev-card .cover .art { position: absolute; inset: 0; opacity: .25; color: #fff; display: grid; place-items: center; }
+.ev-card .cover .art svg { width: 46%; height: auto; }
+.ev-card .body { padding: .9rem 1rem 1rem; display: flex; flex-direction: column; gap: .45rem; }
+.ev-card .title {
+  font-weight: 750;
+  font-size: 1.02rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ev-card .meta { display: flex; gap: .7rem; color: var(--muted); font-size: .8rem; align-items: center; flex-wrap: wrap; }
+.ev-card .meta span { display: inline-flex; align-items: center; gap: .3rem; }
+.pill {
+  position: absolute;
+  top: .7rem;
+  left: .7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .25rem .6rem;
+  border-radius: var(--r-pill);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+  color: #fff;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(8px);
+}
+.pill.live { background: #ef4444; }
+.pill.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: pulse 1.4s infinite; }
+.pill.r { left: auto; right: .7rem; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: .35; transform: scale(.7);} }
+.cat {
+  --g: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--g);
+}
+.section-h { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: 1.8rem 0 .9rem; }
+.section-h h2 { display: flex; gap: .5rem; align-items: center; font-size: 1.02rem; font-weight: 650; }
+.hscroll {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 300px);
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: .4rem;
+  scrollbar-width: thin;
+}
+.hscroll > * { scroll-snap-align: start; }
+.ai-box {
+  --g: var(--g-ai);
+  border-radius: var(--r-md);
+  padding: 1rem;
+  background: linear-gradient(135deg, color-mix(in srgb, #7c3aed 9%, var(--s1)), color-mix(in srgb, #db2777 7%, var(--s1)));
+  border: 1px solid color-mix(in srgb, #7c3aed 22%, transparent);
+}
+.ai-box .tag {
+  display: inline-flex;
+  gap: .3rem;
+  align-items: center;
+  font-size: .72rem;
+  font-weight: 800;
+  color: #9333ea;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.on-dark { color: #fff; }
+.section-h h2 .ic { width: 18px; height: 18px; }
+
+/* stronger feature card entrance */
+.stagger.feat-stagger > * { animation: featIn .7s cubic-bezier(.2,.8,.2,1) both; }
+.stagger.feat-stagger > *:nth-child(1) { animation-delay: .05s; }
+.stagger.feat-stagger > *:nth-child(2) { animation-delay: .12s; }
+.stagger.feat-stagger > *:nth-child(3) { animation-delay: .19s; }
+.stagger.feat-stagger > *:nth-child(4) { animation-delay: .26s; }
+.stagger.feat-stagger > *:nth-child(5) { animation-delay: .33s; }
+.stagger.feat-stagger > *:nth-child(6) { animation-delay: .4s; }
+@keyframes featIn {
+  from { opacity: 0; transform: translateY(18px) scale(.96); }
+  to { opacity: 1; transform: none; }
+}
+.feat-stagger .card { transition: transform .28s var(--ease), box-shadow .28s var(--ease); will-change: transform; }
+.feat-stagger .card:hover { transform: scale(1.04); box-shadow: 0 16px 36px -14px color-mix(in srgb, var(--accent) 40%, transparent); z-index: 1; }
+.feat-stagger .card .ico-tile { transition: transform .35s var(--spring); }
+.feat-stagger .card:hover .ico-tile { transform: rotate(-8deg) scale(1.08); }
+
+/* themed section icons */
+.section-h .ic, .section-h .ico-tile { color: var(--accent); }
+.card.pad.layer { overflow: visible; }

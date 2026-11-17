@@ -1,5 +1,5 @@
 'use strict';
-require('./helpers/server');
+const { client, signupPayload, fundTestWallet } = require('./helpers/server');
 // Graceful restart: SIGTERM snapshots live rooms instead of ending them, clients get
 // "server-restarting", and a fresh process restores the room when they reconnect.
 // Needs DATABASE_URL (skipped otherwise).
@@ -38,7 +38,9 @@ const post = (p, body) => fetch(base + p, { method: 'POST', headers: { 'content-
 test('SIGTERM keeps the meeting live and a new process restores it on reconnect', { skip, timeout: 60000 }, async () => {
   let server = await boot();
   try {
-    const created = await post('/api/create', { name: 'Restart check', participantName: 'Host Person' });
+    const hostClient = client(base); await hostClient.post('/api/signup', signupPayload());
+    await fundTestWallet(base, hostClient.jar.header());
+    const created = await hostClient.post('/api/create', { name: 'Restart check', participantName: 'Host Person' });
     assert.equal(created.status, 200);
     const { code, participantId: hostId, wsCredential: hostCred } = created.body;
     const joined = await post('/api/join', { code, participantName: 'Guest Person' });
