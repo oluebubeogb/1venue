@@ -25,8 +25,8 @@ describe('session certificates, profile visibility, and Open notifications', () 
     assert.match(msg, /join \? 'Join' : 'Open'/);
     assert.match(msg, /certificate: 'graduation'/);
     assert.doesNotMatch(msg, /p\.type === 'schedule' \|\| p\.type === 'event' \? 'Open' : 'Join'/);
-    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=82/);
+    assert.match(read('public/sw.js'), /VERSION = 'v97-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=83/);
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'migrations/sqlite/032_cert_public_manual.sql')));
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/features/certificates/migrations/20261126120000_cert_public_manual.sql')));
   });

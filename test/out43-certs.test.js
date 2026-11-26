@@ -94,8 +94,8 @@ describe('certificate redesign', () => {
     assert.match(read('public/js/pages/cert.js'), /Verified/);
     assert.match(read('public/js/pages/cert.js'), /linkedin/i);
     assert.match(read('public/js/pages/cert-sign.js'), /no longer needed/);
-    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=82/);
+    assert.match(read('public/sw.js'), /VERSION = 'v97-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=83/);
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'assets/fonts/GreatVibes-Regular.ttf')));
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'migrations/sqlite/031_cert_redesign.sql')));
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/features/certificates/migrations/20261125120000_cert_redesign.sql')));

@@ -28,7 +28,7 @@ async function finishMeeting(code, reason, endedAt) {
   if (session?.end_reason) reason=session.end_reason;
   if (meeting.paidEntry && meeting.paidEntry.enabled) {
     try { await require('../features/wallet/paid-entry').settle(code, endedAt); }
-    catch (e) { console.error('[paid entry] settlement', code, e.message); throw e; }
+    catch (e) { console.error('[paid entry] settlement', code, e.message); }
   }
   clearInterval(meeting.content?.slideshowTimer);
   if (meeting.historyId) {

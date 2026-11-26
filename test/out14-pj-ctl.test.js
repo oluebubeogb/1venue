@@ -26,7 +26,7 @@ describe('out14 prejoin preview toggles', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
+    assert.match(read('public/sw.js'), /VERSION = 'v97-2026-11-26'/);
     assert.match(read('public/index.html'), /room\.css\?v=20/);
   });
 });

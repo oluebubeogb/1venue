@@ -3,6 +3,9 @@ const config = require('../../config');
 const data = require('./data');
 const { quote, fail } = require('./rules');
 
+function passFeesConfirmed() {
+  return String(process.env.PAYSTACK_PASS_FEES_CONFIRMED || '').trim().toLowerCase() === 'true';
+}
 function settings() {
   const secretKey = process.env.PAYSTACK_SECRET_KEY || '';
   const webhookSecret = process.env.PAYSTACK_WEBHOOK_SECRET || '';
@@ -21,7 +24,7 @@ function settings() {
   const sandbox = !official && mode === 'test' && url.protocol === 'https:';
   const loopback = process.env.NODE_ENV === 'test' && mode === 'test' && url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
   const allowed = official || sandbox || loopback;
-  const enabled = !!(mode && callback && process.env.PAYSTACK_PASS_FEES_CONFIRMED === 'true' && (mode !== 'test' || process.env.NODE_ENV !== 'production' || sandbox));
+  const enabled = !!(mode && callback && passFeesConfirmed() && (mode !== 'test' || process.env.NODE_ENV !== 'production' || sandbox));
   if (!allowed || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw fail(503, 'Payment service configuration needs attention');
   return { secretKey, webhookSecret, mode, callback, enabled, base: url.origin, sandbox };
 }
@@ -111,4 +114,4 @@ function verifyWebhook(raw, headers, { secretKey, webhookSecret, now = Date.now(
   if (!secretKey) return false;
   return equalHex(crypto.createHmac('sha512', secretKey).update(raw).digest(), headers['x-paystack-signature']);
 }
-module.exports = { settings, enabled, initialize, confirm, verifyWebhook, call, checkoutUrl, metadata };
+module.exports = { settings, enabled, passFeesConfirmed, initialize, confirm, verifyWebhook, call, checkoutUrl, metadata };

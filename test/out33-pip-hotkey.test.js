@@ -25,9 +25,9 @@ describe('O pops out and returns to the tab', () => {
   });
 
   it('bumps the service worker and cache-bust query', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=82/);
-    assert.match(read('public/index.html'), /app\.js\?v=82/);
+    assert.match(read('public/sw.js'), /VERSION = 'v97-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=83/);
+    assert.match(read('public/index.html'), /app\.js\?v=83/);
   });
 
   it('registers a capture keydown for O, skips typing, and requests the window in the same turn', () => {

@@ -10,10 +10,10 @@ const skip = process.env.DB_DRIVER !== 'sqlite' && !process.env.DATABASE_URL ? '
 if (process.env.DB_DRIVER === 'sqlite') require('./helpers/server');
 
 describe('out39 marketplace materials can be opened', () => {
-  it('cache versions are v89 / ?v=82', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=82/);
-    assert.match(read('public/index.html'), /app\.js\?v=82/);
+  it('cache versions are v89 / ?v=83', () => {
+    assert.match(read('public/sw.js'), /VERSION = 'v97-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=83/);
+    assert.match(read('public/index.html'), /app\.js\?v=83/);
   });
 
   it('viewableMaterial allows listed marketplace items, not only event attachments', () => {

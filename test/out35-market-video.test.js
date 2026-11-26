@@ -36,9 +36,9 @@ describe('out35 marketplace and 15-minute videos', () => {
   });
 
   it('bumps the cache versions', () => {
-    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=82/);
-    assert.match(read('public/index.html'), /app\.js\?v=82/);
+    assert.match(read('public/sw.js'), /VERSION = 'v97-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=83/);
+    assert.match(read('public/index.html'), /app\.js\?v=83/);
   });
 });
 

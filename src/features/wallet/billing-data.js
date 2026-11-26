@@ -112,7 +112,7 @@ async function settleLocked(c,row,now,endReason=null,counts={}) {
       const planUnits=Math.max(0,Number(wallet.plan_balance_units||0));
       const nextPlan=Math.max(0,planUnits-Math.min(planUnits,debit));
       const nextUsed=Number(wallet.period_used_units||0)+debit;
-      await c.query('UPDATE credit_wallets SET balance_units=GREATEST(0,$2),plan_balance_units=$3,period_used_units=$4,updated_at=NOW() WHERE user_id=$1',[row.user_id,balance,nextPlan,nextUsed]);
+      await c.query('UPDATE credit_wallets SET balance_units=$2,plan_balance_units=$3,period_used_units=$4,updated_at=NOW() WHERE user_id=$1',[row.user_id,balance,nextPlan,nextUsed]);
       await c.query("INSERT INTO credit_ledger(user_id,billing_session_id,through_ms,kind,delta_units,balance_after_units) VALUES($1,$2,$3,'usage',$4,$5)",[row.user_id,id,through,-debit,balance]);
     }
     const exhausted=hasStartedBilling&&balance===0;

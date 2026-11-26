@@ -30,8 +30,8 @@ describe('certificate layout and create-page funding', () => {
     assert.doesNotMatch(read('public/js/pages/create.js'), /Advertised duration/);
     assert.doesNotMatch(read('public/js/pages/create.js'), /Entry price \(credits\)/);
     assert.doesNotMatch(read('src/features/events/data.js'), /Paid entry requires an advertised duration/);
-    assert.match(read('public/sw.js'), /VERSION = 'v96-2026-11-26'/);
-    assert.match(read('public/index.html'), /app\.css\?v=82/);
+    assert.match(read('public/sw.js'), /VERSION = 'v97-2026-11-26'/);
+    assert.match(read('public/index.html'), /app\.css\?v=83/);
   });
 
   it('renders the four designs with the shared centred layout', async () => {

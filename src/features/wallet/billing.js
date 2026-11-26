@@ -23,7 +23,12 @@ async function check(meeting) {
     await require('../../rooms/lifecycle').endMeeting(meeting.code,ensured?.end_reason||'credits-exhausted');
     throw fail(410,'This meeting has ended because its credits ran out or it was closed');
   }
-  const row=await data.settle(meeting.billingId,{ownerId});
+  let row;
+  try { row=await data.settle(meeting.billingId,{ownerId}); }
+  catch(e) {
+    console.warn('[billing] settle', meeting.code, e.message);
+    row=ensured;
+  }
   if(!row||row.state!=='active') {
     await require('../../rooms/lifecycle').endMeeting(meeting.code,row?.end_reason||'credits-exhausted');
     throw fail(410,'This meeting has ended because its credits ran out or it was closed');
@@ -32,7 +37,8 @@ async function check(meeting) {
 }
 async function end(meeting,reason,now=Date.now()) {
   if(!meeting.billingId)return;
-  return data.settle(meeting.billingId,{now,endReason:reason,ownerId});
+  try { return await data.settle(meeting.billingId,{now,endReason:reason,ownerId}); }
+  catch(e) { console.warn('[billing] end', meeting.code, e.message); return null; }
 }
 async function closeMedia(row,now=Date.now(),client) {
   try {await cleanup(row,client);await data.markCleaned(row.id,now);}
