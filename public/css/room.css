@@ -949,18 +949,6 @@ body.in-room .cmdbar {
 .tb.hand {
   background: #f59e0b;
 }
-.tile-pin {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  opacity: 0;
-  transition: opacity 0.2s;
-  z-index: 2;
-}
-.tile:hover .tile-pin,
-.tile.pinned .tile-pin {
-  opacity: 1;
-}
 .tile.more {
   border: 1px dashed var(--line-2);
   cursor: pointer;
@@ -2797,9 +2785,6 @@ html.room-fs .cmdbar {
   bottom: 26px;
   left: 6px;
 }
-.filmstrip .tile-pin {
-  display: none;
-}
 .tile-more {
   position: absolute;
   top: 6px;
@@ -2831,7 +2816,7 @@ html.room-fs .cmdbar {
 }
 .tiles > .tile .tile-more {
   top: 8px;
-  right: 44px;
+  right: 8px;
 }
 .tile.sharing .tb.sharing {
   background: var(--g-media, var(--accent));

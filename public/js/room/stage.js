@@ -45,8 +45,7 @@ export function createStage(R) {
       h('div', { class: 'tile-av' }), video,
       h('div', { class: 'tile-meta' }, h('span', { class: 'tile-mic' }), h('b', { class: 'tile-name ellipsis' }), h('span', { class: 'tile-q' })),
       h('div', { class: 'tile-badges' }),
-      kind === 'screen' ? null : h('button', { class: 'tile-more', type: 'button', 'aria-label': 'More', 'data-tip': 'More', onclick: (e) => { e.stopPropagation(); tileMenu(e.currentTarget, id); }, html: icon('more', { size: 14 }) }),
-      kind === 'screen' ? null : h('button', { class: 'tile-pin icon-btn sm glass', type: 'button', 'data-tip': 'Pin', 'data-group': 'media', onclick: (e) => { e.stopPropagation(); R.pin(R.pinned === id ? null : id); }, html: icon('pin', { size: 14 }) }));
+      kind === 'screen' ? null : h('button', { class: 'tile-more', type: 'button', 'aria-label': 'More', 'data-tip': 'More', onclick: (e) => { e.stopPropagation(); tileMenu(e.currentTarget, id); }, html: icon('more', { size: 14 }) }));
     // Clicking a sharer's small card puts their screen on the big stage.
     if (kind !== 'screen') tile.addEventListener('click', (e) => { if (e.target.closest('button')) return; const sc = tiles.get(id + ':screen'); if (sc && sc.track) setPick(id); });
     t = { el: tile, video, kind, id, track: null };
@@ -355,8 +354,13 @@ export function createStage(R) {
 
     let main = null;
     if (!key && (layout === 'spotlight' || layout === 'speaker')) {
-      const focusId = R.pinned || [...R.speaking].find((x) => x !== R.me.id && ids.includes(x)) || R.lastSpeaker || ids.find((x) => x !== R.me.id) || R.me.id;
-      if (focusId && ids.includes(focusId)) { R.lastSpeaker = focusId; main = tileFor(focusId); }
+      const pinned = ids.includes(R.pinned) ? R.pinned : null;
+      const focusId = pinned || [...R.speaking].find((x) => x !== R.me.id && ids.includes(x))
+        || (ids.includes(R.lastSpeaker) ? R.lastSpeaker : null) || ids.find((x) => x !== R.me.id) || ids[0];
+      if (focusId) {
+        if (!pinned) R.lastSpeaker = focusId;
+        main = tileFor(focusId);
+      }
     }
 
     const list = ids.map((id) => tileFor(id));

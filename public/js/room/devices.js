@@ -1,4 +1,4 @@
-// Auto-pick a mic and camera that actually produce content. Virtual add-ons
+// Auto-pick an available mic and a camera that produces content. Virtual add-ons
 // (OBS, Snap, ManyCam, VB-Cable, Voicemeeter, NDI, "Virtual", …) go last.
 import { AUDIO_CONSTRAINTS, devicePrefs, saveDevicePref, listDevices } from './media.js';
 import { h, toast, toastErr } from '../ui.js';
@@ -6,7 +6,6 @@ import { h, toast, toastErr } from '../ui.js';
 export const VIRTUAL_RE = /\b(obs(?:[\s_-]*virtual)?|snap\s*camera|manycam|xsplit|e2esoft|\bvcam\b|cyberlink|vb-?audio|vb-?cable|voicemeeter|krisp|virtual|steam streaming|iriun|droidcam|ndi|newtek)\b/i;
 const PER_MS = 1500;
 const BUDGET_MS = 8000;
-const MIC_RMS = 0.008;
 const SILENT_MS = 25000;
 const SILENT_RMS = 0.005;
 
@@ -56,12 +55,12 @@ export function saveWorkingPair(pair) {
 }
 
 export async function warmup(audio, video) {
-  if (!navigator.mediaDevices?.getUserMedia) return;
+  if ((!audio && !video) || !navigator.mediaDevices?.getUserMedia) return;
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: !!audio || !video, video: !!video });
+    const s = await navigator.mediaDevices.getUserMedia({ audio: !!audio, video: !!video });
     s.getTracks().forEach((t) => t.stop());
   } catch {
-    if (video) {
+    if (audio && video) {
       try { const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); s.getTracks().forEach((t) => t.stop()); } catch { /* */ }
     }
   }
@@ -76,33 +75,18 @@ function withTimeout(p, ms) {
 
 export async function probeMic(deviceId, ms = PER_MS) {
   return withTimeout((async () => {
-    let stream, ctx;
+    let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { ...AUDIO_CONSTRAINTS, deviceId: deviceId ? { exact: deviceId } : undefined }, video: false });
-      const track = stream.getAudioTracks()[0];
-      if (!track || track.readyState !== 'live') return false;
-      const AC = window.AudioContext || window.webkitAudioContext;
-      ctx = new AC();
-      await ctx.resume().catch(() => {});
-      const an = ctx.createAnalyser();
-      an.fftSize = 1024;
-      ctx.createMediaStreamSource(stream).connect(an);
-      const data = new Uint8Array(an.fftSize);
-      const t0 = performance.now();
-      let peak = 0;
-      while (performance.now() - t0 < Math.min(1000, ms - 80)) {
-        an.getByteTimeDomainData(data);
-        let s = 0;
-        for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; s += v * v; }
-        peak = Math.max(peak, Math.sqrt(s / data.length));
-        if (peak > MIC_RMS) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      return peak > MIC_RMS;
+      const specific = deviceId && deviceId !== 'default';
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { ...AUDIO_CONSTRAINTS, deviceId: specific ? { exact: deviceId } : undefined },
+        video: false,
+      });
+      // A quiet input still works. The preview meter shows signal when the user speaks.
+      return stream.getAudioTracks().some((track) => track.readyState === 'live');
     } catch { return false; }
     finally {
-      try { ctx && await ctx.close(); } catch { /* */ }
-      stream && stream.getTracks().forEach((t) => t.stop());
+      stream?.getTracks().forEach((track) => track.stop());
     }
   })(), ms);
 }
@@ -165,6 +149,9 @@ export async function pickWorking({ wantAudio = true, wantVideo = true, budgetMs
   const reports = { audioinput: [], videoinput: [] };
   const run = async (kind, probe) => {
     const ordered = sortDevices(list[kind] || [], prefs[kind]);
+    if (kind === 'audioinput' && !ordered.some((d) => d.deviceId === 'default')) {
+      ordered.push({ deviceId: 'default', label: 'Default microphone' });
+    }
     let picked = null;
     for (const d of ordered) {
       if (Date.now() - start > budgetMs) {

@@ -40,7 +40,7 @@ export async function downloadUrl(url, name) {
     return;
   }
   try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    const res = await fetch(url, { mode: 'cors', credentials: 'same-origin' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const blob = await res.blob();
     download(filename, blob, blob.type || 'application/octet-stream');

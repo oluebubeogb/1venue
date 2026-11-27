@@ -7,16 +7,29 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
-function loadClassify() {
+function loadClassify(extra = {}) {
   const src = read('public/js/room/devices.js')
     .replace(/^import .*$/gm, '')
     .replace(/^export /gm, '');
-  const ctx = { console };
-  vm.runInNewContext(src + '\nthis.classifyDevice = classifyDevice;\nthis.sortDevices = sortDevices;\nthis.optionLabel = optionLabel;\nthis.isDefaultDevice = isDefaultDevice;\nthis.framesHaveContent = framesHaveContent;\nthis.VIRTUAL_RE = VIRTUAL_RE;', ctx);
+  const ctx = { console, ...extra };
+  vm.runInNewContext(src + '\nthis.classifyDevice = classifyDevice;\nthis.sortDevices = sortDevices;\nthis.optionLabel = optionLabel;\nthis.isDefaultDevice = isDefaultDevice;\nthis.framesHaveContent = framesHaveContent;\nthis.VIRTUAL_RE = VIRTUAL_RE;\nthis.probeMic = probeMic;', ctx);
   return ctx;
 }
 
 describe('device auto-select', () => {
+  it('accepts a live microphone without needing sound or a running AudioContext', async () => {
+    let stopped = false;
+    const track = { readyState: 'live', stop: () => { stopped = true; } };
+    const { probeMic } = loadClassify({
+      setTimeout, clearTimeout, AUDIO_CONSTRAINTS: {},
+      navigator: { mediaDevices: { getUserMedia: async ({ audio }) => {
+        assert.equal(audio.deviceId, undefined);
+        return { getAudioTracks: () => [track], getTracks: () => [track] };
+      } } },
+    });
+    assert.equal(await probeMic('default'), true);
+    assert.equal(stopped, true);
+  });
   it('treats NDI like other virtual add-ons and tags them Virtual', () => {
     const { classifyDevice, VIRTUAL_RE } = loadClassify();
     for (const label of ['NDI Webcam Input', 'NewTek NDI', 'NDI Video', 'OBS Virtual Camera', 'Snap Camera', 'ManyCam Virtual Webcam', 'VB-Cable', 'Voicemeeter Input', 'Virtual Camera']) {

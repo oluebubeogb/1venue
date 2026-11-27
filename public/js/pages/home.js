@@ -27,19 +27,15 @@ function mobileImageCards() {
     ['/img/hero/amara-call.png', 'amara-call'],
     ['/img/hero/people-follow.png', 'people-follow'],
   ];
-  return [...images, ...images].map(([src, name]) => h('article', { class: `mobile-image-card mobile-image-card--${name}` },
+  return images.map(([src, name]) => h('article', { class: `mobile-image-card mobile-image-card--${name}` },
     h('img', { src, alt: '', loading: 'eager', decoding: 'async', draggable: 'false' })));
 }
 
-function heroVisual(extraClass = '') {
-  const cards = previewCards();
-  const children = extraClass
-    ? [h('div', { class: 'hero-carousel-track', 'aria-hidden': 'true' },
+function mobileCarousel() {
+  return h('div', { class: 'hero-visual hero-mobile-carousel', 'aria-hidden': 'true' },
+    h('div', { class: 'hero-carousel-track' },
       h('div', { class: 'hero-carousel-group' }, ...mobileImageCards()),
-      h('div', { class: 'hero-carousel-group', 'aria-hidden': 'true' }, ...mobileImageCards()))]
-    : cards;
-  return h('div', { class: `hero-visual ${extraClass}`.trim(), 'aria-label': 'Preview of a 1venue room' },
-    ...children);
+      h('div', { class: 'hero-carousel-group' }, ...mobileImageCards())));
 }
 
 function band(cls, ...kids) {
@@ -53,19 +49,22 @@ function startHeroCarousel(root) {
   if (!carousel || !group) return;
 
   const systemReduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const phoneWidth = matchMedia('(max-width: 560px)');
   let lastFrame = 0;
+  let offset = 0;
   const step = (now) => {
     if (!carousel.isConnected) {
       heroCarouselFrame = 0;
       return;
     }
     const reduceMotion = systemReduceMotion.matches || document.documentElement.classList.contains('reduce-motion');
-    if (!reduceMotion && document.visibilityState === 'visible') {
+    if (phoneWidth.matches && !reduceMotion && document.visibilityState === 'visible') {
       const loopWidth = group.getBoundingClientRect().width;
       const elapsed = lastFrame ? Math.min(now - lastFrame, 50) : 0;
       if (loopWidth > 0 && elapsed > 0) {
-        const next = carousel.scrollLeft + elapsed * 0.03;
-        carousel.scrollLeft = next >= loopWidth ? next % loopWidth : next;
+        // Keep fractional progress independently of the browser's rounded scroll position.
+        offset = ((offset - elapsed * 0.03) % loopWidth + loopWidth) % loopWidth;
+        carousel.scrollLeft = offset;
       }
     }
     lastFrame = now;
@@ -82,7 +81,7 @@ export async function mount(view) {
   document.body.dataset.page = 'home';
   const hero = h('section', { class: 'hero hero-join-first' },
     h('div', { class: 'hero-layout' },
-      heroVisual(),
+      ...previewCards(),
       h('div', { class: 'hero-copy' },
         h('div', { class: 'eyebrow', html: esc(hello) }),
         h('h1', null, 'Host it. Stream it.', h('br', { class: 'hero-break', 'aria-hidden': 'true' }), ' ', h('span', { class: 'grad-text' }, 'Gather Everyone. Workspace Collaboration.')),
@@ -92,7 +91,7 @@ export async function mount(view) {
           h('a', { class: 'btn primary lg', href: '/create', 'data-link': '', html: icon('radio', { size: 20 }) + 'Go live' }),
           h('a', { class: 'btn lg hero-cta-icon', href: '/create?instant=1', 'data-link': '', 'data-group': 'media', 'data-tip': 'Instant meeting', 'aria-label': 'Instant meeting', html: icon('zap', { size: 20 }) + '<span class="lbl">Instant meeting</span>' }),
           h('a', { class: 'btn lg hero-cta-icon', href: '/venues', 'data-link': '', 'data-group': 'media', 'data-tip': 'Venue', 'aria-label': 'Venue', html: icon('door', { size: 20 }) + '<span class="lbl">Venue</span>' })),
-        heroVisual('hero-mobile-carousel'))));
+        mobileCarousel())));
 
   const liveWrap = h('div', null, skeletonCards(3));
   const upWrap = h('div', null, skeletonCards(3));

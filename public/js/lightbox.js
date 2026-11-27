@@ -6,6 +6,7 @@
 // else the nearest post / message list / card. Avatars and icons are never matched.
 // The viewer is built in the image's document so it also works inside Document Picture-in-Picture.
 import { icon } from './icons.js';
+import { downloadUrl } from './msg-sync.js';
 
 const SELECTOR = 'img[data-lightbox], img.msg-img, img.feed-post-img, img.mat-page-img, img.post-img, img.app-pip-att, .prose img';
 const GROUP = '[data-lb-group], .feed-post, .msg-list, .msgs, .chat-list, .mat-pages, .app-pip-msgs, article, .card';
@@ -20,32 +21,6 @@ function fileName(it) {
   } catch { /* */ }
   const fromAlt = String(it && it.alt || '').replace(/[^\w.-]+/g, '_').replace(/^_|_$/g, '');
   return fromAlt || 'image';
-}
-
-async function downloadImage(it, d) {
-  const src = it && it.src;
-  if (!src) return;
-  const name = fileName(it);
-  try {
-    const r = await fetch(src, { credentials: 'include' });
-    if (!r.ok) throw new Error('fetch');
-    const blob = await r.blob();
-    const a = d.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    (d.body || d.documentElement).append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  } catch {
-    const a = d.createElement('a');
-    a.href = src;
-    a.download = name;
-    a.rel = 'noopener';
-    (d.body || d.documentElement).append(a);
-    a.click();
-    a.remove();
-  }
 }
 
 /** Open a viewer over `images` ([{ src, alt }]) at `index`. Returns { close }. Built in `doc`. */
@@ -86,7 +61,11 @@ export function openLightbox(images, index = 0, { returnFocus, doc } = {}) {
   prev.onclick = (e) => { e.stopPropagation(); go(-1); };
   next.onclick = (e) => { e.stopPropagation(); go(1); };
   close.onclick = (e) => { e.stopPropagation(); api.close(); };
-  dl.onclick = (e) => { e.stopPropagation(); downloadImage(images[i], d); };
+  dl.onclick = (e) => {
+    e.stopPropagation();
+    const image = images[i];
+    downloadUrl(image.src, fileName(image));
+  };
   stage.addEventListener('click', (e) => { if (e.target === stage) api.close(); });
   root.addEventListener('click', (e) => { if (e.target === root) api.close(); });
 

@@ -85,8 +85,8 @@ class Room {
     const warnAgain = h('button', { class: 'btn sm', type: 'button' }, 'Try again');
     const warnGo = h('button', { class: 'btn sm primary', type: 'button' }, 'Continue without mic/camera');
     const warn = h('div', { class: 'pj-warn', hidden: true }, warnMsg, h('div', { class: 'row wrap gap-s' }, warnAgain, warnGo));
-    let ac, raf, lists = {};
-    const stopPrev = () => { cancelAnimationFrame(raf); ac && ac.close().catch(() => {}); ac = null; stream && stream.getTracks().forEach((t) => t.stop()); stream = null; video.srcObject = null; };
+    let ac, raf, lists = {}, previewRequest = 0;
+    const stopPrev = () => { previewRequest++; cancelAnimationFrame(raf); ac && ac.close().catch(() => {}); ac = null; stream && stream.getTracks().forEach((t) => t.stop()); stream = null; video.srcObject = null; };
     const fillSel = (sel, kind, items, pickedId) => {
       const cur = pickedId || (kind === 'audiooutput' ? lsGet('venue.speaker', '') : devicePrefs()[kind]);
       const reps = reports[kind] || [];
@@ -100,7 +100,7 @@ class Room {
       devPicker && devPicker.refresh();
     };
     const refreshSels = async () => { lists = await listDevices().catch(() => ({})); showDev(); };
-    const hasWorking = (kind) => !!(picked[kind] || (reports[kind] || []).some((r) => r.ok === true));
+    const hasWorking = (kind) => !!picked[kind];
     const missingList = () => {
       const out = [];
       if (mic && !hasWorking('audioinput')) out.push('mic');
@@ -117,26 +117,64 @@ class Room {
       if (!miss.length || skipMissing || checking || audience) { warn.hidden = true; return; }
       warn.hidden = false;
       const lines = [];
-      if (miss.includes('mic')) lines.push('No working microphone found.');
+      if (miss.includes('mic')) lines.push('Couldn’t open your microphone. Check browser permissions or choose another input.');
       if (miss.includes('camera')) lines.push('No working camera found.');
       warnMsg.replaceChildren(...lines.map((t) => h('p', null, t)));
       warnGo.textContent = miss.includes('mic') && miss.includes('camera') ? 'Continue without mic/camera' : miss.includes('mic') ? 'Continue without mic' : 'Continue without camera';
     };
     const preview = async () => {
       stopPrev();
-      if (!mic && !cam) { pv.classList.remove('has-video'); return; }
+      const request = previewRequest;
+      pv.classList.remove('has-video');
+      if (!mic && !cam) return;
+      let captured;
       try {
         const d = devicePrefs();
-        stream = await navigator.mediaDevices.getUserMedia({ audio: mic ? { ...AUDIO_CONSTRAINTS, deviceId: d.audioinput } : false, video: cam ? { width: { ideal: 1280 }, height: { ideal: 720 }, deviceId: d.videoinput } : false });
-        video.srcObject = stream; pv.classList.toggle('has-video', cam);
-        if (mic) { ac = new AudioContext(); await ac.resume().catch(() => {}); const an = ac.createAnalyser(); an.fftSize = 256; ac.createMediaStreamSource(stream).connect(an); const b = new Uint8Array(an.fftSize);
-          const loop = () => { an.getByteTimeDomainData(b); let p = 0; for (const v of b) p = Math.max(p, Math.abs(v - 128)); meter.firstChild.style.width = Math.min(100, p * 1.6) + '%'; raf = requestAnimationFrame(loop); }; loop(); }
+        const audio = mic ? { ...AUDIO_CONSTRAINTS, deviceId: d.audioinput === 'default' ? undefined : d.audioinput } : false;
+        const videoOptions = cam ? { width: { ideal: 1280 }, height: { ideal: 720 }, deviceId: d.videoinput } : false;
+        try {
+          captured = await navigator.mediaDevices.getUserMedia({ audio, video: videoOptions });
+        } catch (error) {
+          if (!audio || !videoOptions || request !== previewRequest) throw error;
+          captured = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+        }
       } catch (e) {
-        toast('Camera/mic blocked - you can still continue without them', { icon: 'alert', ms: 4500 });
+        if (request !== previewRequest) return;
         if (mic) picked.audioinput = null;
         if (cam) picked.videoinput = null;
         paintJoin();
+        return;
       }
+      if (request !== previewRequest) {
+        captured.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stream = captured;
+      const camTrack = cam && stream.getVideoTracks().find((track) => track.readyState === 'live');
+      video.srcObject = stream; pv.classList.toggle('has-video', !!camTrack);
+      if (cam) picked.videoinput = camTrack ? (camTrack.getSettings?.().deviceId || devicePrefs().videoinput || 'default') : null;
+      const micTrack = mic && stream.getAudioTracks().find((track) => track.readyState === 'live');
+      if (mic) picked.audioinput = micTrack ? (micTrack.getSettings?.().deviceId || devicePrefs().audioinput || 'default') : null;
+      paintJoin();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!micTrack || !AudioCtx) return;
+      try {
+        ac = new AudioCtx();
+        // Safari and Chromium can defer this until the user interacts with the page.
+        ac.resume().catch(() => {});
+        const an = ac.createAnalyser();
+        an.fftSize = 256;
+        ac.createMediaStreamSource(stream).connect(an);
+        const samples = new Uint8Array(an.fftSize);
+        const loop = () => {
+          an.getByteTimeDomainData(samples);
+          let peak = 0;
+          for (const sample of samples) peak = Math.max(peak, Math.abs(sample - 128));
+          meter.firstChild.style.width = Math.min(100, peak * 1.6) + '%';
+          raf = requestAnimationFrame(loop);
+        };
+        loop();
+      } catch { /* Capturing audio does not depend on the optional level meter. */ }
     };
     devSel.onchange = async (e) => {
       const id = e.target.value;
@@ -179,19 +217,20 @@ class Room {
     const runProbe = async () => {
       if (audience) { probeDone = true; checking = false; paintJoin(); return; }
       checking = true; probeDone = false; skipMissing = false;
+      stopPrev();
       tryB.classList.add('busy');
       paintJoin();
       status.textContent = 'Finding a working mic and camera…';
       try {
-        const r = await pickWorking({ wantAudio: true, wantVideo: true });
+        const r = await pickWorking({ wantAudio: mic, wantVideo: cam });
         reports = r.reports || reports;
         picked = { audioinput: r.audioinput || null, videoinput: r.videoinput || null };
       } catch { /* keep last-known prefs */ }
       status.textContent = '';
       tryB.classList.remove('busy');
-      checking = false; probeDone = true;
       await refreshSels();
       await preview();
+      checking = false; probeDone = true;
       paintJoin();
     };
     const micB = h('button', { class: 'pj-circ', type: 'button', 'data-group': 'media', 'aria-label': 'Choose microphone', onclick: () => selectKind('audioinput') });
@@ -592,7 +631,15 @@ Object.assign(Room.prototype, {
     if (this.isMod() && this.security?.forceLayout) this.send('force-layout', { layout: l, presentKey: this.stageR?.presentKey || null, pick: this.stageR?.pick || null });
     if (!fromHost) toast({ grid: 'Grid view', spotlight: 'Spotlight view', speaker: 'Speaker view', screenshare: 'Screenshare view' }[l] || 'Layout', { icon: l === 'grid' ? 'grid' : l === 'spotlight' ? 'spotlight' : 'speaker', group: 'media', ms: 1200 });
   },
-  pin(id) { this.pinned = id; if (id && this.layout === 'grid') this.layout = 'spotlight'; if (id && this.stageR.screens().length) return this.stageR.setPick('cameras'); this.renderStage(true); },
+  pin(id) {
+    this.pinned = id;
+    if (id && (this.layout === 'grid' || this.layout === 'screenshare')) {
+      this.layout = 'spotlight';
+      this.paintHead();
+    }
+    if (id && this.stageR.screens().length) this.stageR.setPick('cameras');
+    else this.renderStage(true);
+  },
   applyWant() { const w = this.want || {}; if (w.spk === false) this.setCallMuted(true, { silent: true }); if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
   promoted() { this.reconnectMedia(true); this.maybeAutoRecord && this.maybeAutoRecord(); },
