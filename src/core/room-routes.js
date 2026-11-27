@@ -7,9 +7,34 @@ const {
   db, config, normCode, isCode, parseBody, sendJSON, getAuthUser, meetings, clients, getParticipantsList, getWaitingList, getRaisedHands, getContentState, getSecurityState, broadcast, broadcastToModerators, generateCode, generateInviteToken, createMeetingSettings, createParticipant, normalizeParticipantName, findParticipantByUserId, isBlocked, can, resolvePermissions, endMeeting, getOrRestoreMeeting, discardSnapshot, createLiveKitToken, grantsFromPermissions, signWsCredential, stage, publicErr, LIVEKIT_URL,
 } = require('./http-kit');
 const { isVerified } = require('../lib/auth');
+const { verifyWsCredential } = require('../lib/wsCredential');
 const crypto = require('crypto');
 const { clientIp } = require('../lib/http');
 
+const JOIN_CONFLICT = 'This account is already in this meeting or venue on another device.';
+const JOIN_CONNECT_GRACE_MS = 60_000;
+
+function accountOccupiesRoom(participant) {
+  if (!participant || !['ACTIVE', 'WAITING', 'APPROVED'].includes(participant.status)) return false;
+  const socket = clients.get(participant.id);
+  return socket?.readyState === 1 || Date.now() < (participant.joinReservedUntil || 0);
+}
+
+function duplicateAccount(meeting, userId, participant) {
+  return [...meeting.participants.values()].some((p) => p !== participant && (
+    String(p.pendingAccountId) === String(userId)
+    || (p.userId != null && String(p.userId) === String(userId) && accountOccupiesRoom(p))
+  ));
+}
+
+async function withAccountReservation(participant, userId, action) {
+  participant.pendingAccountId = userId;
+  try {
+    return await action();
+  } finally {
+    delete participant.pendingAccountId;
+  }
+}
 
 const guestHourHits = new Map();
 function guestDeviceId(req, res) {
@@ -64,10 +89,9 @@ module.exports = async function handle(req, res, parsed) {
         || participant.name
         || 'Participant';
 
-      if (meeting.billingId && !body.wsCredential) return sendJSON(res, 403, {error: 'A room credential is required'});
-      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId, code }).ok) {
-        // Some clients omit this. Accept it but log.
-        if (body.wsCredential) return sendJSON(res, 403, { error: 'Invalid credential' });
+      if ((meeting.billingId || participant.joinKey) && !body.wsCredential) return sendJSON(res, 403, {error: 'A room credential is required'});
+      if (body.wsCredential && !verifyWsCredential(body.wsCredential, { participantId, code, joinKey: participant.joinKey }).ok) {
+        return sendJSON(res, 403, { error: 'Invalid credential' });
       }
       if (participant.status !== 'ACTIVE') {
         return sendJSON(res, 403, { error: 'Not admitted yet' });
@@ -242,6 +266,11 @@ module.exports = async function handle(req, res, parsed) {
       });
 
       const participants = new Map();
+      if (authUser) {
+        host.joinKey = crypto.randomUUID();
+        host.joinSessionId = req._sid;
+        host.joinReservedUntil = Date.now() + JOIN_CONNECT_GRACE_MS;
+      }
       participants.set(hostId, host);
 
       const now = Date.now();
@@ -316,7 +345,7 @@ module.exports = async function handle(req, res, parsed) {
         });
       } catch (e) { console.warn('[membership] host', e.message); }
 
-      const hostWsCredential = signWsCredential({ participantId: hostId, code });
+      const hostWsCredential = signWsCredential({ participantId: hostId, code, joinKey: host.joinKey });
       return sendJSON(res, 200, {
         code,
         name,
@@ -416,9 +445,17 @@ module.exports = async function handle(req, res, parsed) {
         return sendJSON(res, 403, { error: 'You no longer have access to this meeting.' });
       }
 
-      const existing = meeting.participants.get(participantId);
+      const savedParticipant = meeting.participants.get(participantId);
+      const resumesSeat = !!savedParticipant &&
+        (savedParticipant.userId == null || String(savedParticipant.userId) === String(authUser?.id)) &&
+        (!savedParticipant.joinSessionId || savedParticipant.joinSessionId === req._sid) &&
+        verifyWsCredential(body.wsCredential, { participantId, code, joinKey: savedParticipant.joinKey }).ok;
+      const existing = savedParticipant && (resumesSeat || (!authUser && !savedParticipant.userId)) ? savedParticipant : null;
       const existingByUser = authUser ? findParticipantByUserId(meeting, authUser.id) : null;
       const rejoinCandidate = existing || existingByUser;
+      if (authUser && duplicateAccount(meeting, authUser.id, resumesSeat ? existing : null)) {
+        return sendJSON(res, 409, { error: JOIN_CONFLICT });
+      }
 
       if (meeting.settings && meeting.settings.locked) {
         const canRejoin = rejoinCandidate && (rejoinCandidate.status === 'ACTIVE' || rejoinCandidate.status === 'APPROVED' || rejoinCandidate.status === 'LEFT');
@@ -482,7 +519,11 @@ module.exports = async function handle(req, res, parsed) {
 
       if (needsWaiting) status = 'WAITING';
 
-      const pid = (rejoinCandidate && rejoinCandidate.id) || participantId;
+      // Recheck after ticket and venue lookups, then reserve the seat before any further awaits.
+      if (authUser && duplicateAccount(meeting, authUser.id, resumesSeat ? existing : null)) {
+        return sendJSON(res, 409, { error: JOIN_CONFLICT });
+      }
+      const pid = rejoinCandidate?.id || (meeting.participants.has(participantId) ? 'user-' + crypto.randomUUID() : participantId);
       const participant = createParticipant({
         id: pid,
         name: participantName,
@@ -502,7 +543,13 @@ module.exports = async function handle(req, res, parsed) {
       }
 
       if (joinTicket) participant.ticket = joinTicket;
+      if (authUser) {
+        participant.joinKey = (resumesSeat && existing.joinKey) || crypto.randomUUID();
+        participant.joinSessionId = req._sid;
+        participant.joinReservedUntil = Date.now() + JOIN_CONNECT_GRACE_MS;
+      }
       meeting.participants.set(pid, participant);
+      const wsCredential = signWsCredential({ participantId: pid, code, joinKey: participant.joinKey });
 
       if (status === 'ACTIVE' && meeting.historyId) {
         await db.logParticipantJoin({
@@ -541,7 +588,7 @@ module.exports = async function handle(req, res, parsed) {
           name: meeting.name,
           venue: meeting.venue || null,
           participantId: pid,
-          wsCredential: signWsCredential({ participantId: pid, code }),
+          wsCredential,
           role,
           status: 'WAITING',
           waitingRoom: true,
@@ -597,7 +644,7 @@ module.exports = async function handle(req, res, parsed) {
         freeUntilMs: meeting.billingId ? (await require('../features/wallet/billing-data').get(meeting.billingId))?.free_until_ms || null : null,
         paidEntry: meeting.paidEntry ? { ...meeting.paidEntry, paid: !!paidAdmission } : null,
         participantId: pid,
-        wsCredential: signWsCredential({ participantId: pid, code }),
+        wsCredential,
         role: participant.role,
         status: 'ACTIVE',
         participants: getParticipantsList(meeting),
@@ -652,7 +699,7 @@ module.exports = async function handle(req, res, parsed) {
       if (!meeting?.paidEntry?.enabled) return sendJSON(res, 404, { error: 'Paid-entry meeting not found' });
       const participant = meeting.participants.get(body.participantId);
       if (!participant || participant.id !== meeting.hostId || participant.role !== 'host') return sendJSON(res, 403, { error: 'Only the host can extend this meeting' });
-      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      if (!verifyWsCredential(body.wsCredential, { participantId: participant.id, code, joinKey: participant.joinKey }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
       const user = await getAuthUser(req, res);
       if (!user) return sendJSON(res, 401, { error: 'Sign in to extend this meeting' });
       const result = await require('../features/wallet/paid-entry').extend({ code, hostUserId: user.id, minutes: body.minutes });
@@ -672,11 +719,14 @@ module.exports = async function handle(req, res, parsed) {
       if (!meeting?.billingId) return sendJSON(res, 404, { error: 'Meeting not found' });
       const participant = meeting.participants.get(body.participantId);
       if (!participant || participant.id !== meeting.hostId || participant.role !== 'host') return sendJSON(res, 403, { error: 'Only this meeting’s host can connect a wallet' });
-      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      if (!verifyWsCredential(body.wsCredential, { participantId: participant.id, code, joinKey: participant.joinKey }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
       const user = await getAuthUser(req, res);
       if (!user) return sendJSON(res, 200, { claimed: false, authenticated: false });
-      const row = await require('../features/wallet/billing-data').claimHost(meeting.billingId, user);
+      if (duplicateAccount(meeting, user.id, participant)) return sendJSON(res, 409, { error: JOIN_CONFLICT });
+      const row = await withAccountReservation(participant, user.id,
+        () => require('../features/wallet/billing-data').claimHost(meeting.billingId, user));
       participant.userId = user.id;
+      participant.joinSessionId = req._sid;
       participant.username = user.username;
       participant.verified = isVerified(user);
       meeting.hostUserId = user.id;
@@ -720,14 +770,20 @@ module.exports = async function handle(req, res, parsed) {
       if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
       const participant = meeting.participants.get(body.participantId);
       if (!participant || participant.id !== meeting.hostId || participant.role !== 'host') return sendJSON(res, 403, { error: 'Only the host can switch this meeting to Paid Entry' });
-      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      if (!verifyWsCredential(body.wsCredential, { participantId: participant.id, code, joinKey: participant.joinKey }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
       const user = await getAuthUser(req, res);
       if (!user) return sendJSON(res, 401, { error: 'Sign in to switch this meeting to Paid Entry', signInRequired: true });
+      if (duplicateAccount(meeting, user.id, participant)) return sendJSON(res, 409, { error: JOIN_CONFLICT });
       if (meeting.paidEntry && meeting.paidEntry.enabled) return sendJSON(res, 409, { error: 'This meeting is already on Paid Entry' });
-      const result = await require('../features/wallet/usage').offerSwitch({ code, hostUserId: user.id, ownerId: require('../features/wallet/billing').ownerId });
-      await require('../features/wallet/usage').acceptUsage({ code, userId: user.id, participantId: participant.id, isHost: true, startNow: false });
+      const usage = require('../features/wallet/usage');
+      const result = await withAccountReservation(participant, user.id, async () => {
+        const offer = await usage.offerSwitch({ code, hostUserId: user.id, ownerId: require('../features/wallet/billing').ownerId });
+        await usage.acceptUsage({ code, userId: user.id, participantId: participant.id, isHost: true, startNow: false });
+        return offer;
+      });
       meeting.hostUserId = user.id;
       participant.userId = user.id;
+      participant.joinSessionId = req._sid;
       meeting.paidEntry = { ...result.session, enabled: true, model: 'usage', switchDeadlineMs: result.deadlineMs };
       for (const [pid, p] of meeting.participants) {
         if (p.role === 'host' || pid === participant.id) continue;
@@ -749,11 +805,14 @@ module.exports = async function handle(req, res, parsed) {
       if (!meeting?.paidEntry?.enabled || meeting.paidEntry.model !== 'usage') return sendJSON(res, 404, { error: 'Paid-entry meeting not found' });
       const participant = meeting.participants.get(body.participantId);
       if (!participant) return sendJSON(res, 403, { error: 'Not a participant of this meeting' });
-      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      if (!verifyWsCredential(body.wsCredential, { participantId: participant.id, code, joinKey: participant.joinKey }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
       const user = await getAuthUser(req, res);
       if (!user) return sendJSON(res, 401, { error: 'Sign in to continue in this paid-entry meeting', signInRequired: true });
-      const admission = await require('../features/wallet/usage').acceptUsage({ code, userId: user.id, participantId: participant.id, isHost: participant.role === 'host', startNow: false });
+      if (duplicateAccount(meeting, user.id, participant)) return sendJSON(res, 409, { error: JOIN_CONFLICT });
+      const admission = await withAccountReservation(participant, user.id,
+        () => require('../features/wallet/usage').acceptUsage({ code, userId: user.id, participantId: participant.id, isHost: participant.role === 'host', startNow: false }));
       participant.userId = user.id;
+      participant.joinSessionId = req._sid;
       participant.username = user.username;
       participant.paidAdmissionApproved = true;
       return sendJSON(res, 200, { ok: true, admission });
@@ -770,10 +829,12 @@ module.exports = async function handle(req, res, parsed) {
       if (!meeting) return sendJSON(res, 404, { error: 'Meeting not found' });
       const participant = meeting.participants.get(body.participantId);
       if (!participant) return sendJSON(res, 403, { error: 'Not a participant of this meeting' });
-      if (!body.wsCredential || !require('../lib/wsCredential').verifyWsCredential(body.wsCredential, { participantId: participant.id, code }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
+      if (!verifyWsCredential(body.wsCredential, { participantId: participant.id, code, joinKey: participant.joinKey }).ok) return sendJSON(res, 403, { error: 'Invalid room credential' });
       const user = await getAuthUser(req, res);
       if (!user) return sendJSON(res, 200, { claimed: false, authenticated: false });
+      if (duplicateAccount(meeting, user.id, participant)) return sendJSON(res, 409, { error: JOIN_CONFLICT });
       participant.userId = user.id;
+      participant.joinSessionId = req._sid;
       participant.username = user.username;
       participant.verified = isVerified(user);
       if (participant.role === 'host' || participant.id === meeting.hostId) {
@@ -803,6 +864,12 @@ module.exports = async function handle(req, res, parsed) {
       const meeting = meetings.get(code);
       if (meeting && participantId) {
         const p = meeting.participants.get(participantId);
+        if (p?.joinKey && !verifyWsCredential(body.wsCredential, { participantId, code, joinKey: p.joinKey }).ok) {
+          const user = body.wsCredential ? null : await getAuthUser(req, res);
+          if (!user || !p.joinSessionId || p.joinSessionId !== req._sid || meeting.participants.get(participantId) !== p) {
+            return sendJSON(res, 403, { error: 'Invalid room credential' });
+          }
+        }
         if (p) {
           p.status = 'LEFT';
           p.leftAt = Date.now();

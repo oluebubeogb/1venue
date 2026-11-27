@@ -65,10 +65,14 @@ export function createPanel(R) {
     if (!tab) return;
     const hadFocus = document.activeElement && body.contains(document.activeElement) && document.activeElement.matches('[data-focus]');
     if (hadFocus) R.focusNext = true;
-    const keep = body.scrollTop, stick = body.scrollHeight - body.clientHeight - body.scrollTop < 40;
+    const previousList = body.querySelector('.chat-thread .msgs');
+    const keep = previousList?.scrollTop ?? body.scrollTop;
+    const stick = !previousList || nearBottom(previousList, 40);
     const view = { chat: chatView, people: peopleView, engage: engageView, tools: toolsView }[tab]();
     body.replaceChildren(view);
-    if (body.querySelector('[data-autoscroll]') && (stick || R.justSent)) body.scrollTop = body.scrollHeight; else body.scrollTop = keep;
+    const list = view.matches('.chat-thread') ? chatDom.list : null;
+    if (list) list.scrollTop = list !== previousList || stick || R.justSent ? list.scrollHeight : keep;
+    else body.scrollTop = previousList ? 0 : keep;
     R.justSent = false;
     const f = body.querySelector('[data-focus]'); if (f && R.focusNext) { f.focus(); R.focusNext = false; }
   }
@@ -76,7 +80,6 @@ export function createPanel(R) {
   const refresh = (area) => { badges(); if (!tab) return; if (!area || area === tab || (area === 'dm' && tab === 'chat')) render(); };
   const seg = (items, cur, onPick) => h('div', { class: 'seg block' }, items.map(([v, l, n]) => h('button', { class: v === cur ? 'on' : '', type: 'button', onclick: () => onPick(v) }, l, n != null ? h('em', { class: 'badge', 'data-badge': v, hidden: !n }, n > 99 ? '99+' : n) : null)));
   let chatDom = { key: '', wrap: null, list: null, newBtn: null };
-  body.addEventListener('scroll', () => { if (chatDom.newBtn && nearBottom(body, 40)) chatDom.newBtn.hidden = true; }, { passive: true });
 
   /* ------------------------------------------------------------ CHAT */
   function msgEl(m, { mine, name, at }) {
@@ -141,8 +144,9 @@ export function createPanel(R) {
   }
   function threadChrome(list, composerEl, head) {
     const newBtn = h('button', { class: 'chat-new-btn', type: 'button', hidden: true }, 'New messages');
-    newBtn.addEventListener('click', () => { newBtn.hidden = true; body.scrollTop = body.scrollHeight; });
-    const wrap = h('div', { class: 'chat-view' });
+    newBtn.addEventListener('click', () => { newBtn.hidden = true; list.scrollTop = list.scrollHeight; });
+    list.addEventListener('scroll', () => { if (nearBottom(list, 40)) newBtn.hidden = true; }, { passive: true });
+    const wrap = h('div', { class: 'chat-view chat-thread' });
     if (head) wrap.append(head);
     wrap.append(h('div', { class: 'chat-msgs-wrap' }, list, newBtn), composerEl);
     return { wrap, list, newBtn };
@@ -217,7 +221,7 @@ export function createPanel(R) {
       return wrap;
     }
     if (chatDom.key !== key || !chatDom.wrap) {
-      const list = h('div', { class: 'msgs', 'data-autoscroll': '' });
+      const list = h('div', { class: 'msgs' });
       const built = threadChrome(list, composer({ placeholder, onSend: send, disabled: !canChat }), null);
       // tabs + optional thread head sit above the message list
       built.wrap.prepend(tabs); if (head) built.wrap.insertBefore(head, built.list.parentNode || built.list);
@@ -535,9 +539,9 @@ export function createPanel(R) {
     if (list.querySelector(`[data-id="${mid}"]`)) return true;
     node.dataset.sig = msgSig(m);
     markEnter([node]);
+    const stick = R.justSent || nearBottom(list, 40);
     list.append(node);
-    const stick = R.justSent || nearBottom(body, 40);
-    if (stick) { body.scrollTop = body.scrollHeight; if (chatDom.newBtn) chatDom.newBtn.hidden = true; }
+    if (stick) { list.scrollTop = list.scrollHeight; if (chatDom.newBtn) chatDom.newBtn.hidden = true; }
     else if (chatDom.newBtn) chatDom.newBtn.hidden = false;
     R.justSent = false;
     return true;

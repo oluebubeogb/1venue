@@ -285,7 +285,7 @@ class Room {
       history.replaceState({}, '', '/' + fmtCode(r.code));
     } else {
       try {
-        r = await api('/api/join', { method: 'POST', body: { code: this.code, participantName: name, key: this.params.key, participantId: pid, device: deviceKind() } });
+        r = await api('/api/join', { method: 'POST', body: { code: this.code, participantName: name, key: this.params.key, participantId: pid, wsCredential: saved?.wsCredential, device: deviceKind() } });
       } catch (e) {
         if (e.status === 401 && e.data?.signInRequired) { requireLogin(); return; }
         if (e.status === 404 && this.event && this.event.isHost) {
@@ -313,7 +313,20 @@ class Room {
       h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')), h('button', { class: 'btn ghost', onclick: () => { this.destroy(); navigate('/'); } }, 'Cancel')));
     this.waitingMode = true;
     this.connectWs((m) => {
-      if (m.type === 'admitted') { this.waitingMode = false; chime(880); api('/api/join', { method: 'POST', body: { code: this.code, participantName: this.me.name, participantId: this.me.id, key: this.params.key, device: deviceKind() } }).then((r2) => { this.wsCredential = r2.wsCredential || this.wsCredential; this.joinRes = r2; this.ws && this.ws.close(); this.ws = null; this.enter(r2); }).catch(toastErr); return true; }
+      if (m.type === 'admitted') {
+        chime(880);
+        api('/api/join', { method: 'POST', body: { code: this.code, participantName: this.me.name, participantId: this.me.id, wsCredential: this.wsCredential, key: this.params.key, device: deviceKind() } }).then((r2) => {
+          this.waitingMode = false;
+          this.wsCredential = r2.wsCredential || this.wsCredential;
+          saveRoom(this.code, { participantId: this.me.id, wsCredential: this.wsCredential, name: this.me.name });
+          this.joinRes = r2;
+          const waitingSocket = this.ws;
+          this.ws = null;
+          waitingSocket?.close();
+          this.enter(r2);
+        }).catch(toastErr);
+        return true;
+      }
       if (m.type === 'admission-payment-failed') { toast(m.reason || 'The host could not admit you. Check your wallet and ask them to try again.', { icon: 'wallet', group: 'people', ms: 7000 }); return true; }
       if (m.type === 'declined') { this.view.replaceChildren(h('div', { class: 'waiting' }, h('h2', null, 'The host declined your request'), h('a', { class: 'btn primary', href: '/' }, 'Back home'))); this.destroy(); return true; }
       return false;
@@ -444,7 +457,7 @@ Object.assign(Room.prototype, {
     this.onUnload = () => {
       try { if (this.recorder && this.recorder.state !== 'idle') this.recorder.trySave(); } catch { /* may be blocked */ }
       this.announceRecording(false);
-      navigator.sendBeacon && navigator.sendBeacon('/api/leave', new Blob([JSON.stringify({ code: this.code, participantId: this.me.id })], { type: 'application/json' }));
+      navigator.sendBeacon && navigator.sendBeacon('/api/leave', new Blob([JSON.stringify({ code: this.code, participantId: this.me.id, wsCredential: this.wsCredential })], { type: 'application/json' }));
     };
     window.addEventListener('pagehide', this.onUnload);
     this.onResize = () => { const m = isMobile(); if (m !== this.isMobile) { this.isMobile = m; this.renderStage(true); } }; window.addEventListener('resize', this.onResize);
@@ -1107,7 +1120,7 @@ Object.assign(Room.prototype, {
     if (!(await confirmDlg('Leave this meeting? You will be disconnected from the call. You can rejoin while it is still active.', { ok: 'Leave meeting', danger: true }))) return;
     this._leaving = true;
     if (this.recorder.state !== 'idle') { this.announceRecording(false); this.recorder.stop(); await new Promise((r) => setTimeout(r, 600)); }
-    api('/api/leave', { method: 'POST', body: { code: this.code, participantId: this.me.id } }).catch(() => {});
+    api('/api/leave', { method: 'POST', body: { code: this.code, participantId: this.me.id, wsCredential: this.wsCredential } }).catch(() => {});
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy(); navigate(state.user ? '/dashboard' : '/'); setTimeout(() => maybeShowBanner('after-room'), 1200);
   },

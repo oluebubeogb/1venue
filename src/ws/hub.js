@@ -156,7 +156,8 @@ function attachWebSocket(server) {
         }
 
         const p = meeting.participants.get(participantId);
-        if (!p || p.status === 'REMOVED' || p.status === 'BLOCKED') {
+        if (!p || p.status === 'REMOVED' || p.status === 'BLOCKED'
+          || (p.joinKey && (p.joinKey !== verified.joinKey || p.status === 'LEFT'))) {
           try {
             ws.send(JSON.stringify({ type: 'error', error: 'Not a participant of this meeting' }));
             ws.close(4403, 'forbidden');
@@ -303,6 +304,10 @@ function attachWebSocket(server) {
         if (meetingCode) {
           const meeting = getMeeting(meetingCode);
           if (meeting) {
+            const participant = meeting.participants.get(participantId);
+            if (participant?.userId && participant.status !== 'LEFT') {
+              participant.joinReservedUntil = Date.now() + 15_000;
+            }
             broadcast(meetingCode, {
               type: 'participants',
               participants: getParticipantsList(meeting),

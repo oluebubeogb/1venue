@@ -9,12 +9,13 @@ const config = require('../config');
 
 const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000; // 6h, matches LiveKit token TTL
 
-function signWsCredential({ participantId, code, ttlMs = DEFAULT_TTL_MS }) {
+function signWsCredential({ participantId, code, joinKey, ttlMs = DEFAULT_TTL_MS }) {
   const exp = Date.now() + ttlMs;
   const payload = Buffer.from(
     JSON.stringify({
       pid: String(participantId),
       code: normCode(code),
+      joinKey,
       exp,
     }),
     'utf8'
@@ -26,7 +27,7 @@ function signWsCredential({ participantId, code, ttlMs = DEFAULT_TTL_MS }) {
   return `${payload}.${sig}`;
 }
 
-function verifyWsCredential(token, { participantId, code } = {}) {
+function verifyWsCredential(token, { participantId, code, joinKey } = {}) {
   if (!token || typeof token !== 'string' || !token.includes('.')) {
     return { ok: false, error: 'Missing or malformed ws credential' };
   }
@@ -62,10 +63,14 @@ function verifyWsCredential(token, { participantId, code } = {}) {
   if (code && normCode(data.code) !== normCode(code)) {
     return { ok: false, error: 'Ws credential meeting mismatch' };
   }
+  if (joinKey && data.joinKey !== joinKey) {
+    return { ok: false, error: 'Ws credential no longer belongs to this room session' };
+  }
   return {
     ok: true,
     participantId: String(data.pid),
     code: normCode(data.code),
+    joinKey: data.joinKey,
     exp: Number(data.exp),
   };
 }

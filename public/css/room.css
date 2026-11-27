@@ -1365,7 +1365,15 @@ body.in-room .cmdbar {
   gap: 0.6rem;
   min-height: 100%;
 }
+.chat-view.chat-thread {
+  flex: 1;
+  min-height: 0;
+}
+.chat-thread > :not(.chat-msgs-wrap) {
+  flex: none;
+}
 .chat-msgs-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1376,6 +1384,15 @@ body.in-room .cmdbar {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+}
+.chat-thread .msgs {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block: 0.65rem 0.25rem;
+}
+.chat-thread .msgs > * {
+  flex-shrink: 0;
 }
 .msg {
   display: flex;
@@ -1414,9 +1431,10 @@ body.in-room .cmdbar {
 }
 .msg .room-msg-hover .msg-hb { width: 30px; height: 30px; }
 .chat-view .chat-new-btn {
-  position: sticky;
-  bottom: 4.6rem;
-  align-self: center;
+  position: absolute;
+  bottom: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 6;
 }
 .bubble {
@@ -1513,6 +1531,10 @@ body.in-room .cmdbar {
   background: var(--s1);
   border: 1px solid var(--line-2);
   box-shadow: var(--shadow-2);
+}
+.chat-view.chat-thread > .wa {
+  position: static;
+  margin-bottom: 0;
 }
 .composer textarea,
 .compose-card textarea {
