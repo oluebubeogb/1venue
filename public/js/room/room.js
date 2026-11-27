@@ -973,12 +973,14 @@ Object.assign(Room.prototype, {
     }
     const lay = (l, ic, tip) => h('button', { class: 'seg-b', 'data-lay': l, 'data-group': 'media', 'data-tip': tip, type: 'button', onclick: () => this.setLayout(l), html: icon(ic, { size: 20 }) });
     this.headEl.replaceChildren(
+      h('div', { class: 'rh-info' },
       h('a', { class: 'rh-logo', href: '/', 'aria-label': '1venue home', onclick: (e) => { e.preventDefault(); this.leave(); }, html: LOGO(26) }),
       h('div', { class: 'rh-title' }, h('b', { class: 'ellipsis' }, this.roomName), h('div', { class: 'tiny muted row gap-xs' }, h('span', { class: 'rh-timer' }, tstr), '·', h('button', { class: 'linkish', type: 'button', 'data-tip': 'Copy room code', 'data-group': 'people', onclick: () => copy(location.origin + '/' + fmtCode(this.code)).then(() => toast('Link copied', { icon: 'link' })) }, fmtCode(this.code)))),
       h('span', { class: 'pill rec rh-rec', hidden: !this.anyoneRecording() }, h('i', { class: 'rec-dot' }), 'Recording'),
       h('span', { class: 'pill rh-call-muted', hidden: !this.callMuted }, 'Call muted'),
-      h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) }),
+      h('span', { class: 'pill rh-lock', 'data-group': 'admin', hidden: true, html: icon('lock', { size: 13 }) })),
       h('div', { class: 'grow' }),
+      h('div', { class: 'rh-controls' },
       this.creditControl.badge,
       h('div', { class: 'seg rh-lay hide-sm' }, lay('grid', 'grid', 'Grid'), lay('spotlight', 'spotlight', 'Spotlight'), lay('speaker', 'speaker', 'Speaker'), lay('screenshare', 'screen', 'Screenshare')),
       h('button', { class: 'icon-btn rh-cams', 'data-group': 'media', 'data-tip': 'Cameras on the big screen', 'aria-label': 'Cameras', type: 'button', hidden: true, onclick: () => this.stageR.setPick(this.stageR.pick === 'cameras' ? null : 'cameras'), html: icon('video', { size: 16 }) }),
@@ -988,7 +990,7 @@ Object.assign(Room.prototype, {
       this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity(), html: icon('bell', { size: 16 }) + '<em class="badge rh-bell-badge"></em>' }),
       ibtn('pip', 'Pop out', () => this.popOutMeeting(), { group: 'media', cls: 'rh-pip hide-xs', kbd: 'O' }),
       this.menuBtn = h('button', { class: 'icon-btn rh-menu', 'data-group': 'nav', 'data-tip': 'Meeting menu', 'aria-label': 'Meeting menu', 'aria-haspopup': 'menu', type: 'button', onclick: () => this.openRoomMenu(), html: icon('menu', { size: 19 }) }),
-      ibtn('phoneOff', 'Leave', () => this.leaveMenu(), { group: 'danger', cls: 'danger' }));
+      ibtn('phoneOff', 'Leave', () => this.leaveMenu(), { group: 'danger', cls: 'danger' })));
     this.paintHead(); this.updateBell && this.updateBell();
   },
   openRoomMenu() {

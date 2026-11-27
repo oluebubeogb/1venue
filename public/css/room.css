@@ -696,6 +696,10 @@ body.in-room .cmdbar {
   position: static;
   flex: none;
 }
+.rh-info,
+.rh-controls {
+  display: contents;
+}
 .room-head,
 .net-banner {
   flex: none;
@@ -3435,6 +3439,29 @@ html.room-fs .cmdbar {
     padding: 3px 4px;
     border-radius: 16px;
   }
+  .room-head > .grow {
+    display: none;
+  }
+  .rh-info,
+  .rh-controls {
+    display: flex;
+    align-items: center;
+    gap: inherit;
+    min-width: 0;
+  }
+  .rh-info {
+    flex: 1 1 0;
+  }
+  .rh-controls {
+    max-width: 100%;
+    margin-inline-start: auto;
+  }
+  .room-head:has(.rh-rec:not([hidden]), .rh-call-muted:not([hidden]), .rh-lock:not([hidden])) {
+    flex-wrap: wrap;
+  }
+  .room-head:has(.rh-rec:not([hidden]), .rh-call-muted:not([hidden]), .rh-lock:not([hidden])) .rh-info {
+    flex-basis: 100%;
+  }
   .room-head .rh-logo {
     width: 34px;
     height: 34px;
@@ -3447,7 +3474,13 @@ html.room-fs .cmdbar {
   .room-head .rh-title b {
     max-width: 100%;
   }
+  .room-head .rh-title > .row {
+    overflow: hidden;
+    white-space: nowrap;
+  }
   .room-head .credit-badge {
+    flex: 0 1 auto;
+    min-width: 0;
     min-height: 36px;
     max-width: min(28vw, 112px);
     padding-inline: 0.45rem;
@@ -3457,8 +3490,7 @@ html.room-fs .cmdbar {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .room-head > .icon-btn,
-  .room-head > .rh-menu {
+  .rh-controls > .icon-btn {
     flex: none;
     width: 36px;
     height: 36px;
@@ -3510,8 +3542,7 @@ html.room-fs .cmdbar {
     gap: 0.2rem;
     padding-inline: 0.35rem;
   }
-  .room-head > .icon-btn,
-  .room-head > .rh-menu {
+  .rh-controls > .icon-btn {
     width: 32px;
     height: 34px;
   }
