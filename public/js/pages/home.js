@@ -22,12 +22,8 @@ function previewCards() {
 }
 
 function mobileImageCards() {
-  const images = [
-    ['/img/hero/messages.png', 'messages'],
-    ['/img/hero/amara-call.png', 'amara-call'],
-    ['/img/hero/people-follow.png', 'people-follow'],
-  ];
-  return images.map(([src, name]) => h('article', { class: `mobile-image-card mobile-image-card--${name}` },
+  const images = ['/img/hero/messages.png', '/img/hero/amara-call.png', '/img/hero/people-follow.png'];
+  return images.map((src) => h('article', { class: 'mobile-image-card' },
     h('img', { src, alt: '', loading: 'eager', decoding: 'async', draggable: 'false' })));
 }
 
