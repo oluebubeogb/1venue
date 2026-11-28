@@ -87,6 +87,51 @@ test('wantsCreate: leftover create intent does not open a new meeting for an exi
   assert.equal(wantsCreate({ create: true, code: 'a6thfq' }, 'a6thfq', { rejoin: '1' }), false);
 });
 
+test('an ended paid-entry session does not block a new meeting or debit unconfirmed usage', { skip }, async () => {
+  const env = isolatedEnv();
+  const s = await boot(env);
+  try {
+    const { host, userId } = await signupHost(s, env);
+    const now = Date.now();
+    const endedAt = new Date(now - 60_000);
+    const startedAt = new Date(now - 120_000);
+    const code = 'old123';
+    const [history] = await sql(env, `INSERT INTO meeting_history
+      (code,name,host_user_id,host_display_name,created_at,ended_at) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [code, 'Ended paid meeting', userId, 'Host', startedAt.toISOString(), endedAt.toISOString()]);
+    await sql(env, `INSERT INTO paid_meeting_sessions
+      (code,history_id,host_user_id,entry_units,duration_min,started_ms,advertised_end_ms,runtime_end_ms,billing_model)
+      VALUES($1,$2,$3,1,1,$4,$5,$5,'usage')`, [code, history.id, userId, startedAt.getTime(), now + 600_000]);
+    const [entry] = await sql(env, `INSERT INTO paid_meeting_entries
+      (code,user_id,participant_id,entry_units,accepted_at_ms) VALUES($1,$2,'old-host',0,$3) RETURNING id`,
+    [code, userId, startedAt.getTime()]);
+    await sql(env, `INSERT INTO paid_usage_meters
+      (code,user_id,participant_id,is_host,state,connected_since_ms,accounted_ms,entry_id)
+      VALUES($1,$2,'old-host',true,'active',$3,$3,$4)`, [code, userId, startedAt.getTime(), entry.id]);
+    const balance = (await host.get('/api/wallet')).body.balanceCredits;
+    const sessions = (await host.get('/api/history')).body.history;
+    assert.ok(sessions.find((h) => h.code === code)?.endedAt);
+
+    const next = await createMeeting(host, 'New room');
+    const [old] = await sql(env, 'SELECT state,ended_ms FROM paid_meeting_sessions WHERE code=$1', [code]);
+    assert.equal(old.state, 'settled');
+    assert.equal(Number(old.ended_ms), endedAt.getTime());
+    const [meter] = await sql(env, 'SELECT state,billed_units FROM paid_usage_meters WHERE code=$1', [code]);
+    assert.equal(meter.state, 'closed');
+    assert.equal(Number(meter.billed_units), 0);
+    assert.equal((await host.get('/api/wallet')).body.balanceCredits, balance);
+
+    const blocked = await host.post('/api/create', { name: 'Blocked room', participantName: 'Host Person', meetingAccessMode: 'paid_entry' });
+    assert.equal(blocked.status, 409, JSON.stringify(blocked.body));
+    assert.equal(blocked.body.activeMeeting.code, next.code);
+    const current = (await host.get('/api/history')).body.history;
+    assert.equal(Number(blocked.body.activeMeeting.historyId), Number(current.find((h) => h.code === next.code).id));
+    assert.equal(current.length, 2, 'a blocked paid-entry attempt must not leave a phantom session');
+  } finally {
+    await s.stop();
+  }
+});
+
 test('host can end an orphaned meeting without an extra charge; a non-host cannot end', { skip }, async () => {
   const env = isolatedEnv();
   let s = await boot(env);

@@ -137,6 +137,7 @@ module.exports = async function handle(req, res, parsed) {
   if (urlPath === '/api/create' && req.method === 'POST') {
     let openedBilling = null;
     let openedPaidEntry = null;
+    let newPaidHistoryId = null;
     let publishedCode = null;
     try {
       const body = await parseBody(req);
@@ -214,16 +215,17 @@ module.exports = async function handle(req, res, parsed) {
         return sendJSON(res, 400, { error: 'Please enter your display name' });
       }
 
+      if (authUser) await require('../rooms/end-control').reconcileEndedHostMeetings(authUser.id);
       if (requestedAccess !== 'paid_entry') {
         // Venues are metered the same as other host-funded meetings (host pays for everyone).
         openedBilling = await require('../features/wallet/billing').start({ user: authUser, code, name, hostName });
-      } else await discardSnapshot(code);
-      const historyId = openedBilling ? openedBilling.historyId : await db.startMeetingHistory({
+      }
+      const historyId = openedBilling ? openedBilling.historyId : (newPaidHistoryId = await db.startMeetingHistory({
         code,
         name,
         hostUserId: authUser ? authUser.id : null,
         hostDisplayName: hostName,
-      });
+      }));
       if (requestedAccess === 'paid_entry' && legacyPaid) {
         openedPaidEntry = await require('../features/wallet/paid-entry').open({ code, historyId, hostUserId: authUser.id, entryCredits: paidPrice, durationMin: paidDuration, startedMs: Date.now() });
       } else if (usagePaid) {
@@ -232,6 +234,7 @@ module.exports = async function handle(req, res, parsed) {
         });
         await require('../features/wallet/usage').acceptUsage({ code, userId: authUser.id, participantId: hostId, isHost: true, startNow: false });
       }
+      if (openedPaidEntry) await discardSnapshot(code);
 
       await db.logParticipantJoin({
         meetingHistoryId: historyId,
@@ -380,9 +383,12 @@ module.exports = async function handle(req, res, parsed) {
           await require('../features/wallet/paid-entry').settle(openedPaidEntry.code, Date.now()).catch(() => {});
           await db.endMeetingHistory(openedPaidEntry.historyId).catch(() => {});
         }
+      } else if (newPaidHistoryId != null) {
+        await db.q('DELETE FROM meeting_history WHERE id=$1', [newPaidHistoryId]).catch((err) => console.warn('[create] history cleanup', err.message));
       }
       console.error('[create]', e.message);
-      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Bad request') });
+      const details = e.activeMeeting ? { activeMeeting: e.activeMeeting } : {};
+      return sendJSON(res, e.status || 400, { error: publicErr(e, 'Bad request'), ...details });
     }
   }
 

@@ -1,6 +1,6 @@
 /** Paid meeting admission, proportional refunds and host credit earnings. */
 const db = require('../../../db');
-const { fail, UNITS_PER_CREDIT: U } = require('./rules');
+const { fail, openMeetingConflict, UNITS_PER_CREDIT: U } = require('./rules');
 
 const one = async (sql, args) => (await db.q(sql, args)).rows[0] || null;
 const units = (credits) => {
@@ -21,9 +21,9 @@ async function open({ code, historyId, hostUserId, entryCredits, durationMin, st
   const end = startedMs + duration * 60000;
   return db.tx(async (c) => {
     await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [hostUserId]);
-    const openRoom = (await c.query(`SELECT code FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed'
-      UNION ALL SELECT code FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active' LIMIT 1`, [hostUserId])).rows[0];
-    if (openRoom) throw fail(409, 'You already have an open meeting. End it before opening another.');
+    const openRoom = (await c.query(`SELECT code, history_id FROM credit_billing_sessions WHERE user_id=$1 AND state='active'
+      UNION ALL SELECT code, history_id FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active' LIMIT 1`, [hostUserId])).rows[0];
+    if (openRoom) throw openMeetingConflict(openRoom);
     const row = (await c.query(`INSERT INTO paid_meeting_sessions(code,history_id,host_user_id,entry_units,duration_min,started_ms,advertised_end_ms,runtime_end_ms)
       VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *`, [code, historyId, hostUserId, entryUnits, duration, startedMs, end])).rows[0];
     return sessionOut(row);
@@ -101,12 +101,12 @@ async function extend({ code, hostUserId, minutes, now = Date.now() }) {
 }
 
 /** Refund unused advertised room time and release the host's 80% share after the room ends. */
-async function settle(code, endedMs = Date.now()) {
+async function settle(code, endedMs = Date.now(), { skipUnaccounted = false } = {}) {
   const peek = await one('SELECT * FROM paid_meeting_sessions WHERE code=$1', [code]);
   if (!peek) return null;
   if (peek.state === 'settled') return sessionOut(peek);
   if (peek.billing_model === 'usage') {
-    await require('./usage').finalizeUsage(code, endedMs);
+    await require('./usage').finalizeUsage(code, endedMs, { skipUnaccounted });
     return sessionOut(await one('SELECT * FROM paid_meeting_sessions WHERE code=$1', [code]));
   }
   return db.tx(async (c) => {

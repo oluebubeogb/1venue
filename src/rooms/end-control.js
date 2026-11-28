@@ -113,7 +113,7 @@ async function persistWarning(historyId, { deadlineMs = null, keptAt = null, req
   );
 }
 
-async function closeOrphan(history, reason) {
+async function settleOrphanBilling(history, reason) {
   const rows = (await db.q(
     "SELECT * FROM credit_billing_sessions WHERE history_id=$1 AND state<>'closed'",
     [history.id]
@@ -121,7 +121,7 @@ async function closeOrphan(history, reason) {
   const billingData = require('../features/wallet/billing-data');
   for (const row of rows) {
     if (row.state === 'active') {
-      await billingData.settle(row.id, { now: Number(row.accounted_ms), endReason: reason });
+      await billingData.settle(row.id, { now: Number(row.accounted_ms), endReason: reason, skipAutoTopup: true });
     } else {
       await db.q(
         "UPDATE credit_billing_sessions SET state='closed' WHERE id=$1 AND state<>'closed'",
@@ -129,6 +129,36 @@ async function closeOrphan(history, reason) {
       );
     }
   }
+  const paid = (await db.q(
+    "SELECT code FROM paid_meeting_sessions WHERE history_id=$1 AND state='active'",
+    [history.id]
+  )).rows[0];
+  if (paid) {
+    const endedMs = history.ended_at ? new Date(history.ended_at).getTime() : Date.now();
+    await require('../features/wallet/paid-entry').settle(paid.code, endedMs, { skipUnaccounted: true });
+  }
+}
+
+async function reconcileEndedHostMeetings(userId) {
+  const rows = (await db.q(
+    `SELECT h.id, h.code, h.ended_at FROM meeting_history h
+       JOIN (
+         SELECT history_id FROM credit_billing_sessions WHERE user_id=$1 AND state='active'
+         UNION
+         SELECT history_id FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active'
+       ) billing ON billing.history_id=h.id
+       WHERE h.ended_at IS NOT NULL`,
+    [userId]
+  )).rows;
+  for (const history of rows) {
+    const meeting = getMeeting(history.code);
+    if (meeting && Number(meeting.historyId) === Number(history.id)) continue;
+    await settleOrphanBilling(history, 'history-ended');
+  }
+}
+
+async function closeOrphan(history, reason) {
+  await settleOrphanBilling(history, reason);
   await db.endMeetingHistory(history.id);
   try { await db.ensureArtifactForHistory(history.id, history.code); } catch (_) {}
   await db.q('DELETE FROM meeting_snapshots WHERE history_id=$1', [history.id]);
@@ -150,9 +180,13 @@ async function endByHost(code, user, { historyId } = {}) {
   if (!user) throw fail(401, 'Sign in to continue');
   const h = await findHistoryByCodeOrId(code, historyId);
   if (!h) throw fail(404, 'Meeting not found');
-  const meeting = getMeeting(h.code);
+  const live = getMeeting(h.code);
+  const meeting = Number(live?.historyId) === Number(h.id) ? live : null;
   if (!isHostUser(meeting, h, user)) throw fail(403, 'Only the host can end this meeting');
-  if (!meeting && h.ended_at) return { ok: true, alreadyEnded: true, endedAt: h.ended_at };
+  if (!meeting && h.ended_at) {
+    await settleOrphanBilling(h, 'history-ended');
+    return { ok: true, alreadyEnded: true, endedAt: h.ended_at };
+  }
   if (meeting) {
     await persistWarning(h.id, {});
     await endMeeting(h.code, 'host-ended');
@@ -298,6 +332,7 @@ async function hydrate(now = Date.now()) {
 module.exports = {
   END_IN_MS,
   endByHost,
+  reconcileEndedHostMeetings,
   scheduleEndIn,
   keepAlive,
   cancelEnd,

@@ -2,6 +2,9 @@
 const rates = require('./rates');
 const UNITS_PER_CREDIT = rates.UNITS_PER_CREDIT;
 const fail = (status, message, extra) => Object.assign(new Error(message), { status, ...(extra || {}) });
+const openMeetingConflict = (row) => fail(409, 'You already have an open meeting. End it before opening another.', {
+  activeMeeting: { historyId: Number(row.history_id), code: row.code },
+});
 function pricePerCreditKobo() { return rates.pricePerCreditKobo(); }
 // Kept as a live getter so tests and checkout always see the current env price.
 function quote(credits) {
@@ -21,4 +24,5 @@ module.exports = {
   pricePerCreditKobo,
   quote,
   fail,
+  openMeetingConflict,
 };

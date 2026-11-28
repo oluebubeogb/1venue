@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const db = require('../../../db');
-const { fail, UNITS_PER_CREDIT: U } = require('./rules');
+const { fail, openMeetingConflict, UNITS_PER_CREDIT: U } = require('./rules');
 const rates = require('./rates');
 const shape = r => r ? { ...r, low_credit: !!r.low_credit, media_issued: !!r.media_issued } : null;
 const get = async id => shape((await db.q('SELECT * FROM credit_billing_sessions WHERE id=$1',[id])).rows[0]);
@@ -52,10 +52,11 @@ async function open({userId=null,code,name,hostName,ownerId,now=Date.now()}) {
       const existing=(await c.query("SELECT * FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed' FOR UPDATE",[userId])).rows;
       for (const row of existing) {
         const ours=ownerId&&String(row.owner_id)===String(ownerId);
-        if (row.state==='active' && (ours || await workerIsLive(c, row.owner_id, now, ownerId))) throw fail(409,'You already have an open meeting. End it before opening another.');
+        if (row.state==='active' && (ours || await workerIsLive(c, row.owner_id, now, ownerId))) throw openMeetingConflict(row);
         await closeStaleRow(c, row, now);
       }
-      if ((await c.query("SELECT code FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active'",[userId])).rows[0]) throw fail(409,'You already have an open meeting. End it before opening another.');
+      const paid = (await c.query("SELECT code, history_id FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active'",[userId])).rows[0];
+      if (paid) throw openMeetingConflict(paid);
     }
     const staleCode=(await c.query("SELECT * FROM credit_billing_sessions WHERE code=$1 AND state<>'closed' FOR UPDATE",[code])).rows;
     for (const row of staleCode) {
@@ -69,7 +70,7 @@ async function open({userId=null,code,name,hostName,ownerId,now=Date.now()}) {
     return {historyId,session:shape(session)};
   }); } catch(e) {if(e.code==='23505')throw fail(409,'This host or room already has an open meeting');throw e;}
 }
-async function settle(id,{now=Date.now(),endReason=null,ownerId=null,force=false,publishers,viewers}={}) {
+async function settle(id,{now=Date.now(),endReason=null,ownerId=null,force=false,publishers,viewers,skipAutoTopup=false}={}) {
   const original=await get(id); if(!original)return null;
   return db.tx(async c=>{
     if(original.user_id!=null)await lockUser(c,original.user_id);
@@ -77,7 +78,7 @@ async function settle(id,{now=Date.now(),endReason=null,ownerId=null,force=false
     if (row.state==='active' && ownerId && row.owner_id!==ownerId) row=await takeIfIdle(c,row,ownerId,now,{force});
     return settleLocked(c,row,now,endReason,{publishers,viewers});
   }).then((out)=>{ // a debit happened: maybe auto top-up (async, single-flight, see autotopup.js)
-    if(out&&original.user_id!=null)require('./autotopup').maybeAfterDebit(Number(original.user_id),null);
+    if(out&&!skipAutoTopup&&original.user_id!=null)require('./autotopup').maybeAfterDebit(Number(original.user_id),null);
     return out;
   });
 }

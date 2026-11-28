@@ -358,6 +358,11 @@ class Room {
         r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, venue: it.venue || undefined, code: it.venue ? (it.code || this.code || undefined) : undefined, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, meetingAccessMode: it.meetingAccessMode, meetingDurationMin: it.meetingDurationMin, meetingEntryPriceCredits: it.meetingEntryPriceCredits, device: deviceKind() } });
       } catch (e) {
         if (e.status === 401) { requireLogin(); return; }
+        if (e.status === 409 && e.data?.activeMeeting?.historyId) {
+          const { historyId } = e.data.activeMeeting;
+          toast(e.message, { icon: 'alert', group: 'admin', ms: 10000, action: { label: 'Open session', run: () => navigate('/session/' + historyId) } });
+          return;
+        }
         if (e.status === 409 && (e.data?.code || it.code)) { this.code = e.data?.code || it.code; sessionStorage.removeItem('venue.intent'); return this.join({ name, spk, creating: false }); }
         throw e;
       }

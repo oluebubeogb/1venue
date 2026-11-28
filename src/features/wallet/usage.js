@@ -8,7 +8,7 @@
  */
 const db = require('../../../db');
 const config = require('../../config');
-const { fail, UNITS_PER_CREDIT: U } = require('./rules');
+const { fail, openMeetingConflict, UNITS_PER_CREDIT: U } = require('./rules');
 const rates = require('./rates');
 const split = (net) => rates.splitHostShare(net);
 
@@ -51,9 +51,9 @@ async function openUsage({ code, historyId, hostUserId, startedMs = Date.now(), 
   const far = startedMs + 100 * 365 * 24 * 3600 * 1000;
   return db.tx(async (c) => {
     await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [hostUserId]);
-    const openRoom = (await c.query(`SELECT code FROM credit_billing_sessions WHERE user_id=$1 AND state<>'closed' AND COALESCE(deferred,0)=0
-      UNION ALL SELECT code FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active' LIMIT 1`, [hostUserId])).rows[0];
-    if (openRoom) throw fail(409, 'You already have an open meeting. End it before opening another.');
+    const openRoom = (await c.query(`SELECT code, history_id FROM credit_billing_sessions WHERE user_id=$1 AND state='active'
+      UNION ALL SELECT code, history_id FROM paid_meeting_sessions WHERE host_user_id=$1 AND state='active' LIMIT 1`, [hostUserId])).rows[0];
+    if (openRoom) throw openMeetingConflict(openRoom);
     const row = (await c.query(`INSERT INTO paid_meeting_sessions(code,history_id,host_user_id,entry_units,duration_min,started_ms,advertised_end_ms,runtime_end_ms,billing_model,owner_id,owner_heartbeat_ms)
       VALUES($1,$2,$3,1,1,$4,$5,$5,'usage',$6,$4) RETURNING *`, [code, historyId, hostUserId, startedMs, far, ownerId])).rows[0];
     return publicPaid(row);
@@ -153,7 +153,7 @@ async function applyPresence(meter, connected, now) {
     if (meter.state === 'paused' || (meter.disconnected_ms && !meter.connected_since_ms)) {
       // Resume now; never bill the gap (whether it was 2s or 40s).
       return one(`UPDATE paid_usage_meters SET state=CASE WHEN state='grace' THEN 'grace' ELSE 'active' END,
-        connected_since_ms=$2, accounted_ms=$2, last_seen_ms=$2, disconnected_ms=NULL WHERE id=$1 RETURNING *`, [meter.id, now]);
+        connected_since_ms=$2, accounted_ms=$2, last_seen_ms=$2, disconnected_ms=NULL WHERE id=$1 AND state<>'closed' RETURNING *`, [meter.id, now]);
     }
     if (meter.state === 'active' || meter.state === 'grace') {
       if (!Number(meter.connected_since_ms)) {
@@ -168,7 +168,7 @@ async function applyPresence(meter, connected, now) {
   if (!Number(meter.connected_since_ms)) return meter; // not seen on the media server yet
   if (meter.disconnected_ms && now - Number(meter.disconnected_ms) <= grace && meter.state !== 'active') return meter;
   const through = Number(meter.connected_since_ms) ? now : Number(meter.accounted_ms);
-  return one(`UPDATE paid_usage_meters SET state='paused', disconnected_ms=$2, last_seen_ms=$2 WHERE id=$1 RETURNING *`, [meter.id, through]);
+  return one(`UPDATE paid_usage_meters SET state='paused', disconnected_ms=$2, last_seen_ms=$2 WHERE id=$1 AND state<>'closed' RETURNING *`, [meter.id, through]);
 }
 
 async function settleMeter(meter, now, { end = false, hostUserId } = {}) {
@@ -239,14 +239,18 @@ async function settleMeter(meter, now, { end = false, hostUserId } = {}) {
   });
 }
 
-async function finalizeUsage(code, endedMs = Date.now()) {
-  const meters = await many("SELECT * FROM paid_usage_meters WHERE code=$1 AND state<>'closed'", [code]);
-  for (const m of meters) {
-    await settleMeter(m, endedMs, { end: true }).catch((e) => console.warn('[usage] finalize', m.id, e.message));
+async function finalizeUsage(code, endedMs = Date.now(), { skipUnaccounted = false } = {}) {
+  if (!skipUnaccounted) {
+    const meters = await many("SELECT * FROM paid_usage_meters WHERE code=$1 AND state<>'closed'", [code]);
+    for (const m of meters) {
+      await settleMeter(m, endedMs, { end: true }).catch((e) => console.warn('[usage] finalize', m.id, e.message));
+    }
   }
-  await db.q("UPDATE paid_usage_meters SET state='closed' WHERE code=$1 AND state<>'closed'", [code]);
-  await db.q("UPDATE paid_meeting_earnings SET state='available', settled_at=NOW() WHERE code=$1 AND state='pending' AND gross_units>0", [code]);
-  await db.q("UPDATE paid_meeting_sessions SET state='settled', ended_ms=$2 WHERE code=$1 AND state='active'", [code, endedMs]);
+  await db.tx(async (c) => {
+    await c.query("UPDATE paid_meeting_sessions SET state='settled', ended_ms=$2 WHERE code=$1 AND state='active'", [code, endedMs]);
+    await c.query("UPDATE paid_usage_meters SET state='closed' WHERE code=$1 AND state<>'closed'", [code]);
+    await c.query("UPDATE paid_meeting_earnings SET state='available', settled_at=NOW() WHERE code=$1 AND state='pending' AND gross_units>0", [code]);
+  });
 }
 
 async function connectedIdentities(meeting) {
@@ -300,7 +304,8 @@ async function kickParticipant(meeting, participantId, reason) {
 }
 
 async function tick({ ownerId, now = Date.now() } = {}) {
-  const rows = await many("SELECT * FROM paid_meeting_sessions WHERE state='active' AND billing_model='usage'", []);
+  const rows = await many(`SELECT p.* FROM paid_meeting_sessions p JOIN meeting_history h ON h.id=p.history_id
+    WHERE p.state='active' AND p.billing_model='usage' AND h.ended_at IS NULL`, []);
   const due = [];
   const store = require('../../rooms/store');
   for (const row of rows) {
@@ -314,7 +319,8 @@ async function tick({ ownerId, now = Date.now() } = {}) {
     if (!meeting) {
       try { meeting = await require('../../rooms/snapshot').getOrRestoreMeeting(sess.code); } catch { meeting = null; }
     }
-    const connected = meeting ? await connectedIdentities(meeting) : new Set();
+    if (!meeting || Number(meeting.historyId) !== Number(sess.history_id)) continue;
+    const connected = await connectedIdentities(meeting);
     const meters = await many("SELECT * FROM paid_usage_meters WHERE code=$1 AND state<>'closed'", [sess.code]);
     for (const m of meters) {
       const isOn = connected.has(m.participant_id);
