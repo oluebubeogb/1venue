@@ -1,6 +1,6 @@
 // Room side panel: Chat (everyone / direct / groups), People (stage, waiting, hands, roster + moderation),
 // Engage (polls, Q&A, comments) and Tools (Bible, Qur’an, captions, AI, boards, content, breakouts, …).
-import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, profilePath, linkify as linkifyText } from '../ui.js';
+import { h, esc, api, toast, toastErr, avatar, timeAgo, menu, confirmDlg, promptDlg, readFileAsDataUrl, copy, debounce, md, uploadFile, sheet, swipeToClose, profilePath, linkify as linkifyText } from '../ui.js';
 import { downloadAtt, canDownloadAtt, syncList, nearBottom, markEnter } from '../msg-sync.js';
 import { icon } from '../icons.js';
 import { isVideoAtt, videoPlayer } from '../video-player.js';
@@ -37,11 +37,7 @@ export function createPanel(R) {
   head.append(h('div', { class: 'rp-tabs', role: 'tablist' }, TABS.map(([id, label, ic, g]) => (tabBtns[id] = h('button', { role: 'tab', 'data-group': g, type: 'button', onclick: () => open(id), html: icon(ic, { size: 17 }) + `<span>${label}</span><em class="badge" hidden></em>` })))),
     ibtn('x', 'Close panel', () => close(), { cls: 'rp-close' }));
 
-  // swipe down to close on mobile
-  let sy = null;
-  grab.addEventListener('pointerdown', (e) => { sy = e.clientY; grab.setPointerCapture(e.pointerId); });
-  grab.addEventListener('pointermove', (e) => { if (sy != null) el.style.transform = `translateY(${Math.max(0, e.clientY - sy)}px)`; });
-  grab.addEventListener('pointerup', (e) => { const d = e.clientY - (sy ?? e.clientY); sy = null; el.style.transform = ''; if (d > 90) close(); });
+  swipeToClose(el, close, { grip: grab, maxWidth: 820 });
 
   function open(id, s) {
     if (s) sub[id] = s;

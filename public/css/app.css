@@ -3433,14 +3433,20 @@ button.list-item:hover {
     transform: translate(-50%, 100%);
   }
 }
-.sheet .grab {
+.sheet-grip {
+  display: grid;
+  place-items: center;
+  min-height: 22px;
+  flex: none;
+  cursor: grab;
+  touch-action: none;
+}
+.sheet-grip::before {
+  content: "";
   width: 40px;
   height: 5px;
   border-radius: 3px;
   background: var(--line-2);
-  margin: 8px auto 2px;
-  flex: none;
-  cursor: grab;
 }
 .sheet .sh-head {
   display: flex;
@@ -3525,7 +3531,7 @@ button.list-item:hover {
   width: 100%;
   max-width: none;
   min-width: 0;
-  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  max-height: min(88dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 24px));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -3534,14 +3540,11 @@ button.list-item:hover {
   border-bottom: 0;
   animation: menuSheetUp 0.24s var(--spring) both;
 }
-.menu.menu-sheet::before {
-  content: "";
-  display: block;
-  width: 40px;
-  height: 4px;
-  margin: 0.2rem auto 0.5rem;
-  border-radius: 4px;
-  background: var(--line-2);
+.menu-sheet-grip {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--s1);
 }
 .menu.menu-sheet button {
   padding: 0.8rem 0.75rem;
@@ -6023,7 +6026,18 @@ body[data-page="attendance"] .main {
   border-radius: 14px;
 }
 
+.au-modal > .sheet-grip {
+  display: none;
+}
+
 @media (max-width: 560px) {
+  .au-modal > .sheet-grip {
+    display: grid;
+    position: absolute;
+    top: 2px;
+    left: 25%;
+    right: 25%;
+  }
   .au-modal {
     top: auto;
     bottom: 0;

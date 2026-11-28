@@ -254,7 +254,10 @@ class Room {
       spkB.innerHTML = icon(spk ? 'volume' : 'volumeOff'); spkB.classList.toggle('off', !spk); spkB.dataset.tip = spk ? 'Mute speaker' : 'Unmute speaker'; spkB.setAttribute('aria-label', spkB.dataset.tip);
       meter.hidden = !mic;
     };
-    const pv = h('div', { class: 'pj-preview' }, status, h('div', { class: 'pj-av' }, avatar(name.value || 'You', state.user?.avatarUrl, 'xl')), video, h('div', { class: 'pj-ctl' }, muteB, camTB, spkB), meter);
+    const pv = h('div', { class: 'pj-preview' }, status,
+      h('div', { class: 'pj-av' }, avatar(name.value || 'You', state.user?.avatarUrl, 'xl')),
+      video,
+      h('div', { class: 'pj-controls' }, meter, h('div', { class: 'pj-ctl' }, muteB, camTB, spkB)));
     name.addEventListener('input', () => pv.querySelector('.pj-av').replaceChildren(avatar(name.value || 'You', state.user?.avatarUrl, 'xl')));
     const rawCode = fmtCode(this.code || this.intent?.code || ev?.code || '');
     const codeTxt = rawCode.length === 6 ? rawCode.slice(0, 3) + '-' + rawCode.slice(3) : rawCode;

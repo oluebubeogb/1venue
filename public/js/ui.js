@@ -129,13 +129,62 @@ export function toastErr(e) {
   return toast(msg, { icon: 'alert', group: 'admin' });
 }
 
+export function swipeToClose(panel, close, { grip, maxWidth } = {}) {
+  const win = panel.ownerDocument.defaultView || window;
+  let start = null;
+  let distance = 0;
+  const reset = () => {
+    start = null;
+    distance = 0;
+    panel.style.translate = '';
+  };
+
+  panel.addEventListener('touchstart', (event) => {
+    reset();
+    if (event.touches.length !== 1 || (maxWidth && !win.matchMedia(`(max-width: ${maxWidth}px)`).matches)) return;
+    const target = event.target;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (!grip?.contains(target)) {
+      // A gesture that starts in scrolled content belongs to that scroll area.
+      for (let node = target; node && panel.contains(node); node = node.parentElement) {
+        if (node.scrollTop > 1) return;
+      }
+    }
+    const touch = event.touches[0];
+    start = { x: touch.clientX, y: touch.clientY };
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', (event) => {
+    if (!start) return;
+    if (event.touches.length !== 1) { reset(); return; }
+    const touch = event.touches[0];
+    const dy = touch.clientY - start.y;
+    const dx = Math.abs(touch.clientX - start.x);
+    if (!distance) {
+      if (Math.max(Math.abs(dy), dx) < 8) return;
+      if (dy <= dx || !event.cancelable) { reset(); return; }
+    }
+    if (event.cancelable) event.preventDefault();
+    distance = Math.max(0, dy);
+    panel.style.translate = `0 ${distance}px`;
+  }, { passive: false });
+
+  panel.addEventListener('touchend', () => {
+    const dismiss = distance >= 90;
+    reset();
+    if (dismiss) close();
+  });
+  panel.addEventListener('touchcancel', reset);
+}
+
 let sheetStack = [];
 export function sheet({ title = '', icon: ic, group = '', body, wide = false, onClose } = {}) {
   const scrim = h('div', { class: 'scrim' });
   const closeBtn = h('button', { class: 'icon-btn', 'aria-label': 'Close', 'data-tip': 'Close', html: icon('x') });
   const head = h('div', { class: 'sh-head' }, h('h3', { 'data-group': group }, ic ? h('span', { style: { color: 'var(--g, var(--accent))', display: 'flex' }, html: icon(ic) }) : null, title), closeBtn);
   const bodyEl = h('div', { class: 'sh-body' });
-  const el = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, style: wide ? { width: 'min(860px, 100%)' } : null }, h('div', { class: 'grab' }), head, bodyEl);
+  const grip = h('div', { class: 'grab sheet-grip', 'aria-hidden': 'true' });
+  const el = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, style: wide ? { width: 'min(860px, 100%)' } : null }, grip, head, bodyEl);
   if (body) bodyEl.append(body instanceof Node ? body : frag(body));
   let closed = false;
   const close = () => {
@@ -146,12 +195,7 @@ export function sheet({ title = '', icon: ic, group = '', body, wide = false, on
     onClose && onClose();
   };
   scrim.onclick = close; closeBtn.onclick = close;
-  // swipe-down to dismiss (mobile gesture)
-  let y0 = null, dy = 0;
-  const start = (e) => { if (bodyEl.scrollTop > 0 && !e.target.closest('.grab,.sh-head')) return; y0 = e.touches[0].clientY; dy = 0; el.style.transition = 'none'; };
-  const move = (e) => { if (y0 == null) return; dy = Math.max(0, e.touches[0].clientY - y0); if (dy > 0) el.style.transform = `translate(-50%, ${dy}px)`; };
-  const end = () => { if (y0 == null) return; el.style.transition = ''; if (dy > 110) close(); else el.style.transform = ''; y0 = null; };
-  el.addEventListener('touchstart', start, { passive: true }); el.addEventListener('touchmove', move, { passive: true }); el.addEventListener('touchend', end);
+  swipeToClose(el, close, { grip });
   document.body.append(scrim, el);
   const api_ = { el, body: bodyEl, close, setTitle: (t) => { head.querySelector('h3').lastChild.textContent = t; } };
   sheetStack.push(api_);
@@ -171,6 +215,8 @@ export function menu(anchor, items, { header = null, sheet: asSheet, cls = '' } 
   if (asSheet == null) asSheet = doc === document && isMobile();
   doc.querySelectorAll('.menu').forEach((x) => x.remove());
   const m = h('div', { class: 'menu' + (asSheet ? ' menu-sheet' : '') + (cls ? ' ' + cls : ''), role: 'menu' });
+  const grip = asSheet ? h('div', { class: 'sheet-grip menu-sheet-grip', 'aria-hidden': 'true' }) : null;
+  if (grip) m.append(grip);
   if (header) m.append(header);
   for (const it of items) {
     if (it === '-') { m.append(h('hr')); continue; }
@@ -205,6 +251,7 @@ export function menu(anchor, items, { header = null, sheet: asSheet, cls = '' } 
   const off = (e) => { if (!m.contains(e.target) && e.target !== back) m.remove(); };
   const remove = m.remove.bind(m);
   m.remove = () => { unlockPage(); remove(); back && back.remove(); win.removeEventListener('resize', place); win.removeEventListener('keydown', onKey); win.removeEventListener('scroll', onScroll, true); doc.removeEventListener('pointerdown', off); };
+  if (grip) swipeToClose(m, () => m.remove(), { grip });
   if (back) (doc.body || doc.documentElement).append(back);
   (doc.body || doc.documentElement).append(m);
   lockPage();

@@ -2,7 +2,7 @@
 // (.au-scrim / .au-modal). Opens from anywhere: hero / dashboard links to /create?instant=1 are
 // intercepted in app.js, and the command bar calls openInstant() directly.
 import { icon } from './icons.js';
-import { h, toast } from './ui.js';
+import { h, toast, swipeToClose } from './ui.js';
 import { state, navigate, requireLogin } from './app.js';
 import { bringMainToFront } from './bring-main.js';
 
@@ -106,6 +106,9 @@ export function openInstant({ onClose, doc, name, thread } = {}) {
   };
   scrim.onclick = () => close();
   closeBtn.onclick = () => close();
+  const grip = h('div', { class: 'sheet-grip', 'aria-hidden': 'true' });
+  modal.prepend(grip);
+  swipeToClose(modal, close, { grip, maxWidth: 560 });
   mount.append(scrim, modal);
   owner.documentElement.classList.add('au-lock');
   owner.addEventListener('keydown', onKey, true);
