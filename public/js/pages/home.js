@@ -24,7 +24,7 @@ function previewCards() {
 function mobileImages() {
   const images = [
     ['messages.png', 460, 752],
-    ['amara-call.png', 1223, 1286],
+    ['amara-call-light.png', 1223, 1286],
     ['people-follow.png', 445, 493],
   ];
   return images.map(([file, width, height]) => h('img', {
