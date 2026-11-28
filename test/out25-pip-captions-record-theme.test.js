@@ -60,7 +60,8 @@ describe('out25 PiP search/composer/media, scripture search, captions, auto-reco
   it('renders PiP images, files and voice notes with absolute URLs and scrolls to the last message', () => {
     const pip = read('public/js/app-pip.js');
     assert.match(pip, /function scrollEnd/);
-    assert.match(pip, /app-pip-voice-wrap/);
+    assert.match(pip, /if \(voice\) return voiceSlot\(voice,/);
+    assert.match(pip, /hydrateVoicePlayers\(root, win\.document\)/);
     assert.match(pip, /app-pip-file/);
     assert.match(pip, /target: '_blank'/);
     assert.match(pip, /absUrl\(a\.url\)/);

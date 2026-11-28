@@ -1,5 +1,6 @@
 import { icon } from '../icons.js';
-import { h, api, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debounce, confirmDlg } from '../ui.js';
+import { h, api, toast, toastErr, md, timeAgo, fmtDate, fmtDur, copy, hue, debounce, confirmDlg, download } from '../ui.js';
+import { pendingSessionRecording, clearSessionRecording } from '../room/recorder.js';
 import { requireLogin, navigate } from '../app.js';
 import { panel, table, iconBtn, empty, pill } from '../host-kit.js';
 import { registerCommands, unregisterCommands } from '../commands.js';
@@ -123,8 +124,33 @@ export async function mount(view, params) {
   document.body.dataset.page = params.list ? 'sessions' : 'session';
   view.classList.add('ht-view', 'sess-view');
   if (params.list) return list(view);
-  const s = await api(`/api/sessions/${params.id}`).catch((e) => { view.append(empty('lock', 'Can’t open this session', e.message, h('a', { class: 'btn', href: '/dashboard', 'data-link': '' }, 'Dashboard'))); return null; });
-  if (!s) return;
+  let s, loadError;
+  try { s = await api(`/api/sessions/${params.id}`); } catch (err) { loadError = err; }
+  const pending = pendingSessionRecording(params.id);
+  const recordingButton = pending ? h('button', {
+    class: 'btn sm',
+    type: 'button',
+    disabled: true,
+  }, 'Preparing recording…') : null;
+  if (pending) pending.then((recording) => {
+    if (!recording) {
+      recordingButton.remove();
+      clearSessionRecording(params.id, pending);
+      return;
+    }
+    recordingButton.disabled = false;
+    recordingButton.innerHTML = icon('download', { size: 15 }) + 'Download recording';
+    recordingButton.onclick = () => {
+      download(recording.name, recording.blob, recording.type);
+      clearSessionRecording(params.id, pending);
+    };
+  });
+  if (!s) {
+    const dashboard = h('a', { class: 'btn', href: '/dashboard', 'data-link': '' }, 'Dashboard');
+    view.append(empty('lock', 'Can’t open this session', loadError?.message || 'The session could not be loaded.',
+      recordingButton ? h('div', { class: 'row wrap gap-s' }, dashboard, recordingButton) : dashboard));
+    return;
+  }
   const lines = [];
   for (const g of s.segments) { const l = lines[lines.length - 1]; if (l && l.name === g.speakerName && new Date(g.at) - l.at < 20000) { l.text += ' ' + g.text; l.at = new Date(g.at); } else lines.push({ name: g.speakerName, text: g.text, at: new Date(g.at), t0: new Date(g.at) }); }
   const start = new Date(s.startedAt);
@@ -166,6 +192,7 @@ export async function mount(view, params) {
         (s.live && s.isHost) ? liveActions(s, view) : null),
       h('p', { class: 'muted small sess-meta' }, [String(s.code).toLowerCase(), fmtDate(s.startedAt), duration, `${lines.length} transcript line${lines.length === 1 ? '' : 's'}`].join(' · '))),
     h('div', { class: 'sess-toolbar' },
+      recordingButton,
       h('a', { class: 'btn sm', href: `/api/sessions/${s.id}/transcript.txt`, download: '', html: icon('download', { size: 15 }) + 'Transcript .txt' }),
       Object.keys(sums).length ? h('a', { class: 'btn sm', href: `/api/sessions/${s.id}/summary.md`, download: '', html: icon('fileText', { size: 15 }) + 'Summary .md' }) : null,
       h('button', { class: 'btn sm', type: 'button', html: icon('users', { size: 15 }) + 'Attendance list', onclick: async () => {

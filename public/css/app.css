@@ -12093,11 +12093,27 @@ body[data-page="session"] .main {
   gap: 1rem;
   min-width: 0;
 }
+.sess-tx-panel .ht-panel-head {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sess-tx-panel .ht-panel-title {
+  flex: 1 0 auto;
+  max-width: calc(100% - 36px - 0.75rem);
+  overflow-wrap: anywhere;
+}
 .sess-tx-panel .ht-panel-actions {
+  flex: 0 0 min(16rem, 100%);
   min-width: 0;
 }
 .sess-tx-panel .ht-panel-actions .input {
-  width: min(16rem, 100%);
+  width: 100%;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .sess-tx-panel .ht-panel-actions {
+    flex-basis: 100%;
+  }
 }
 .sess-transcript {
   max-height: min(70vh, 720px);
@@ -12114,6 +12130,9 @@ body[data-page="session"] .main {
 }
 .sess-transcript .tline:last-child {
   border-bottom: 0;
+}
+.sess-transcript .tline > div {
+  overflow-wrap: anywhere;
 }
 .sess-transcript .ts {
   font-variant-numeric: tabular-nums;

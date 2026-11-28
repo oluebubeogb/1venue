@@ -1,6 +1,7 @@
 // Detect a new deploy and swap it in: auto-reload when it is safe, otherwise a Reload toast.
 import { toast } from './ui.js';
 import { getLive } from './room/session.js';
+import { pendingSessionRecording } from './room/recorder.js';
 let callApi = null;
 import('./messages/call.js').then((m) => { callApi = m; }).catch(() => {});
 
@@ -27,6 +28,8 @@ export function isStaleModuleError(e) {
 
 export function isUpdateBlocked() {
   if (document.body.classList.contains('in-room')) return true;
+  const sessionId = location.pathname.match(/^\/session\/(\d+)\/?$/)?.[1];
+  if (sessionId && pendingSessionRecording(sessionId)) return true;
   try { if (getLive()) return true; } catch { /* ignore */ }
   try {
     const w = typeof documentPictureInPicture !== 'undefined' && documentPictureInPicture.window;

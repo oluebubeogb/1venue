@@ -2,6 +2,12 @@
 // Captures this tab (video + system audio) and mixes in your mic + every remote audio track.
 import { download, toast } from '../ui.js';
 
+const sessionRecordings = new Map();
+export const pendingSessionRecording = (id) => sessionRecordings.get(String(id));
+export function clearSessionRecording(id, recording) {
+  if (pendingSessionRecording(id) === recording) sessionRecordings.delete(String(id));
+}
+
 export class LocalRecorder {
   constructor(media) { this.media = media; this.rec = null; this.state = 'idle'; this.started = 0; this.paused = 0; }
   async start({ video = true, name = 'recording' } = {}) {
@@ -98,6 +104,18 @@ export class LocalRecorder {
   pause() { if (this.rec && this.state === 'recording') { this.rec.pause(); this.state = 'paused'; this.onChange && this.onChange(this.state); } }
   resume() { if (this.rec && this.state === 'paused') { this.rec.resume(); this.state = 'recording'; this.onChange && this.onChange(this.state); } }
   stop() { if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); }
+  stopForSession(id) {
+    if (!this.rec || this.completeSessionRecording) return;
+    const key = String(id);
+    const pending = new Promise((resolve) => { this.completeSessionRecording = resolve; });
+    sessionRecordings.set(key, pending);
+    try {
+      this.stop();
+    } catch {
+      // Preserve the chunks we have if the browser won't finish the recorder.
+      this.finish();
+    }
+  }
   fileName() { return `${this.name}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.webm`; }
   trySave() {
     if (!this.chunks || !this.chunks.length) return false;
@@ -107,14 +125,19 @@ export class LocalRecorder {
     try { download(this.fileName(), blob, type); return true; } catch { return false; }
   }
   finish() {
+    if (!this.rec) return;
     const type = this.rec?.mimeType || 'video/webm';
     const blob = new Blob(this.chunks || [], { type });
+    const name = this.fileName();
+    const complete = this.completeSessionRecording;
+    this.completeSessionRecording = null;
     if (this.display) this.display.getTracks().forEach((t) => t.stop());
     this.teardownLocal();
     this.ac && this.ac.close().catch(() => {});
     this.ac = null; this.rec = null; this.state = 'idle'; this.mode = null;
-    this.onChange && this.onChange(this.state);
-    if (blob.size) { download(this.fileName(), blob, type); toast('Recording saved to your device', { icon: 'download', group: 'media' }); }
     this.chunks = [];
+    if (complete) complete(blob.size ? { name, blob, type } : null);
+    this.onChange && this.onChange(this.state);
+    if (!complete && blob.size) { download(name, blob, type); toast('Recording saved to your device', { icon: 'download', group: 'media' }); }
   }
 }

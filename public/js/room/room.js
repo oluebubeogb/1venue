@@ -1153,13 +1153,19 @@ Object.assign(Room.prototype, {
     this.destroy(); navigate(state.user ? '/dashboard' : '/'); setTimeout(() => maybeShowBanner('after-room'), 1200);
   },
   ended(m) {
+    if (!this.alive) return;
     this._leaving = true;
-    if (this.recorder.state !== 'idle') { this.announceRecording(false); this.recorder.stop(); }
+    const openWallet = m.reason === 'credits-exhausted' && this.me?.role === 'host';
+    if (this.recorder.state !== 'idle') {
+      this.announceRecording(false);
+      if (m.historyId && !openWallet) this.recorder.stopForSession(m.historyId);
+      else this.recorder.stop();
+    }
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy();
     refreshCredits();
     toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : m.reason === 'credits-required' ? 'The free 15 minutes ended. Sign in and use credits before starting another meeting.' : 'The session has ended', { icon: 'phoneOff', ms: 7000 });
-    if (m.reason === 'credits-exhausted' && this.me?.role === 'host') { navigate('/wallet'); return; }
+    if (openWallet) { navigate('/wallet'); return; }
     navigate(m.historyId ? '/session/' + m.historyId : m.eventSlug ? '/e/' + m.eventSlug : '/'); setTimeout(() => maybeShowBanner('after-room'), 1500);
   },
   kicked(m) {
