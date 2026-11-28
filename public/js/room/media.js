@@ -21,6 +21,32 @@ const cameraFacingFromLabel = (label = '') => {
   return null;
 };
 
+function waitForCapture(track, signal) {
+  const error = () => new Error(track.kind === 'audio' ? 'Your microphone did not start' : 'Your camera did not start');
+  if (track.readyState !== 'live') throw error();
+  if (!track.muted || signal.aborted) return;
+  return new Promise((resolve, reject) => {
+    const done = (failure) => {
+      clearTimeout(timer);
+      track.removeEventListener('unmute', check);
+      track.removeEventListener('ended', check);
+      signal.removeEventListener('abort', check);
+      if (failure) reject(failure);
+      else resolve();
+    };
+    const check = () => {
+      if (signal.aborted) done();
+      else if (track.readyState !== 'live') done(error());
+      else if (!track.muted) done();
+    };
+    const timer = setTimeout(() => done(error()), 2500);
+    track.addEventListener('unmute', check);
+    track.addEventListener('ended', check);
+    signal.addEventListener('abort', check);
+    check();
+  });
+}
+
 export class Media {
   constructor({ onTrack, onTrackGone, onSpeakers, onState, onQuality, onLocal } = {}) {
     Object.assign(this, { onTrack, onTrackGone, onSpeakers, onState, onQuality, onLocal });
@@ -87,6 +113,36 @@ export class Media {
       this.preparedInputs.set(track.kind, track);
     }
   }
+  activatePreparedInput(track, activate) {
+    const { kind } = track;
+    const controller = new AbortController();
+    const pending = { track, controller };
+    this.pendingInputs.set(kind, pending);
+    pending.result = (async () => {
+      let activated = false;
+      try {
+        track.enabled = true;
+        await waitForCapture(track, controller.signal);
+        if (controller.signal.aborted) return false;
+        // Publish the working setup track itself. Keep a disabled copy for a
+        // later local toggle or reconnect, when the active track is stopped.
+        this.prepareInputs([track.clone()]);
+        await activate(track);
+        activated = !controller.signal.aborted;
+        return activated;
+      } catch (error) {
+        if (controller.signal.aborted) return false;
+        throw error;
+      } finally {
+        if (!activated) {
+          if (this.preparedInputs.get(kind) === track) track.enabled = false;
+          else track.stop();
+        }
+        if (this.pendingInputs.get(kind) === pending) this.pendingInputs.delete(kind);
+      }
+    })();
+    return pending.result;
+  }
   setMic(on) { return this.setInput('audio', on); }
   setCam(on) {
     if (!on && this.cameraSwitch) this.cameraSwitch.cancelled = true;
@@ -95,17 +151,22 @@ export class Media {
   async setInput(kind, on) {
     const isMic = kind === 'audio';
     const key = isMic ? 'mic' : 'cam';
-    const prepared = this.preparedInputs.get(kind);
     const room = this.room;
+    const pending = this.pendingInputs.get(kind);
+    if (pending) {
+      if (on) {
+        await pending.result;
+        return this[key];
+      }
+      pending.controller.abort();
+      pending.track.enabled = false;
+      await pending.result.catch(() => {});
+      if (this.room !== room) return this[key];
+    }
+    const prepared = this.preparedInputs.get(kind);
     if (room) {
       const participant = room.localParticipant;
       const source = isMic ? this.LK.Track.Source.Microphone : this.LK.Track.Source.Camera;
-      const pending = this.pendingInputs.get(kind);
-      if (pending) {
-        if (!on) pending.track.enabled = false;
-        await pending.publish;
-        if (on || this.room !== room) return this[key];
-      }
       let publication = participant.getTrackPublication(source);
       if (on && publication?.track?.mediaStreamTrack.readyState === 'ended'
         && (publication.track.isUserProvided || prepared?.readyState === 'live')) {
@@ -113,19 +174,8 @@ export class Media {
         publication = null;
       }
       if (on && prepared?.readyState === 'live' && !publication) {
-        // Keep the disabled setup track available across LiveKit disconnects.
-        const track = prepared.clone();
-        track.enabled = true;
-        const publish = participant.publishTrack(track, { source });
-        this.pendingInputs.set(kind, { track, publish });
-        try {
-          await publish;
-        } catch (err) {
-          track.stop();
-          throw err;
-        } finally {
-          if (this.pendingInputs.get(kind)?.track === track) this.pendingInputs.delete(kind);
-        }
+        const activated = await this.activatePreparedInput(prepared, (track) => participant.publishTrack(track, { source }));
+        if (!activated) return this[key];
       } else if (isMic) {
         await participant.setMicrophoneEnabled(on, { ...AUDIO_CONSTRAINTS, deviceId: devicePrefs().audioinput });
       } else {
@@ -140,10 +190,11 @@ export class Media {
       return this[key];
     }
     if (on && !this[key] && prepared?.readyState === 'live') {
-      const track = prepared.clone();
-      track.enabled = true;
-      this.localStream ||= new MediaStream();
-      this.localStream.addTrack(track);
+      const activated = await this.activatePreparedInput(prepared, (track) => {
+        this.localStream ||= new MediaStream();
+        this.localStream.addTrack(track);
+      });
+      if (!activated) return this[key];
     }
     const previous = this[key];
     this[key] = on;
@@ -284,9 +335,11 @@ export class Media {
   }
   async switchDevice(kind, id) {
     if (kind === 'videoinput' && this.cameraSwitch) throw new Error('Camera is switching');
+    const trackKind = kind === 'audioinput' ? 'audio' : 'video';
+    const pending = this.pendingInputs.get(trackKind);
+    if (kind !== 'audiooutput' && pending) await pending.result;
     saveDevicePref(kind, id);
     if (kind !== 'audiooutput') {
-      const trackKind = kind === 'audioinput' ? 'audio' : 'video';
       this.preparedInputs.get(trackKind)?.stop();
       this.preparedInputs.delete(trackKind);
       if (!this.room) {
@@ -316,7 +369,11 @@ export class Media {
   }
   async disconnect({ keepInputs = false } = {}) {
     if (this.cameraSwitch) this.cameraSwitch.cancelled = true;
-    for (const { track } of this.pendingInputs.values()) track.stop();
+    for (const { track, controller } of this.pendingInputs.values()) {
+      controller.abort();
+      if (keepInputs && this.preparedInputs.get(track.kind) === track) track.enabled = false;
+      else track.stop();
+    }
     this.pendingInputs.clear();
     if (!keepInputs) {
       for (const track of this.preparedInputs.values()) track.stop();

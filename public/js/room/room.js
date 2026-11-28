@@ -564,7 +564,7 @@ Object.assign(Room.prototype, {
     };
     window.addEventListener('pagehide', this.onUnload);
     this.onResize = () => { const m = isMobile(); if (m !== this.isMobile) { this.isMobile = m; this.renderStage(true); } }; window.addEventListener('resize', this.onResize);
-    if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re first here. Share an invite.', { icon: 'userPlus', group: 'people', ms: 5000 }), 1500);
+    if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re first here. Share an invite.', { icon: 'userPlus', group: 'people', ms: 4000 }), 1500);
     bindMediaSession(this);
   },
   setPeople(list) { this.peopleMap = new Map(list.filter((p) => p.status !== 'WAITING').map((p) => [p.id, p])); const mp = this.peopleMap.get(this.me.id); if (mp) this.me.role = mp.role; if (this.remoteRecorders) for (const id of [...this.remoteRecorders]) if (!this.peopleMap.has(id)) this.remoteRecorders.delete(id); this.maybeAutoRecord && this.maybeAutoRecord(); },
@@ -704,7 +704,11 @@ Object.assign(Room.prototype, {
     if (id && this.stageR.screens().length) this.stageR.setPick('cameras');
     else this.renderStage(true);
   },
-  applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
+  applyPerms() {
+    if (!this.perm('microphone') && (this.media.mic || this.media.pendingInputs.has('audio'))) this.media.setMic(false);
+    if (!this.perm('camera') && (this.media.cam || this.media.pendingInputs.has('video'))) this.media.setCam(false);
+    if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false);
+  },
   promoted() { this.reconnectMedia(true); this.maybeAutoRecord && this.maybeAutoRecord(); },
   demoted() { this.media.setMic(false).catch(() => {}); this.media.setCam(false).catch(() => {}); if (this.media.sharing) this.toggleShare(false); },
 
@@ -1282,7 +1286,8 @@ Object.assign(Room.prototype, {
     const s = roomsStore(); delete s[this.code]; localStorage.setItem('venue.rooms', JSON.stringify(s));
     this.destroy();
     refreshCredits();
-    toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : m.reason === 'credits-required' ? 'The free 15 minutes ended. Sign in and use credits before starting another meeting.' : 'The session has ended', { icon: 'phoneOff', ms: 7000 });
+    const creditEnded = m.reason === 'credits-exhausted' || m.reason === 'credits-required';
+    toast(m.reason === 'credits-exhausted' ? 'The meeting ended because the host ran out of credits.' : m.reason === 'credits-required' ? 'The free 15 minutes ended. Sign in and use credits before starting another meeting.' : 'The session has ended', { icon: 'phoneOff', ms: creditEnded ? 7000 : 3000 });
     if (openWallet) { navigate('/wallet'); return; }
     navigate(m.historyId ? '/session/' + m.historyId : m.eventSlug ? '/e/' + m.eventSlug : '/'); setTimeout(() => maybeShowBanner('after-room'), 1500);
   },
