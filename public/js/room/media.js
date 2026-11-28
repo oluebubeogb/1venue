@@ -68,7 +68,28 @@ export class Media {
     this.mic = lp.isMicrophoneEnabled; this.cam = lp.isCameraEnabled; this.sharing = lp.isScreenShareEnabled;
     this.onLocal && this.onLocal({ mic: this.mic, cam: this.cam, sharing: this.sharing });
   }
-  async setMic(on) {
+  async setMic(on, previewTrack) {
+    if (on && previewTrack) {
+      if (previewTrack.readyState !== 'live') {
+        throw new Error('The setup microphone disconnected. Turn on your microphone to reconnect it.');
+      }
+      previewTrack.enabled = true;
+      if (this.room) {
+        this.pendingMic = previewTrack;
+        try {
+          await this.room.localParticipant.publishTrack(previewTrack, { source: this.LK.Track.Source.Microphone });
+          this.syncLocal();
+          return this.mic;
+        } catch (err) {
+          previewTrack.stop();
+          throw err;
+        } finally {
+          if (this.pendingMic === previewTrack) this.pendingMic = null;
+        }
+      }
+      this.localStream ||= new MediaStream();
+      this.localStream.addTrack(previewTrack);
+    }
     if (this.room) { await this.room.localParticipant.setMicrophoneEnabled(on, { ...AUDIO_CONSTRAINTS, deviceId: devicePrefs().audioinput }); this.syncLocal(); return this.mic; }
     this.mic = on; await this.fallback(); this.onLocal && this.onLocal({ mic: this.mic, cam: this.cam, sharing: this.sharing }); return on;
   }
@@ -131,6 +152,8 @@ export class Media {
     return out;
   }
   async disconnect() {
+    this.pendingMic?.stop();
+    this.pendingMic = null;
     try { if (this.room) await this.room.disconnect(true); } catch { /* ignore */ }
     this.room = null;
     if (this.localStream) { this.localStream.getTracks().forEach((t) => t.stop()); this.localStream = null; }

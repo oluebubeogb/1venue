@@ -86,7 +86,16 @@ class Room {
     const warnGo = h('button', { class: 'btn sm primary', type: 'button' }, 'Continue without mic/camera');
     const warn = h('div', { class: 'pj-warn', hidden: true }, warnMsg, h('div', { class: 'row wrap gap-s' }, warnAgain, warnGo));
     let ac, raf, lists = {}, previewRequest = 0;
-    const stopPrev = () => { previewRequest++; cancelAnimationFrame(raf); ac && ac.close().catch(() => {}); ac = null; stream && stream.getTracks().forEach((t) => t.stop()); stream = null; video.srcObject = null; };
+    const stopPrev = (keepTrack) => {
+      previewRequest++;
+      cancelAnimationFrame(raf);
+      ac?.close().catch(() => {});
+      ac = null;
+      stream?.getTracks().forEach((track) => { if (track !== keepTrack) track.stop(); });
+      stream = null;
+      video.srcObject = null;
+    };
+    const livePreviewMic = () => stream?.getAudioTracks().find((track) => track.readyState === 'live');
     const fillSel = (sel, kind, items, pickedId) => {
       const cur = pickedId || (kind === 'audiooutput' ? lsGet('venue.speaker', '') : devicePrefs()[kind]);
       const reps = reports[kind] || [];
@@ -275,13 +284,18 @@ class Room {
       e.preventDefault();
       const n = name.value.trim(); if (n.length < 1) { name.focus(); return toast('Enter your name', { icon: 'user' }); }
       if (!audience && !probeDone) return toast('Still checking devices…', { icon: 'headphones' });
+      if (mic && !livePreviewMic()) {
+        picked.audioinput = null;
+        paintJoin();
+        return;
+      }
       if (!audience && missingList().length && !skipMissing) { paintJoin(); return; }
       lsSet('venue.name', n); if (!audience) lsSet('venue.prejoin', { mic, cam, spk });
       saveWorkingPair({ ...devicePrefs(), audiooutput: devKind === 'audiooutput' ? devSel.value : (lsGet('venue.speaker', '') || undefined) });
       joinB.disabled = true; joinB.classList.add('loading');
-      stopPrev();
       try { await this.join({ name: n, mic, cam, spk, creating }); }
-      catch (err) { if (err.status === 401) requireLogin(); paintJoin(); toastErr(err); preview(); }
+      catch (err) { if (err.status === 401) requireLogin(); toastErr(err); }
+      finally { if (this.alive && !this.inRoom && !this.waitingMode) paintJoin(); }
     } },
       h('div', { class: 'eyebrow' }, 'Joining'),
       h('h1', { class: 'pj-title' }, title),
@@ -300,7 +314,15 @@ class Room {
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
-    this.cleanupPrejoin = () => { devPicker.destroy(); stopPrev(); };
+    this.cleanupPrejoin = ({ keepMic = false } = {}) => {
+      this.cleanupPrejoin = null;
+      if (keepMic && this.want?.mic) {
+        this.prejoinMic = livePreviewMic();
+        if (this.prejoinMic) this.prejoinMic.enabled = false;
+      }
+      devPicker.destroy();
+      stopPrev(this.prejoinMic);
+    };
     paint();
     paintJoin();
     runProbe();
@@ -340,6 +362,7 @@ class Room {
       }
       if (this.params.key) this.inviteKey = this.params.key;
     }
+    if (!this.alive) return;
     this.joinRes = r;
     this.billingFreeUntil = Number(r.freeUntilMs || 0) || null;
     this.paidEntry = r.paidEntry || this.paidEntry || null;
@@ -351,6 +374,7 @@ class Room {
     this.enter(r);
   }
   waitingScreen(r) {
+    this.cleanupPrejoin?.({ keepMic: true });
     this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly - this venue always uses a waiting room.` : r.paidEntry?.enabled ? (r.paidEntry.model === 'usage' ? 'The host must accept you. You will be billed per minute from your credits once you are in.' : `The host must accept you. ${r.paidEntry.paid ? 'Your entry is paid; rejoining this meeting will not charge you again.' : `${r.paidEntry.entryCredits} credits will be charged when the host accepts you.`}`) : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
       h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')), h('button', { class: 'btn ghost', onclick: () => { this.destroy(); navigate('/'); } }, 'Cancel')));
     this.waitingMode = true;
@@ -436,8 +460,9 @@ Object.assign(Room.prototype, {
     finally { this.billingClaimBusy = false; }
   },
   enter(r) {
+    if (!this.alive) return;
     this.creditControl?.unsubscribe();
-    this.cleanupPrejoin && this.cleanupPrejoin();
+    this.cleanupPrejoin?.({ keepMic: true });
     this.inRoom = true;
     this.eventId = r.eventId || this.eventId || (this.event && this.event.id) || null;
     this.settings = { ...(this.settings || {}), certs: r.certs || (this.settings && this.settings.certs) || {} };
@@ -482,8 +507,10 @@ Object.assign(Room.prototype, {
     this.buildUi();
     trackLiveMeeting(this);
     this.connectWs();
-    this.connectMedia().then(() => {
-      this.applyWant();
+    this.connectMedia().then(async () => {
+      if (!this.alive) return;
+      await this.applyWant();
+      if (!this.alive) return;
       saveWorkingPair(devicePrefs());
       this.stopDeviceWatch && this.stopDeviceWatch();
       this.stopDeviceWatch = startWatchdog(this);
@@ -644,7 +671,19 @@ Object.assign(Room.prototype, {
     if (id && this.stageR.screens().length) this.stageR.setPick('cameras');
     else this.renderStage(true);
   },
-  applyWant() { const w = this.want || {}; if (w.spk === false) this.setCallMuted(true, { silent: true }); if (!this.isSpeaker(this.me.id)) return; if (w.mic && this.perm('microphone')) this.toggleMic(true); if (w.cam && this.perm('camera')) this.toggleCam(true); },
+  async applyWant() {
+    const w = this.want || {};
+    const micTrack = this.prejoinMic;
+    this.prejoinMic = null;
+    if (w.spk === false) this.setCallMuted(true, { silent: true });
+    const canSpeak = this.isSpeaker(this.me.id);
+    if (w.mic && canSpeak && this.perm('microphone') && micTrack?.readyState === 'live') {
+      await this.toggleMic(true, micTrack);
+    } else {
+      micTrack?.stop();
+    }
+    if (this.alive && w.cam && canSpeak && this.perm('camera')) this.toggleCam(true);
+  },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
   promoted() { this.reconnectMedia(true); this.maybeAutoRecord && this.maybeAutoRecord(); },
   demoted() { this.media.setMic(false).catch(() => {}); this.media.setCam(false).catch(() => {}); if (this.media.sharing) this.toggleShare(false); },
@@ -686,12 +725,12 @@ Object.assign(Room.prototype, {
     if (track && track.kind === 'audio') { const a = this.audioEls && this.audioEls.get(id + source); if (a) { try { track.detach(a); } catch { /* */ } } this.stageR.paintAll(); return; }
     this.stageR.clearTrack(id, source);
   },
-  async toggleMic(force) {
+  async toggleMic(force, previewTrack) {
     const on = typeof force === 'boolean' ? force : !this.media.mic;
-    if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
-    if (on && !this.perm('microphone') && !this.isMod()) { toast('The host has disabled microphones', { icon: 'micOff' }); return; }
+    if (on && !this.isSpeaker(this.me.id)) { previewTrack?.stop(); toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
+    if (on && !this.perm('microphone') && !this.isMod()) { previewTrack?.stop(); toast('The host has disabled microphones', { icon: 'micOff' }); return; }
     if (on && this.meP()?.mutedByHost && !this.isMod()) this.send('unmute-self', {});
-    try { await this.media.setMic(on); this.captioner.onMic(on); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
+    try { await this.media.setMic(on, previewTrack); this.captioner.onMic(this.media.mic); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
     this.changed();
     bindMediaSession(this);
     syncChrome(this);
@@ -1183,6 +1222,8 @@ Object.assign(Room.prototype, {
     this.stopDeviceWatch && this.stopDeviceWatch();
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
+    this.prejoinMic?.stop();
+    this.prejoinMic = null;
     clearInterval(this.tick); clearInterval(this.billingSyncTimer); clearInterval(this.paidEntrySyncTimer); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
     try { this.ws && this.ws.close(); } catch { /* */ }
     this.captioner && this.captioner.stop(); this.media && this.media.disconnect().catch(() => {});

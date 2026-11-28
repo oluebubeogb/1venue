@@ -1893,6 +1893,11 @@ a.ev-tile:focus-visible {
   min-height: 40px;
   max-height: 140px;
 }
+@media (any-pointer: coarse) {
+  .wa-pill textarea {
+    font-size: max(16px, 0.95rem);
+  }
+}
 .wa-pill textarea::placeholder {
   color: var(--faint);
   white-space: nowrap;

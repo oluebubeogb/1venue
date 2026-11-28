@@ -106,14 +106,35 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
   async function send() {
     if (busy || disabled) return;
     if (pending && pending.uploading) return toast('Still uploading…', { icon: 'upload' });
-    const text = ta.value.trim();
-    if (!text && !pending) return;
-    const att = pending ? { kind: pending.kind, name: pending.name, mime: pending.mime, size: pending.size, url: pending.url, ...(pending.kind === 'board' ? { preview: /^\/files\//.test(pending.preview || '') ? pending.preview : undefined, pages: pending.pages || 1 } : {}) } : null;
+    const draft = ta.value;
+    const text = draft.trim();
+    const attachment = pending;
+    if (!text && !attachment) return;
+    const att = attachment ? {
+      kind: attachment.kind,
+      name: attachment.name,
+      mime: attachment.mime,
+      size: attachment.size,
+      url: attachment.url,
+      ...(attachment.kind === 'board' ? {
+        preview: /^\/files\//.test(attachment.preview || '') ? attachment.preview : undefined,
+        pages: attachment.pages || 1,
+      } : {}),
+    } : null;
     busy = true;
     try {
       const r = await onSend(text, att);
       if (r === false) return;
-      ta.value = ''; if (drafts && draftKey) drafts[draftKey] = ''; pending = null; paintPrev(); fit();
+      if (ta.value === draft) {
+        ta.value = '';
+        if (drafts && draftKey) drafts[draftKey] = '';
+        paintSugg();
+        fit();
+      }
+      if (pending === attachment) {
+        pending = null;
+        paintPrev();
+      }
     } catch (e) { toastErr(e); } finally { busy = false; paintAct(); }
   }
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
@@ -188,6 +209,9 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
       recTimer = setInterval(() => { const s2 = Math.floor((Date.now() - recStart) / 1000); recBar.querySelector('.t').textContent = `${Math.floor(s2 / 60)}:${String(s2 % 60).padStart(2, '0')}`; if (s2 % 2 === 0) onActivity && onActivity('recording'); if (s2 >= 120) rec && rec.stop(); }, 250);
     } catch (e) { toast(e.name === 'NotAllowedError' ? 'Microphone permission is needed for voice notes' : (e.message || 'Microphone unavailable'), { icon: 'micOff', group: 'admin' }); }
   }
+  act.addEventListener('pointerdown', (e) => {
+    if (e.button === 0 && act.dataset.mode === 'send' && ta.ownerDocument.activeElement === ta) e.preventDefault();
+  });
   act.onclick = () => { const m = act.dataset.mode; if (m === 'mic') startRec(); else if (m === 'stop') rec && rec.stop(); else send(); };
 
   let dictating = false;

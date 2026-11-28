@@ -65,12 +65,17 @@ export function createPanel(R) {
     const keep = previousList?.scrollTop ?? body.scrollTop;
     const stick = !previousList || nearBottom(previousList, 40);
     const view = { chat: chatView, people: peopleView, engage: engageView, tools: toolsView }[tab]();
-    body.replaceChildren(view);
+    // Keep the composer attached during chat updates so the mobile keyboard stays open.
+    if (body.firstChild !== view) body.replaceChildren(view);
     const list = view.matches('.chat-thread') ? chatDom.list : null;
     if (list) list.scrollTop = list !== previousList || stick || R.justSent ? list.scrollHeight : keep;
     else body.scrollTop = previousList ? 0 : keep;
     R.justSent = false;
-    const f = body.querySelector('[data-focus]'); if (f && R.focusNext) { f.focus(); R.focusNext = false; }
+    const f = body.querySelector('[data-focus]');
+    if (f && R.focusNext) {
+      if (document.activeElement !== f) f.focus({ preventScroll: true });
+      R.focusNext = false;
+    }
   }
   const isOpen = (id) => tab === id;
   const refresh = (area) => { badges(); if (!tab) return; if (!area || area === tab || (area === 'dm' && tab === 'chat')) render(); };
@@ -132,7 +137,7 @@ export function createPanel(R) {
       c = pillComposer({ placeholder, disabled, drafts: R.drafts, draftKey: 'draft:' + placeholder, limits: R.config.storage?.limits,
         upload: (f, purpose, opts) => uploadFile(f, { purpose, headers: R.headers(), ...(opts || {}) }),
         suggest: (t) => (t.length <= 24 ? searchSounds(t).map((sd) => ({ glyph: sd.emoji, label: sd.label, tip: `Play ${sd.label} for everyone`, run: () => { R.playRoomSound(sd.id); c.clear(); } })) : []),
-        onSend: (text, att) => { (c.onSend)(text, att); R.justSent = true; R.focusNext = true; } });
+        onSend: (text, att) => { (c.onSend)(text, att); R.justSent = true; } });
       composers.set(key, c);
     }
     c.onSend = onSend;
