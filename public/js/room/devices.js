@@ -229,7 +229,9 @@ export function startWatchdog(room) {
   const hook = (track, kind) => {
     if (!track || track._venueEndedHook) return;
     track._venueEndedHook = true;
-    const onEnd = () => { switchKind(kind); };
+    const onEnd = () => {
+      if (kind !== 'videoinput' || room.media?.camTrack() === track) switchKind(kind);
+    };
     track.addEventListener('ended', onEnd);
     unsub.push(() => { try { track.removeEventListener('ended', onEnd); } catch { /* */ } });
   };
@@ -237,7 +239,7 @@ export function startWatchdog(room) {
     if (!inputOn(kind) || (kind === 'videoinput' && room.media.cameraSwitch)) return false;
     const cur = devicePrefs()[kind];
     const next = await tryNext(kind, cur);
-    if (!inputOn(kind)) return false;
+    if (!inputOn(kind) || (kind === 'videoinput' && room.media.cameraSwitch)) return false;
     if (!next) { toast(kind === 'audioinput' ? 'Couldn’t find another working microphone' : 'Couldn’t find another working camera', { icon: 'alert', group: 'media' }); return false; }
     try {
       await room.media?.switchDevice(kind, next.deviceId);
@@ -246,9 +248,12 @@ export function startWatchdog(room) {
     } catch (e) { toastErr(e); return false; }
   };
   const onChange = async () => {
+    if (room.media?.cameraSwitch) return;
     const list = await listDevices();
+    if (room.media?.cameraSwitch) return;
     const prefs = devicePrefs();
     for (const kind of ['audioinput', 'videoinput']) {
+      if (kind === 'videoinput' && room.media?.camTrack()?.readyState === 'live') continue;
       if (prefs[kind] && !(list[kind] || []).some((d) => d.deviceId === prefs[kind])) await switchKind(kind);
     }
   };

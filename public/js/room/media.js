@@ -124,7 +124,12 @@ export class Media {
       } else if (isMic) {
         await participant.setMicrophoneEnabled(on, { ...AUDIO_CONSTRAINTS, deviceId: devicePrefs().audioinput });
       } else {
-        await participant.setCameraEnabled(on, { deviceId: devicePrefs().videoinput });
+        const camera = await participant.setCameraEnabled(on, { deviceId: devicePrefs().videoinput });
+        if (on && camera?.track && !camera.track.isUserProvided) {
+          // The meeting manages camera swaps so an ended old feed cannot cause
+          // LiveKit to open a second capture while a switch is in progress.
+          await camera.track.replaceTrack(camera.track.mediaStreamTrack, { userProvidedTrack: true });
+        }
       }
       this.syncLocal();
       return this[key];
@@ -215,52 +220,52 @@ export class Media {
     const isCurrent = () => this.cameraSwitch === operation && !operation.cancelled && this.cam
       && this.room === room && (room ? this.publishedCamera() === published : this.localStream === stream);
     const settings = this.cameraSettings();
-    const previousFacing = this.cameraFacing(settings);
-    const resolution = { width: settings.width || 1280, height: settings.height || 720, frameRate: settings.frameRate || 24 };
-    const constraints = ({ deviceId, facing }) => deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { exact: facing } };
-    const acquire = async (video) => {
+    const prepared = this.preparedInputs.get('video');
+    const replace = async (track) => {
       if (published) {
-        await published.restartTrack({ ...video, resolution });
-        return published.mediaStreamTrack;
-      }
-      const captured = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...video, width: { ideal: resolution.width }, height: { ideal: resolution.height }, frameRate: { ideal: resolution.frameRate } } });
-      const track = captured.getVideoTracks()[0];
-      if (!track) throw new Error('Camera did not provide a video track');
-      return track;
-    };
-    const install = (track, facing) => {
-      if (!isCurrent()) { track.stop(); return false; }
-      if (!published) {
-        stream.getVideoTracks().forEach((old) => { old.stop(); stream.removeTrack(old); });
+        await published.replaceTrack(track, { userProvidedTrack: true });
+        // WebKit can end the old capture as soon as the other camera opens.
+        if (isCurrent() && published.isMuted) await published.unmute();
+      } else {
+        for (const old of stream.getVideoTracks()) stream.removeTrack(old);
         stream.addTrack(track);
       }
-      const id = this.cameraSettings().deviceId;
-      if (id && facing) this.cameraFacings.set(id, facing);
-      this.prepareInputs([track.clone()]);
-      if (!published) this.emitLocalCamera();
-      return true;
     };
 
-    // Some phones can only capture from one camera at a time.
-    this.preparedInputs.get('video')?.stop();
-    this.preparedInputs.delete('video');
-    if (!published) previous.stop();
+    let track;
     try {
-      const track = await acquire(constraints(target));
-      const next = published?.getSourceTrackSettings?.() || track.getSettings();
+      // Restarting a LiveKit track stops its capture before getUserMedia. Ask for
+      // the other camera while the approved capture is still open.
+      const video = target.deviceId ? { deviceId: { exact: target.deviceId } } : { facingMode: { exact: target.facing } };
+      const captured = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+        ...video, width: { ideal: settings.width || 1280 }, height: { ideal: settings.height || 720 },
+        frameRate: { ideal: settings.frameRate || 24 },
+      } });
+      track = captured.getVideoTracks()[0];
+      if (!track) throw new Error('Camera did not provide a video track');
+      if (!isCurrent()) { track.stop(); return false; }
+      const next = track.getSettings();
       const facing = this.cameraFacing(next, track.label);
       if ((facing && facing !== target.facing) || (!facing && next.deviceId && next.deviceId === settings.deviceId)) {
-        track.stop();
         throw new Error('The other camera could not be opened');
       }
-      return install(track, target.facing);
+      await replace(track);
+      if (!isCurrent()) { track.stop(); return false; }
+      previous.stop();
+      prepared?.stop();
+      if (next.deviceId) this.cameraFacings.set(next.deviceId, target.facing);
+      this.prepareInputs([track.clone()]);
+      if (published) this.syncLocal();
+      else this.emitLocalCamera();
+      return true;
     } catch (error) {
-      if (isCurrent() && !['NotAllowedError', 'SecurityError'].includes(error.name)) {
-        const restore = settings.deviceId ? { deviceId: settings.deviceId } : { facing: previousFacing || 'user' };
-        try {
-          install(await acquire(constraints(restore)), previousFacing);
-        } catch { if (isCurrent()) await this.setCam(false).catch(() => {}); }
-      } else if (isCurrent()) await this.setCam(false).catch(() => {});
+      track?.stop();
+      if (isCurrent()) {
+        if (previous.readyState === 'live' && !previous.muted) {
+          try { if (this.camTrack() !== previous) await replace(previous); }
+          catch { if (isCurrent()) await this.setCam(false).catch(() => {}); }
+        } else await this.setCam(false).catch(() => {});
+      }
       throw error;
     } finally {
       if (this.cameraSwitch === operation) this.cameraSwitch = null;

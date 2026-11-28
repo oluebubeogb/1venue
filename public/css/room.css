@@ -3495,8 +3495,7 @@ html.room-fs .cmdbar {
   .room-head .rh-lay,
   .room-head .rh-cams,
   .room-head .rh-people,
-  .room-head .rh-invite,
-  .room-head .rh-pip {
+  .room-head .rh-invite {
     display: none !important;
   }
   .room-head .rh-menu {

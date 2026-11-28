@@ -164,7 +164,7 @@ it('only starts browser speech capture when captioning is explicitly enabled wit
   assert.equal(captions.on, false);
 });
 
-it('switches the LiveKit camera publication and restores the previous camera if switching fails', async () => {
+it('keeps the approved capture live while switching cameras and leaves the feed in place if access is declined', async (t) => {
   const { Media } = await import(pathToFileURL(path.join(root, 'public/js/room/media.js')));
   const cameras = [
     { deviceId: 'front', label: 'Front Camera', facingMode: 'user' },
@@ -175,36 +175,55 @@ it('switches the LiveKit camera publication and restores the previous camera if 
     getSettings: () => camera, clone: () => track(camera),
     stop() { this.readyState = 'ended'; },
   });
-  let failingDevice;
   const requested = [];
+  let failingDevice;
+  let endPreviousOnCapture = false;
   const video = {
     mediaStreamTrack: track(cameras[0]),
-    async restartTrack({ deviceId }) {
-      this.mediaStreamTrack.stop();
-      requested.push(deviceId.exact);
-      if (deviceId.exact === failingDevice) throw new Error('Camera unavailable');
-      this.mediaStreamTrack = track(cameras.find((d) => d.deviceId === deviceId.exact));
-    },
+    async restartTrack() { assert.fail('LiveKit must not stop the approved camera to acquire another'); },
+    async replaceTrack(input) { this.mediaStreamTrack = input; },
+    async unmute() { this.isMuted = false; },
   };
+  t.mock.getter(globalThis, 'navigator', () => ({ mediaDevices: {
+    async getUserMedia({ audio, video: { deviceId } }) {
+      assert.equal(audio, false);
+      assert.equal(video.mediaStreamTrack.readyState, 'live', 'keep the current capture open while requesting the replacement');
+      requested.push(deviceId.exact);
+      if (deviceId.exact === failingDevice) throw Object.assign(new Error('Camera unavailable'), { name: 'NotAllowedError' });
+      if (endPreviousOnCapture) {
+        video.mediaStreamTrack.stop();
+        video.isMuted = true;
+      }
+      return { getVideoTracks: () => [track(cameras.find((camera) => camera.deviceId === deviceId.exact))] };
+    },
+  } }));
   const publication = { track: video };
   const media = new Media();
   media.LK = { Track: { Source: { Camera: 'camera' } } };
-  media.room = { localParticipant: { getTrackPublication: () => publication } };
+  media.room = { localParticipant: { isCameraEnabled: true, getTrackPublication: () => publication } };
   const setup = track(cameras[0]);
   media.prepareInputs([setup]);
   assert.equal(media.nextCamera(cameras), null);
   media.cam = true;
   assert.equal(media.nextCamera(cameras.slice(0, 1)), null);
   assert.deepEqual(media.nextCamera(cameras), { facing: 'environment', deviceId: 'rear' });
+  const original = media.camTrack();
   assert.equal(await media.switchCamera(media.nextCamera(cameras)), true);
+  assert.equal(original.readyState, 'ended');
   assert.equal(setup.readyState, 'ended');
   assert.equal(media.cameraFacing(), 'environment');
   assert.equal(media.preparedInputs.get('video').enabled, false);
 
   failingDevice = 'front';
   await assert.rejects(media.switchCamera(media.nextCamera(cameras)), /Camera unavailable/);
-  assert.deepEqual(requested, ['rear', 'front', 'rear']);
+  assert.deepEqual(requested, ['rear', 'front']);
   assert.equal(media.cameraFacing(), 'environment');
   assert.equal(media.cam, true);
   assert.equal(media.publishedCamera(), video);
+
+  failingDevice = null;
+  endPreviousOnCapture = true;
+  assert.equal(await media.switchCamera(media.nextCamera(cameras)), true);
+  assert.equal(video.isMuted, false, 'resume publishing if WebKit ended the original hardware capture');
+  assert.equal(media.cameraFacing(), 'user');
 });

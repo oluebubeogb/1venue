@@ -1092,7 +1092,7 @@ Object.assign(Room.prototype, {
       ibtn(this.callMuted ? 'volumeOff' : 'volume', this.callMuted ? 'Unmute call audio' : 'Mute call audio', () => this.toggleCallAudio(), { group: 'media', cls: 'rh-spk' + (this.callMuted ? ' off' : '') }),
       ibtn('userPlus', 'Invite', () => this.invite(), { group: 'people', cls: 'rh-invite hide-xs' }),
       this.bellBtn = h('button', { class: 'icon-btn rh-bell', 'data-tip': 'Activity', type: 'button', onclick: () => this.openActivity(), html: icon('bell', { size: 16 }) + '<em class="badge rh-bell-badge"></em>' }),
-      ibtn('pip', 'Pop out', () => this.popOutMeeting(), { group: 'media', cls: 'rh-pip hide-xs', kbd: 'O' }),
+      ibtn('pip', 'Picture-in-Picture', () => this.popOutMeeting(), { group: 'media', cls: 'rh-pip', kbd: 'O' }),
       this.menuBtn = h('button', { class: 'icon-btn rh-menu', 'data-group': 'nav', 'data-tip': 'Meeting menu', 'aria-label': 'Meeting menu', 'aria-haspopup': 'menu', type: 'button', onclick: () => this.openRoomMenu(), html: icon('menu', { size: 19 }) }),
       ibtn('phoneOff', 'Leave', () => this.leaveMenu(), { group: 'danger', cls: 'danger' })));
     this.paintHead(); this.updateBell && this.updateBell();
@@ -1122,7 +1122,7 @@ Object.assign(Room.prototype, {
       { label: `People (${this.peopleMap.size})`, icon: 'users', group: 'people', run: () => this.panel.toggle('people') },
       { label: 'Invite people', icon: 'userPlus', group: 'people', run: () => this.invite() },
       { label: this.callMuted ? 'Unmute call audio' : 'Mute call audio', icon: this.callMuted ? 'volumeOff' : 'volume', group: 'media', run: () => this.toggleCallAudio() },
-      { label: 'Pop out', icon: 'pip', group: 'media', kbd: 'O', run: () => this.popOutMeeting() },
+      { label: 'Picture-in-Picture', icon: 'pip', group: 'media', kbd: 'O', run: () => this.popOutMeeting() },
       { label: 'Fullscreen', icon: 'maximize', group: 'media', run: () => this.fullscreen() },
     ].filter(Boolean));
   },
@@ -1409,7 +1409,7 @@ Object.assign(Room.prototype, {
       { id: 'r-captions', label: 'Live captions & transcript', icon: 'captions', group: 'content', keywords: 'subtitles cc transcript speech text stt transcription yoruba igbo hausa pidgin', run: () => { if (!R.captioner.on) R.captioner.start(); R.panel.open('tools', 'captions'); } },
       { id: 'r-cc-toggle', label: 'Show/hide captions overlay', icon: 'captions', group: 'content', keywords: 'subtitles hide show', run: () => R.setShowCaptions(!R.showCaptions) },
       { id: 'r-record', label: 'Record on this device', icon: 'record', group: 'media', keywords: 'record recording save video audio capture', run: tool('record') },
-      { id: 'r-pip', label: 'Pop out', short: 'Pop out', icon: 'pip', group: 'media', kbd: 'O', keywords: 'pip float mini window popout', run: () => R.popOutMeeting() },
+      { id: 'r-pip', label: 'Picture-in-Picture', short: 'PiP', icon: 'pip', group: 'media', kbd: 'O', keywords: 'pip float mini window popout', run: () => R.popOutMeeting() },
       { id: 'r-invite', label: 'Invite people / QR code', icon: 'qr', group: 'people', kbd: 'I', keywords: 'invite link share qr code add people', run: () => R.invite() },
       { id: 'r-copy', label: 'Copy room link', icon: 'link', group: 'people', keywords: 'copy link url code', run: () => copy(location.origin + '/' + fmtCode(R.code)).then(() => toast('Link copied', { icon: 'link' })) },
       { id: 'r-bible', label: 'Bible', icon: 'bookOpen', group: 'faith', keywords: 'bible scripture verse kjv web passage sermon john psalm', run: tool('bible') },
@@ -1476,7 +1476,7 @@ Object.assign(Room.prototype, {
       R.me.role !== 'host' ? it('heart', 'Send a gift', 'wallet', () => openGiftSheet({ eventId: (R.event && R.event.id), meetingCode: R.code })) : null,
       R.isMod() && R.recorder.state !== 'idle' ? it('download', 'Stop & save recording', 'media', () => { R.announceRecording(false); R.recorder.stop(); }) : null,
       it('record', 'Record', 'media', () => R.panel.open('tools', 'record')),
-      it('pip', 'Pop out', 'media', () => R.popOutMeeting()),
+      it('pip', 'Picture-in-Picture', 'media', () => R.popOutMeeting()),
       it('qr', 'Invite & QR', 'people', () => R.invite()),
       it('pen', 'My board', 'content', () => R.openMyBoard()),
       it('board', 'Team board', 'content', () => R.openTeamBoard()),
