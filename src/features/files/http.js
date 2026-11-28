@@ -6,18 +6,31 @@
 const {
   sendJSON, data, storage, attach,
 } = require('../../core/http-kit');
+const { normalizeStoredFileUrl, publicBase } = require('../../lib/file-url');
+const { getBucketFile } = require('./data');
 
 module.exports = async function handle(req, res, parsed) {
   const urlPath = parsed.pathname;
 
   // File downloads (local disk driver, or S3 proxied when there is no public URL)
   const fm = urlPath.match(/^\/files\/([\w-]{10,40})\/[^/]+$/);
-  if (fm && req.method === 'GET') {
-    const row = await data.getFile(fm[1]);
+  const forceDownload = urlPath === '/files/download';
+  if ((fm || forceDownload) && req.method === 'GET') {
+    let row;
+    if (forceDownload) {
+      const url = normalizeStoredFileUrl(parsed.searchParams.get('url'));
+      const base = publicBase();
+      if (base && url?.startsWith(base + '/')) {
+        const key = decodeURIComponent(url.slice(base.length + 1));
+        row = await getBucketFile(key);
+      }
+    } else {
+      row = await data.getFile(fm[1]);
+    }
     if (!row) { sendJSON(res, 404, { error: 'File not found' }); return true; }
     try {
       const f = await storage().open(row);
-      const inline = /^(image|audio|video)\//.test(row.mime) || row.mime === 'application/pdf';
+      const inline = !forceDownload && (/^(image|audio|video)\//.test(row.mime) || row.mime === 'application/pdf');
       const headers = {
         'Content-Type': row.mime, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': row.mime === 'application/pdf' ? "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'" : "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",

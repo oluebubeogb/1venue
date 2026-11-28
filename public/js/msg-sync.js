@@ -30,7 +30,13 @@ export function canDownloadAtt(a) {
   return !!attUrl(a);
 }
 
-/** Fetch a (possibly cross-origin R2) file as a blob and save it; fall back to ?download. */
+async function fetchDownload(url) {
+  const res = await fetch(url, { mode: 'cors', credentials: 'same-origin' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.blob();
+}
+
+/** Save locally, using the app's file route when the bucket blocks cross-origin fetches. */
 export async function downloadUrl(url, name) {
   const filename = String(name || 'download').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120) || 'download';
   if (!url) return;
@@ -40,19 +46,18 @@ export async function downloadUrl(url, name) {
     return;
   }
   try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'same-origin' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const blob = await res.blob();
-    download(filename, blob, blob.type || 'application/octet-stream');
-  } catch (e) {
+    const source = new URL(url, location.href);
+    let blob;
     try {
-      const u = new URL(url, location.href);
-      u.searchParams.set('download', filename);
-      const a = h('a', { href: u.href, download: filename, target: '_blank', rel: 'noopener' });
-      document.body.append(a); a.click(); a.remove();
-    } catch (e2) {
-      toastErr(e2.message || e.message || 'Could not download');
+      blob = await fetchDownload(source.href);
+    } catch (err) {
+      if (source.origin === location.origin || !/^https?:$/.test(source.protocol)) throw err;
+      const query = new URLSearchParams({ url: source.href });
+      blob = await fetchDownload('/files/download?' + query);
     }
+    download(filename, blob, blob.type || 'application/octet-stream');
+  } catch {
+    toastErr('Could not download this file. Please try again.');
   }
 }
 

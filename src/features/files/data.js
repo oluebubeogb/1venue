@@ -17,5 +17,8 @@ async function fileUsage({ userId, ownerKey, roomCode } = {}) {
   return Number(r && r.n) || 0;
 }
 async function getFile(id) { return one('SELECT * FROM files WHERE id=$1', [id]); }
+async function getBucketFile(key) {
+  return one("SELECT * FROM files WHERE driver='s3' AND object_key=$1 LIMIT 1", [key]);
+}
 
-module.exports = { insertFile, fileUsage, getFile };
+module.exports = { insertFile, fileUsage, getFile, getBucketFile };

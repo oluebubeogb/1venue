@@ -38,12 +38,12 @@ function el(tag = 'div') {
   return n;
 }
 
-function loadSync() {
+function loadSync(fetch, location) {
   const src = read('public/js/msg-sync.js').replace(/^import .*;\s*$/mg, '').replace(/^export /mg, '');
   const download = (name, data) => { loadSync.last = { name, data }; };
   const toastErr = () => {};
   const h = (tag) => el(tag);
-  return new Function('download', 'toastErr', 'h', `${src}\nreturn { syncList, attDownloadName, canDownloadAtt, attUrl, nearBottom };`)(download, toastErr, h);
+  return new Function('download', 'toastErr', 'h', 'fetch', 'location', `${src}\nreturn { syncList, attDownloadName, canDownloadAtt, attUrl, nearBottom, downloadUrl };`)(download, toastErr, h, fetch, location);
 }
 
 describe('out42 chat download and incremental messages', () => {
@@ -51,11 +51,25 @@ describe('out42 chat download and incremental messages', () => {
     const sync = read('public/js/msg-sync.js');
     assert.match(sync, /export async function downloadUrl/);
     assert.match(sync, /mode: 'cors'/);
-    assert.match(sync, /searchParams\.set\('download'/);
+    assert.doesNotMatch(sync, /target:\s*'_blank'/);
     assert.match(read('public/js/pages/messages.js'), /canDownloadAtt\(a\).*Download/);
     assert.match(read('public/js/app-pip.js'), /canDownloadAtt\(m\.attachment\).*Download/);
     assert.match(read('public/js/room/panels.js'), /label: 'Download'/);
     assert.match(read('public/js/room/panels.js'), /msg-more/);
+  });
+
+  it('downloads a bucket image through the app if the direct request is blocked', async () => {
+    const src = 'https://files.example.test/2026/11/photo.png';
+    const blob = new Blob(['image bytes'], { type: 'image/png' });
+    const requests = [];
+    const { downloadUrl } = loadSync(async (url) => {
+      requests.push(url);
+      if (url === src) throw new TypeError('Failed to fetch');
+      return { ok: true, blob: async () => blob };
+    }, { href: 'https://app.example.test/room', origin: 'https://app.example.test' });
+    await downloadUrl(src, 'photo.png');
+    assert.deepEqual(requests, [src, '/files/download?' + new URLSearchParams({ url: src })]);
+    assert.deepEqual(loadSync.last, { name: 'photo.png', data: blob });
   });
 
   it('paints chats incrementally so existing video nodes are not recreated', () => {
