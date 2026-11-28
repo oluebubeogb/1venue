@@ -163,3 +163,48 @@ it('only starts browser speech capture when captioning is explicitly enabled wit
   captions.onMic(false);
   assert.equal(captions.on, false);
 });
+
+it('switches the LiveKit camera publication and restores the previous camera if switching fails', async () => {
+  const { Media } = await import(pathToFileURL(path.join(root, 'public/js/room/media.js')));
+  const cameras = [
+    { deviceId: 'front', label: 'Front Camera', facingMode: 'user' },
+    { deviceId: 'rear', label: 'Back Camera', facingMode: 'environment' },
+  ];
+  const track = (camera) => ({
+    kind: 'video', label: camera.label, readyState: 'live', enabled: true,
+    getSettings: () => camera, clone: () => track(camera),
+    stop() { this.readyState = 'ended'; },
+  });
+  let failingDevice;
+  const requested = [];
+  const video = {
+    mediaStreamTrack: track(cameras[0]),
+    async restartTrack({ deviceId }) {
+      this.mediaStreamTrack.stop();
+      requested.push(deviceId.exact);
+      if (deviceId.exact === failingDevice) throw new Error('Camera unavailable');
+      this.mediaStreamTrack = track(cameras.find((d) => d.deviceId === deviceId.exact));
+    },
+  };
+  const publication = { track: video };
+  const media = new Media();
+  media.LK = { Track: { Source: { Camera: 'camera' } } };
+  media.room = { localParticipant: { getTrackPublication: () => publication } };
+  const setup = track(cameras[0]);
+  media.prepareInputs([setup]);
+  assert.equal(media.nextCamera(cameras), null);
+  media.cam = true;
+  assert.equal(media.nextCamera(cameras.slice(0, 1)), null);
+  assert.deepEqual(media.nextCamera(cameras), { facing: 'environment', deviceId: 'rear' });
+  assert.equal(await media.switchCamera(media.nextCamera(cameras)), true);
+  assert.equal(setup.readyState, 'ended');
+  assert.equal(media.cameraFacing(), 'environment');
+  assert.equal(media.preparedInputs.get('video').enabled, false);
+
+  failingDevice = 'front';
+  await assert.rejects(media.switchCamera(media.nextCamera(cameras)), /Camera unavailable/);
+  assert.deepEqual(requested, ['rear', 'front', 'rear']);
+  assert.equal(media.cameraFacing(), 'environment');
+  assert.equal(media.cam, true);
+  assert.equal(media.publishedCamera(), video);
+});

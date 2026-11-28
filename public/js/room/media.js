@@ -15,6 +15,11 @@ export async function listDevices() {
   catch { return { audioinput: [], videoinput: [], audiooutput: [] }; }
 }
 export const AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+const cameraFacingFromLabel = (label = '') => {
+  if (/\b(back|rear|environment)\b/i.test(label)) return 'environment';
+  if (/\b(front|user|facetime)\b/i.test(label)) return 'user';
+  return null;
+};
 
 export class Media {
   constructor({ onTrack, onTrackGone, onSpeakers, onState, onQuality, onLocal } = {}) {
@@ -23,6 +28,7 @@ export class Media {
     this.localStream = null; // fallback preview stream when LiveKit is off
     this.preparedInputs = new Map();
     this.pendingInputs = new Map();
+    this.cameraFacings = new Map();
     this.grants = { canPublish: true };
     this.caps = null;
   }
@@ -77,7 +83,10 @@ export class Media {
     }
   }
   setMic(on) { return this.setInput('audio', on); }
-  setCam(on) { return this.setInput('video', on); }
+  setCam(on) {
+    if (!on && this.cameraSwitch) this.cameraSwitch.cancelled = true;
+    return this.setInput('video', on);
+  }
   async setInput(kind, on) {
     const isMic = kind === 'audio';
     const key = isMic ? 'mic' : 'cam';
@@ -93,7 +102,8 @@ export class Media {
         if (on || this.room !== room) return this[key];
       }
       let publication = participant.getTrackPublication(source);
-      if (on && publication?.track?.isUserProvided && publication.track.mediaStreamTrack.readyState !== 'live') {
+      if (on && publication?.track?.mediaStreamTrack.readyState === 'ended'
+        && (publication.track.isUserProvided || prepared?.readyState === 'live')) {
         await participant.unpublishTrack(publication.track);
         publication = null;
       }
@@ -157,7 +167,10 @@ export class Media {
       this.localStream ||= new MediaStream();
       s.getTracks().forEach((t) => this.localStream.addTrack(t));
     }
-    const v = this.localStream && this.localStream.getVideoTracks()[0];
+    this.emitLocalCamera();
+  }
+  emitLocalCamera() {
+    const v = this.localStream?.getVideoTracks()[0];
     if (v) this.onTrack && this.onTrack('__local', { kind: 'video', mediaStreamTrack: v, attach: (el) => { el.srcObject = new MediaStream([v]); el.play().catch(() => {}); return el; }, detach: () => [] }, 'camera', true);
     else this.onTrackGone && this.onTrackGone('__local', null, 'camera');
   }
@@ -166,8 +179,92 @@ export class Media {
     return this.localStream && this.localStream.getAudioTracks()[0];
   }
   camTrack() {
-    if (this.room) { const p = this.room.localParticipant.getTrackPublication(this.LK.Track.Source.Camera); return p && p.track && p.track.mediaStreamTrack; }
+    if (this.room) return this.publishedCamera()?.mediaStreamTrack;
     return this.localStream && this.localStream.getVideoTracks()[0];
+  }
+  publishedCamera() {
+    return this.room?.localParticipant.getTrackPublication(this.LK.Track.Source.Camera)?.track;
+  }
+  cameraSettings() {
+    return this.publishedCamera()?.getSourceTrackSettings?.() || this.camTrack()?.getSettings() || {};
+  }
+  cameraFacing(settings = this.cameraSettings(), label = this.camTrack()?.label) {
+    if (settings.facingMode === 'user' || settings.facingMode === 'environment') return settings.facingMode;
+    return cameraFacingFromLabel(label) || this.cameraFacings.get(settings.deviceId);
+  }
+  nextCamera(devices) {
+    if (!this.cam) return null;
+    const settings = this.cameraSettings();
+    const cameras = devices.filter((d) => d.deviceId && d.deviceId !== 'default');
+    if (new Set(cameras.map((d) => d.deviceId)).size < 2) return null;
+    const current = this.cameraFacing(settings) || cameraFacingFromLabel(cameras.find((d) => d.deviceId === settings.deviceId)?.label) || 'user';
+    const facing = current === 'environment' ? 'user' : 'environment';
+    const others = cameras.filter((d) => d.deviceId !== settings.deviceId);
+    const named = others.find((d) => cameraFacingFromLabel(d.label) === facing);
+    if (named) return { facing, deviceId: named.deviceId };
+    if (others.some((d) => !cameraFacingFromLabel(d.label)) && navigator.mediaDevices.getSupportedConstraints?.().facingMode) return { facing };
+    return null;
+  }
+  async switchCamera(target) {
+    const previous = this.camTrack();
+    if (!target || !this.cam || !previous || this.cameraSwitch) return false;
+    const operation = this.cameraSwitch = { cancelled: false };
+    const room = this.room;
+    const published = this.publishedCamera();
+    const stream = this.localStream;
+    const isCurrent = () => this.cameraSwitch === operation && !operation.cancelled && this.cam
+      && this.room === room && (room ? this.publishedCamera() === published : this.localStream === stream);
+    const settings = this.cameraSettings();
+    const previousFacing = this.cameraFacing(settings);
+    const resolution = { width: settings.width || 1280, height: settings.height || 720, frameRate: settings.frameRate || 24 };
+    const constraints = ({ deviceId, facing }) => deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { exact: facing } };
+    const acquire = async (video) => {
+      if (published) {
+        await published.restartTrack({ ...video, resolution });
+        return published.mediaStreamTrack;
+      }
+      const captured = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...video, width: { ideal: resolution.width }, height: { ideal: resolution.height }, frameRate: { ideal: resolution.frameRate } } });
+      const track = captured.getVideoTracks()[0];
+      if (!track) throw new Error('Camera did not provide a video track');
+      return track;
+    };
+    const install = (track, facing) => {
+      if (!isCurrent()) { track.stop(); return false; }
+      if (!published) {
+        stream.getVideoTracks().forEach((old) => { old.stop(); stream.removeTrack(old); });
+        stream.addTrack(track);
+      }
+      const id = this.cameraSettings().deviceId;
+      if (id && facing) this.cameraFacings.set(id, facing);
+      this.prepareInputs([track.clone()]);
+      if (!published) this.emitLocalCamera();
+      return true;
+    };
+
+    // Some phones can only capture from one camera at a time.
+    this.preparedInputs.get('video')?.stop();
+    this.preparedInputs.delete('video');
+    if (!published) previous.stop();
+    try {
+      const track = await acquire(constraints(target));
+      const next = published?.getSourceTrackSettings?.() || track.getSettings();
+      const facing = this.cameraFacing(next, track.label);
+      if ((facing && facing !== target.facing) || (!facing && next.deviceId && next.deviceId === settings.deviceId)) {
+        track.stop();
+        throw new Error('The other camera could not be opened');
+      }
+      return install(track, target.facing);
+    } catch (error) {
+      if (isCurrent() && !['NotAllowedError', 'SecurityError'].includes(error.name)) {
+        const restore = settings.deviceId ? { deviceId: settings.deviceId } : { facing: previousFacing || 'user' };
+        try {
+          install(await acquire(constraints(restore)), previousFacing);
+        } catch { if (isCurrent()) await this.setCam(false).catch(() => {}); }
+      } else if (isCurrent()) await this.setCam(false).catch(() => {});
+      throw error;
+    } finally {
+      if (this.cameraSwitch === operation) this.cameraSwitch = null;
+    }
   }
   remoteAudioTracks() {
     if (!this.room) return [];
@@ -176,6 +273,7 @@ export class Media {
     return out;
   }
   async switchDevice(kind, id) {
+    if (kind === 'videoinput' && this.cameraSwitch) throw new Error('Camera is switching');
     saveDevicePref(kind, id);
     if (kind !== 'audiooutput') {
       const trackKind = kind === 'audioinput' ? 'audio' : 'video';
@@ -207,6 +305,7 @@ export class Media {
     return out;
   }
   async disconnect({ keepInputs = false } = {}) {
+    if (this.cameraSwitch) this.cameraSwitch.cancelled = true;
     for (const { track } of this.pendingInputs.values()) track.stop();
     this.pendingInputs.clear();
     if (!keepInputs) {

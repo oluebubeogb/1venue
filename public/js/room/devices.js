@@ -234,7 +234,7 @@ export function startWatchdog(room) {
     unsub.push(() => { try { track.removeEventListener('ended', onEnd); } catch { /* */ } });
   };
   const switchKind = async (kind) => {
-    if (!inputOn(kind)) return false;
+    if (!inputOn(kind) || (kind === 'videoinput' && room.media.cameraSwitch)) return false;
     const cur = devicePrefs()[kind];
     const next = await tryNext(kind, cur);
     if (!inputOn(kind)) return false;

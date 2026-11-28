@@ -56,6 +56,7 @@ export function createStage(R) {
     const p = R.p(t.id) || (t.id === R.me.id ? R.me : { name: 'Guest' });
     const st = R.mediaState(t.id);
     const self = t.id === R.me.id;
+    t.el.classList.toggle('mirror', self && t.kind === 'camera' && mirrorCamera());
     t.el.querySelector('.tile-name').textContent = (t.kind === 'screen' ? `${p.name}’s screen` : p.name + (self ? ' (you)' : ''));
     const av = t.el.querySelector('.tile-av');
     if (av.dataset.n !== p.name) { av.dataset.n = p.name; av.replaceChildren(avatar(p.name, p.avatarUrl, 'xl')); t.el.style.setProperty('--av-url', p.avatarUrl ? `url("${String(p.avatarUrl).replace(/"/g, '%22')}")` : 'none'); }
@@ -98,13 +99,15 @@ export function createStage(R) {
       if (!R.p(id)) { try { s.track && s.track.detach && s.track.detach(s.video); } catch { /* */ } sideCams.delete(id); continue; }
       const tr = tiles.get(id)?.track || null;
       if (tr !== s.track) { try { s.track && s.track.detach && s.track.detach(s.video); } catch { /* */ } s.track = tr; if (tr && tr.attach) tr.attach(s.video); else s.video.srcObject = null; }
+      s.video.closest('.cam-side-tile')?.classList.toggle('mirror', id === R.me.id && mirrorCamera());
     }
     sideEl.hidden = !sideCams.size; sideEl.dataset.n = Math.min(sideCams.size, 4);
     const sig = [...sideCams.keys()].join(',');
     if (sideEl.dataset.sig === sig) return; sideEl.dataset.sig = sig;
     sideEl.replaceChildren(h('div', { class: 'cam-side-head' }, h('span', { html: icon('video', { size: 14 }) }), h('b', { class: 'grow' }, 'Cameras'), h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': 'Close', 'data-tip': 'Close', onclick: () => { [...sideCams.keys()].forEach(toggleSide); }, html: icon('x', { size: 14 }) })),
-      h('div', { class: 'cam-side-grid' }, [...sideCams].map(([id, s]) => { const p = R.p(id) || { name: 'Guest' }; return h('div', { class: 'cam-side-tile' + (id === R.me.id && R.mirror ? ' mirror' : '') }, s.video, h('span', { class: 'cst-name ellipsis' }, p.name), h('button', { class: 'tile-more', type: 'button', 'aria-label': 'Remove', onclick: () => toggleSide(id), html: icon('x', { size: 12 }) })); })));
+      h('div', { class: 'cam-side-grid' }, [...sideCams].map(([id, s]) => { const p = R.p(id) || { name: 'Guest' }; return h('div', { class: 'cam-side-tile' + (id === R.me.id && mirrorCamera() ? ' mirror' : '') }, s.video, h('span', { class: 'cst-name ellipsis' }, p.name), h('button', { class: 'tile-more', type: 'button', 'aria-label': 'Remove', onclick: () => toggleSide(id), html: icon('x', { size: 12 }) })); })));
   }
+  const mirrorCamera = () => R.mirror && R.media.cameraFacing() !== 'environment';
   function setTrack(id, track, source) {
     const kind = source === 'screen_share' || source === 'screenShare' ? 'screen' : 'camera';
     const t = tileFor(id, kind);
@@ -112,7 +115,6 @@ export function createStage(R) {
     t.track = track;
     if (track && track.attach) track.attach(t.video); else t.video.srcObject = null;
     t.video.muted = true;
-    t.el.classList.toggle('mirror', id === R.me.id && kind === 'camera' && R.mirror);
     render();
   }
   function clearTrack(id, source) {

@@ -21,18 +21,23 @@ function previewCards() {
   ];
 }
 
-function mobileImageCards() {
-  const images = ['/img/hero/messages.png', '/img/hero/amara-call.png', '/img/hero/people-follow.png'];
-  return images.map((src) => h('article', { class: 'mobile-image-card' },
-    h('img', { src, alt: '', loading: 'eager', decoding: 'async', draggable: 'false' })));
+function mobileImages() {
+  const images = [
+    ['messages.png', 460, 752],
+    ['amara-call.png', 1223, 1286],
+    ['people-follow.png', 445, 493],
+  ];
+  return images.map(([file, width, height]) => h('img', {
+    src: '/img/hero/' + file, width, height, alt: '', loading: 'eager', decoding: 'async', draggable: 'false',
+  }));
 }
 
 function mobileCarousel() {
   return h('div', { class: 'hero-visual hero-mobile-carousel', 'aria-hidden': 'true' },
     h('div', { class: 'hero-carousel-track' },
-      h('div', { class: 'hero-carousel-group' }, ...mobileImageCards()),
-      h('div', { class: 'hero-carousel-group' }, ...mobileImageCards()),
-      h('div', { class: 'hero-carousel-group' }, ...mobileImageCards())));
+      h('div', { class: 'hero-carousel-group' }, ...mobileImages()),
+      h('div', { class: 'hero-carousel-group' }, ...mobileImages()),
+      h('div', { class: 'hero-carousel-group' }, ...mobileImages())));
 }
 
 function band(cls, ...kids) {

@@ -502,6 +502,7 @@ Object.assign(Room.prototype, {
     this.content = r.content || null; this.scripture = null; this.stageView = null;
     this.layout = lsGet('venue.layout', 'grid'); this.pinned = null; this.mirror = lsGet('venue.mirror', true);
     this.isMobile = isMobile(); this.showCaptions = extraPref('showMeetingCaptions', lsGet('venue.showCaptions', false)); this.remoteRecorders = new Set();
+    this.cameraSwitchOnMobile = matchMedia('(pointer: coarse)').matches;
     this.myBoard = lsGet('venue.myboard2', null) || { strokes: lsGet('venue.myboard', []) }; this.myBoardRef = state.user ? lsGet('venue.myboard.ref', null) : null; this.boardSharing = false; this.teamStrokes = [];
     this.peopleMap = new Map(); this.setPeople(r.participants || []);
     this.startedAt = Date.now(); this.recording = null; this.transcribe = false;
@@ -511,7 +512,10 @@ Object.assign(Room.prototype, {
       onSpeakers: (ids) => { this.speaking = new Set(ids); this.stageR.paintAll(); if (this.panel.tab === 'people') this.panel.refresh(); },
       onQuality: (id, q) => { this.quality[id] = String(q).toLowerCase(); this.stageR.paintAll(); },
       onState: (s) => { this.mediaStatus = s; this.paintHead(); if (s === 'disconnected' && this.alive && !this.switchingRoom) this.netBanner(true, 'Media disconnected - reconnecting…'); else if (s === 'connected') this.netBanner(false); },
-      onLocal: ({ mic }) => { if (!mic) this.captioner?.onMic(false); this.stageR.paintAll(); refreshBar(); this.paintHead(); },
+      onLocal: ({ mic }) => {
+        if (!mic) this.captioner?.onMic(false);
+        this.stageR.paintAll(); refreshBar(); this.paintHead();
+      },
     });
     this.media.prepareInputs(this.prejoinInputs || []);
     this.prejoinInputs = null;
@@ -543,6 +547,10 @@ Object.assign(Room.prototype, {
       bindMediaSession(this);
     });
     this.registerCmds();
+    if (this.cameraSwitchOnMobile) {
+      this.onCameraDeviceChange = () => { this.cameraDevices = null; this.refreshCameraDevices(); };
+      navigator.mediaDevices?.addEventListener?.('devicechange', this.onCameraDeviceChange);
+    }
     this.tick = setInterval(() => this.paintHead(), 1000);
     if (this.me.role === 'host' && this.billingFreeUntil) {
       this.billingSyncTimer = setInterval(() => this.syncBilling(), 8000);
@@ -800,9 +808,24 @@ Object.assign(Room.prototype, {
     const on = typeof force === 'boolean' ? force : !this.media.cam;
     if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
     if (on && !this.perm('camera') && !this.isMod()) { toast('The host has disabled cameras', { icon: 'videoOff' }); return; }
-    try { await this.media.setCam(on); } catch (e) { toastErr(e); }
+    try {
+      if (await this.media.setCam(on)) await this.refreshCameraDevices();
+    } catch (e) { toastErr(e); }
     this.changed();
     bindMediaSession(this);
+  },
+  async refreshCameraDevices() {
+    if (!this.cameraSwitchOnMobile || !this.media.cam) return;
+    const { videoinput } = await listDevices();
+    if (!this.alive) return;
+    this.cameraDevices = videoinput;
+    refreshBar();
+  },
+  async switchCamera() {
+    if (!this.alive || !this.cameraSwitchOnMobile || !this.media.cam || this.media.cameraSwitch) return;
+    try { await this.media.switchCamera(this.media.nextCamera(this.cameraDevices || [])); }
+    catch { if (this.alive) toast('Couldn’t switch cameras', { icon: 'alert', group: 'media' }); }
+    if (this.alive) this.changed();
   },
   async toggleShare(force) {
     if (typeof force !== 'boolean' && this.media.sharing) return this.confirmStopShare();
@@ -1258,6 +1281,7 @@ Object.assign(Room.prototype, {
     releaseSession(this);
     if (this._visPip) document.removeEventListener('visibilitychange', this._visPip);
     this.stopDeviceWatch && this.stopDeviceWatch();
+    if (this.onCameraDeviceChange) navigator.mediaDevices?.removeEventListener?.('devicechange', this.onCameraDeviceChange);
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
     this.prejoinInputs?.forEach((track) => track.stop());
@@ -1357,6 +1381,9 @@ Object.assign(Room.prototype, {
     const cmds = [
       { id: 'r-mic', label: 'Microphone on/off', short: () => (R.media.mic ? 'Mute' : 'Unmute'), icon: () => (R.media.mic ? 'mic' : 'micOff'), group: 'media', kbd: 'M', active: () => R.media.mic, keywords: 'mute unmute audio voice talk sound', run: () => R.toggleMic() },
       { id: 'r-cam', label: 'Camera on/off', short: () => (R.media.cam ? 'Stop video' : 'Video'), icon: () => (R.media.cam ? 'video' : 'videoOff'), group: 'media', kbd: 'V', active: () => R.media.cam, keywords: 'camera webcam face video', run: () => R.toggleCam() },
+      { id: 'r-switch-camera', label: 'Switch camera', short: 'Flip camera', icon: 'cameraSwitch', group: 'media',
+        when: () => R.cameraSwitchOnMobile && !!R.media.nextCamera(R.cameraDevices || []),
+        keywords: 'flip switch front back rear camera', run: () => R.switchCamera() },
       { id: 'r-spk', label: 'Mute call audio', short: () => (R.callMuted ? 'Call muted' : 'Mute call'), icon: () => (R.callMuted ? 'volumeOff' : 'volume'), group: 'media', active: () => !!R.callMuted, keywords: 'speaker volume mute call audio listen headphone deafen', run: () => R.toggleCallAudio() },
       { id: 'r-share', label: 'Share screen', short: () => (R.media.sharing ? 'Stop share' : 'Share'), icon: () => (R.media.sharing ? 'screenOff' : 'screen'), group: 'media', kbd: 'S', active: () => R.media.sharing, keywords: 'present screen share display slides', when: () => !R.stage.enabled || R.isSpeaker(R.me.id), run: () => R.toggleShare() },
       { id: 'r-hand', label: 'Raise hand / request to speak', short: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? ((R.stage.requests || []).some((q) => q.id === R.me.id) ? 'Queued' : 'Ask to speak') : R.meP()?.handRaised ? 'Lower' : 'Hand'), icon: () => (R.stage.enabled && !R.isSpeaker(R.me.id) ? 'stage' : 'hand'), group: 'engage', kbd: 'H', active: () => !!R.meP()?.handRaised || (R.stage.requests || []).some((q) => q.id === R.me.id), keywords: 'raise hand question speak stage queue mic request', run: () => R.raiseHand() },
@@ -1421,7 +1448,7 @@ Object.assign(Room.prototype, {
     const by = (id) => cmds.find((c) => c.id === id);
     setBarContext({
       placeholders: ['Search meeting controls…', 'Search people in this meeting…', 'Search scripture and verses…', 'Search sounds and reactions…', 'Search tools and shared content…'],
-      pinned: () => ['r-mic', 'r-cam', 'r-spk', 'r-share', 'r-hand', 'r-react', 'r-again', 'r-chat', 'r-people', 'r-engage', 'r-tools', 'r-layout', 'r-more', 'r-leave'].map(by),
+      pinned: () => ['r-mic', 'r-cam', 'r-switch-camera', 'r-spk', 'r-share', 'r-hand', 'r-react', 'r-again', 'r-chat', 'r-people', 'r-engage', 'r-tools', 'r-layout', 'r-more', 'r-leave'].map(by),
       dynamic: (q) => {
         const out = [];
         const em = q.match(/^(\p{Extended_Pictographic}\uFE0F?)$/u); if (em) out.push({ id: 'dyn-react', label: 'React ' + em[1], glyph: em[1], short: 'React', group: 'engage', run: () => R.react(em[1]) });
