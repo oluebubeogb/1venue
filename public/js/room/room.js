@@ -511,7 +511,7 @@ Object.assign(Room.prototype, {
       onTrackGone: (id, track, source) => this.onTrackGone(id === '__local' ? this.me.id : id, track, source),
       onSpeakers: (ids) => { this.speaking = new Set(ids); this.stageR.paintAll(); if (this.panel.tab === 'people') this.panel.refresh(); },
       onQuality: (id, q) => { this.quality[id] = String(q).toLowerCase(); this.stageR.paintAll(); },
-      onState: (s) => { this.mediaStatus = s; this.paintHead(); if (s === 'disconnected' && this.alive && !this.switchingRoom) this.netBanner(true, 'Media disconnected - reconnecting…'); else if (s === 'connected') this.netBanner(false); },
+      onState: (status, reason) => this.onMediaState(status, reason),
       onLocal: ({ mic }) => {
         if (!mic) this.captioner?.onMic(false);
         this.stageR.paintAll(); refreshBar(); this.paintHead();
@@ -564,7 +564,7 @@ Object.assign(Room.prototype, {
     };
     window.addEventListener('pagehide', this.onUnload);
     this.onResize = () => { const m = isMobile(); if (m !== this.isMobile) { this.isMobile = m; this.renderStage(true); } }; window.addEventListener('resize', this.onResize);
-    if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re the first one here - share the invite to bring people in', { icon: 'userPlus', group: 'people', ms: 5000 }), 1500);
+    if (this.peopleMap.size <= 1) setTimeout(() => this.peopleMap.size <= 1 && this.alive && toast('You’re first here. Share an invite.', { icon: 'userPlus', group: 'people', ms: 5000 }), 1500);
     bindMediaSession(this);
   },
   setPeople(list) { this.peopleMap = new Map(list.filter((p) => p.status !== 'WAITING').map((p) => [p.id, p])); const mp = this.peopleMap.get(this.me.id); if (mp) this.me.role = mp.role; if (this.remoteRecorders) for (const id of [...this.remoteRecorders]) if (!this.peopleMap.has(id)) this.remoteRecorders.delete(id); this.maybeAutoRecord && this.maybeAutoRecord(); },
@@ -709,6 +709,17 @@ Object.assign(Room.prototype, {
   demoted() { this.media.setMic(false).catch(() => {}); this.media.setCam(false).catch(() => {}); if (this.media.sharing) this.toggleShare(false); },
 
   /* --------------------------------------------------------------- media */
+  onMediaState(status, reason) {
+    if (!this.alive || this._leaving) return;
+    this.mediaStatus = status;
+    this.paintHead();
+    if (status === 'connected') {
+      this.netBanner(false);
+    } else if (status === 'disconnected' && !this.switchingRoom
+      && !(this.endingUntil > Date.now()) && !this.media.isExpectedDisconnect(reason)) {
+      this.netBanner(true, 'Media disconnected - reconnecting…');
+    }
+  },
   async connectMedia(roomOverride) {
     if (!this.config.livekitConfigured) { await this.media.fallback(); this.mediaStatus = 'local'; this.netNote = 'Live audio/video server not configured - local preview only'; this.paintHead(); return; }
     try {
@@ -1246,7 +1257,11 @@ Object.assign(Room.prototype, {
     s.body.append(h('div', { class: 'stack' }, h('button', { class: 'btn block', onclick: () => { s.close(); this.leave(); }, html: icon('logout', { size: 16 }) + 'Leave (room stays open)' }),
       h('button', { class: 'btn danger block', onclick: () => { s.close(); this.endForAll(); }, html: icon('phoneOff', { size: 16 }) + 'End for everyone' })));
   },
-  async endForAll() { if (await confirmDlg('End the session for everyone? Transcripts and summaries will be saved.', { ok: 'End session', danger: true })) this.send('end-meeting', {}); },
+  async endForAll() {
+    if (!await confirmDlg('End the session for everyone? Transcripts and summaries will be saved.', { ok: 'End session', danger: true })) return;
+    this.endingUntil = Date.now() + 10000;
+    this.send('end-meeting', {});
+  },
   async leave() {
     if (!(await confirmDlg('Leave this meeting? You will be disconnected from the call. You can rejoin while it is still active.', { ok: 'Leave meeting', danger: true }))) return;
     this._leaving = true;

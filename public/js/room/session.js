@@ -8,6 +8,27 @@ let shell = { setRoomMode() {} };
 let pendingWin = null;
 let noGesture = false;
 let guardsOn = false;
+let clearToastAnchor = () => {};
+
+function anchorMeetingToasts(header) {
+  clearToastAnchor();
+  if (!header) return;
+  const body = header.ownerDocument.body;
+  const win = header.ownerDocument.defaultView;
+  const update = () => body.style.setProperty('--meeting-header-bottom', `${Math.ceil(header.getBoundingClientRect().bottom)}px`);
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+  update();
+  body.classList.add('meeting-toasts');
+  observer?.observe(header);
+  win.addEventListener('resize', update);
+  clearToastAnchor = () => {
+    observer?.disconnect();
+    win.removeEventListener('resize', update);
+    body.style.removeProperty('--meeting-header-bottom');
+    body.classList.remove('meeting-toasts');
+    clearToastAnchor = () => {};
+  };
+}
 
 export function bindShell(s) { if (s) shell = { ...shell, ...s }; }
 export function getLive() { return live; }
@@ -18,6 +39,7 @@ export function trackLiveMeeting(room) {
     try { live.room.destroy(); } catch { /* A stale room must not block the new one. */ }
   }
   live = { room, code: room.code, url: liveUrl(room), autoPip: null };
+  anchorMeetingToasts(room.headEl);
 }
 export function isLiveMeeting(room) {
   const r = room || (live && live.room);
@@ -128,6 +150,7 @@ export function park(room) {
   }
   trackLiveMeeting(room);
   if (room.root && room.root.parentNode !== holder()) holder().append(room.root);
+  anchorMeetingToasts();
   try { shell.setRoomMode && shell.setRoomMode(false); } catch { /* ignore */ }
   live.code = room.code;
   live.url = liveUrl(room);
@@ -159,12 +182,14 @@ export async function resume(view, params) {
   closeAutoPip();
   try { shell.setRoomMode && shell.setRoomMode(true); } catch { /* ignore */ }
   try { room.renderStage(true); room.paintHead(true); } catch { /* ignore */ }
+  anchorMeetingToasts(room.headEl);
   try { document.title = (room.code ? fmtCode(room.code) : 'New room') + ' · 1venue'; } catch { /* ignore */ }
   return pageApi(room);
 }
 
 export function release(room) {
   if (!live || (room && live.room !== room)) return;
+  anchorMeetingToasts();
   restoreStage(live.room);
   closeMini();
   closeAutoPip();

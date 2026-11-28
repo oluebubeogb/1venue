@@ -33,6 +33,11 @@ export class Media {
     this.caps = null;
   }
   setState(s, detail) { this.state = s; this.onState && this.onState(s, detail); }
+  isExpectedDisconnect(reason) {
+    const reasons = this.LK?.DisconnectReason;
+    return reason != null && !!reasons
+      && [reasons.CLIENT_INITIATED, reasons.ROOM_DELETED, reasons.PARTICIPANT_REMOVED].includes(reason);
+  }
   async connect({ url, token, media }) {
     const LK = this.LK = await loadLiveKit();
     const m = media || {};
