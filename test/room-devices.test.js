@@ -98,6 +98,7 @@ it('keeps setup devices off until the user enables them and reuses them across L
   const mic = track('audio');
   const cam = track('video');
   const published = new Map();
+  const transitions = [];
   const setEnabled = (source, on) => {
     if (!on && !published.has(source)) return;
     assert.ok(published.has(source), 'enabling a prepared device should never ask LiveKit to capture it');
@@ -113,7 +114,20 @@ it('keeps setup devices off until the user enables them and reuses them across L
       assert.equal(published.has(source), false);
       assert.equal(input.enabled, true);
       assert.equal(input.muted, false, 'the approved device has resumed before publication');
-      published.set(source, { isMuted: false, track: { isUserProvided: true, mediaStreamTrack: input } });
+      const publication = {
+        isMuted: false, track: { isUserProvided: true, mediaStreamTrack: input },
+        async mute() { transitions.push([source, 'mute']); setEnabled(source, false); },
+        async unmute() {
+          assert.equal(this.isMuted, true);
+          assert.equal(source === 'microphone' ? media.mic : media.cam, false, 'do not mark the input on until startup completes');
+          transitions.push([source, 'unmute']);
+          setEnabled(source, true);
+        },
+      };
+      published.set(source, publication);
+      media.syncLocal(); // LiveKit emits LocalTrackPublished before publishTrack returns.
+      assert.equal(source === 'microphone' ? media.mic : media.cam, false, 'do not mark the input on until startup completes');
+      return publication;
     },
     async setMicrophoneEnabled(on) { setEnabled('microphone', on); },
     async setCameraEnabled(on) { setEnabled('camera', on); },
@@ -144,6 +158,7 @@ it('keeps setup devices off until the user enables them and reuses them across L
     assert.equal(await repeat, true);
     assert.equal(published.get(source).track.mediaStreamTrack, input);
   }
+  assert.deepEqual(transitions, [['microphone', 'mute'], ['microphone', 'unmute']]);
   for (const on of [false, true]) {
     assert.equal(await media.setMic(on), on);
     assert.equal(await media.setCam(on), on);
@@ -157,6 +172,52 @@ it('keeps setup devices off until the user enables them and reuses them across L
   assert.equal(await media.setCam(true), true);
   await media.disconnect();
   assert.ok(retained.every((input) => input.readyState === 'ended'));
+});
+
+it('recovers a stalled setup camera on the first tap without reopening the microphone', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { Media } = await import(pathToFileURL(path.join(root, 'public/js/room/media.js')));
+  const camera = (muted) => Object.assign(new EventTarget(), {
+    kind: 'video', readyState: 'live', enabled: true, muted,
+    getSettings: () => ({ deviceId: 'front' }),
+    clone: () => camera(muted),
+    stop() { this.readyState = 'ended'; },
+  });
+  const setup = camera(true);
+  const replacement = camera(false);
+  const requests = [];
+  t.mock.getter(globalThis, 'navigator', () => ({ mediaDevices: {
+    async getUserMedia(constraints) {
+      assert.equal(setup.readyState, 'live');
+      requests.push(constraints);
+      return { getVideoTracks: () => [replacement] };
+    },
+  } }));
+  const attached = [];
+  const media = new Media({ onTrack: (...args) => attached.push(args) });
+  let publication;
+  media.room = { localParticipant: {
+    identity: 'host',
+    get isCameraEnabled() { return !!publication; },
+    getTrackPublication: () => publication,
+    async publishTrack(input) {
+      assert.equal(input, replacement);
+      assert.equal(input.enabled, true);
+      publication = { track: { mediaStreamTrack: input } };
+      return publication;
+    },
+  } };
+  media.LK = { Track: { Source: { Camera: 'camera' } } };
+  media.prepareInputs([setup]);
+
+  const enabling = media.setCam(true);
+  const repeated = media.setCam(true);
+  assert.equal(media.cam, false);
+  t.mock.timers.tick(2500);
+  assert.deepEqual(await Promise.all([enabling, repeated]), [true, true]);
+  assert.deepEqual(requests, [{ audio: false, video: { deviceId: { ideal: 'front' } } }]);
+  assert.equal(setup.readyState, 'ended');
+  assert.deepEqual(attached, [['host', publication.track, 'camera', true]]);
 });
 
 it('only starts browser speech capture when captioning is explicitly enabled with the mic on', async () => {

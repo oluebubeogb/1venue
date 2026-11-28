@@ -87,7 +87,12 @@ export class Media {
       .on(E.TrackUnsubscribed, (track, pub, p) => this.onTrackGone && this.onTrackGone(p.identity, track, pub.source))
       .on(E.TrackMuted, (pub, p) => this.onTrackGone && pub.kind === 'video' && this.onTrackGone(p.identity, pub.track, pub.source, true))
       .on(E.TrackUnmuted, (pub, p) => pub.track && this.onTrack && this.onTrack(p.identity, pub.track, pub.source))
-      .on(E.LocalTrackPublished, (pub) => { this.onTrack && pub.track && this.onTrack(room.localParticipant.identity, pub.track, pub.source, true); this.syncLocal(); })
+      .on(E.LocalTrackPublished, (pub) => {
+        const starting = (pub.source === LK.Track.Source.Camera || pub.source === LK.Track.Source.Microphone)
+          && this.pendingInputs.has(pub.kind);
+        if (pub.track && !starting) this.onTrack?.(room.localParticipant.identity, pub.track, pub.source, true);
+        this.syncLocal();
+      })
       .on(E.LocalTrackUnpublished, (pub) => { this.onTrackGone && this.onTrackGone(room.localParticipant.identity, pub.track, pub.source); this.syncLocal(); })
       .on(E.ActiveSpeakersChanged, (sp) => this.onSpeakers && this.onSpeakers(sp.map((s) => s.identity)))
       .on(E.ConnectionQualityChanged, (q, p) => this.onQuality && this.onQuality(p.identity, q))
@@ -104,7 +109,9 @@ export class Media {
   }
   syncLocal() {
     const lp = this.room && this.room.localParticipant; if (!lp) return;
-    this.mic = lp.isMicrophoneEnabled; this.cam = lp.isCameraEnabled; this.sharing = lp.isScreenShareEnabled;
+    this.mic = !this.pendingInputs.has('audio') && lp.isMicrophoneEnabled;
+    this.cam = !this.pendingInputs.has('video') && lp.isCameraEnabled;
+    this.sharing = lp.isScreenShareEnabled;
     this.onLocal && this.onLocal({ mic: this.mic, cam: this.cam, sharing: this.sharing });
   }
   prepareInputs(tracks) {
@@ -113,7 +120,8 @@ export class Media {
       this.preparedInputs.set(track.kind, track);
     }
   }
-  activatePreparedInput(track, activate) {
+  activatePreparedInput(prepared, activate) {
+    let track = prepared;
     const { kind } = track;
     const controller = new AbortController();
     const pending = { track, controller };
@@ -122,12 +130,32 @@ export class Media {
       let activated = false;
       try {
         track.enabled = true;
-        await waitForCapture(track, controller.signal);
+        try {
+          await waitForCapture(track, controller.signal);
+        } catch (error) {
+          if (kind !== 'video' || controller.signal.aborted) throw error;
+          // A retained camera can stay muted when the browser suspends it.
+          // Request video only and keep the approved capture open until replaced.
+          const deviceId = track.getSettings().deviceId;
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: false, video: deviceId ? { deviceId: { ideal: deviceId } } : true,
+          });
+          const replacement = stream.getVideoTracks()[0];
+          if (!replacement) throw error;
+          if (controller.signal.aborted) {
+            replacement.stop();
+            return false;
+          }
+          track.stop();
+          track = pending.track = replacement;
+          this.preparedInputs.set(kind, track);
+          await waitForCapture(track, controller.signal);
+        }
         if (controller.signal.aborted) return false;
         // Publish the working setup track itself. Keep a disabled copy for a
         // later local toggle or reconnect, when the active track is stopped.
         this.prepareInputs([track.clone()]);
-        await activate(track);
+        await activate(track, controller.signal);
         activated = !controller.signal.aborted;
         return activated;
       } catch (error) {
@@ -174,8 +202,29 @@ export class Media {
         publication = null;
       }
       if (on && prepared?.readyState === 'live' && !publication) {
-        const activated = await this.activatePreparedInput(prepared, (track) => participant.publishTrack(track, { source }));
+        const activated = await this.activatePreparedInput(prepared, async (track, signal) => {
+          const pub = await participant.publishTrack(track, { source });
+          let started = false;
+          try {
+            if (signal.aborted) return;
+            if (isMic) {
+              // Keep the microphone's post-publish wake-up. Cycling the camera
+              // here can interrupt capture while its first frames are starting.
+              await pub.mute();
+              if (signal.aborted) return;
+              await pub.unmute();
+              await waitForCapture(track, signal);
+            }
+            started = !signal.aborted;
+          } finally {
+            if (!started && pub.track) await participant.unpublishTrack(pub.track).catch(() => {});
+          }
+        });
         if (!activated) return this[key];
+        if (!isMic) {
+          const camera = participant.getTrackPublication(source)?.track;
+          if (camera) this.onTrack?.(participant.identity, camera, source, true);
+        }
       } else if (isMic) {
         await participant.setMicrophoneEnabled(on, { ...AUDIO_CONSTRAINTS, deviceId: devicePrefs().audioinput });
       } else {
