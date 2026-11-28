@@ -209,9 +209,20 @@ export function pillComposer({ placeholder = 'Message', onSend, upload, voice = 
       recTimer = setInterval(() => { const s2 = Math.floor((Date.now() - recStart) / 1000); recBar.querySelector('.t').textContent = `${Math.floor(s2 / 60)}:${String(s2 % 60).padStart(2, '0')}`; if (s2 % 2 === 0) onActivity && onActivity('recording'); if (s2 >= 120) rec && rec.stop(); }, 250);
     } catch (e) { toast(e.name === 'NotAllowedError' ? 'Microphone permission is needed for voice notes' : (e.message || 'Microphone unavailable'), { icon: 'micOff', group: 'admin' }); }
   }
-  act.addEventListener('pointerdown', (e) => {
-    if (e.button === 0 && act.dataset.mode === 'send' && ta.ownerDocument.activeElement === ta) e.preventDefault();
-  });
+  const sendingFromField = () => act.dataset.mode === 'send' && ta.ownerDocument.activeElement === ta;
+  const keepFocus = (e) => {
+    if (e.button === 0 && sendingFromField()) e.preventDefault();
+  };
+  act.addEventListener('pointerdown', keepFocus);
+  act.addEventListener('mousedown', keepFocus);
+  act.addEventListener('touchend', (e) => {
+    if (!e.cancelable || !sendingFromField() || e.touches.length || e.changedTouches.length !== 1) return;
+    const { clientX, clientY } = e.changedTouches[0];
+    if (!act.contains(ta.ownerDocument.elementFromPoint(clientX, clientY))) return;
+    // iOS can still synthesize a click after pointerdown is canceled. Send from the tap itself.
+    e.preventDefault();
+    send();
+  }, { passive: false });
   act.onclick = () => { const m = act.dataset.mode; if (m === 'mic') startRec(); else if (m === 'stop') rec && rec.stop(); else send(); };
 
   let dictating = false;
