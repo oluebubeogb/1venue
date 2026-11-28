@@ -292,6 +292,101 @@ it('keeps the approved microphone live when camera activation needs a replacemen
   assert.equal(mic.enabled, true);
 });
 
+it('recovers a stalled setup microphone on the first tap without reopening camera', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { Media } = await import(pathToFileURL(path.join(root, 'public/js/room/media.js')));
+  const makeTrack = (kind, muted = false) => Object.assign(new EventTarget(), {
+    kind, readyState: 'live', enabled: true, muted,
+    getSettings: () => ({ deviceId: 'approved-' + kind }),
+    clone: () => makeTrack(kind, muted),
+    stop() { this.readyState = 'ended'; },
+  });
+  const mic = makeTrack('audio', true);
+  const cam = makeTrack('video');
+  const recoveredMic = makeTrack('audio');
+  let cameraRequests = 0;
+  const media = new Media();
+  const publications = new Map();
+  const participant = {
+    identity: 'host',
+    get isMicrophoneEnabled() { return !!publications.get('microphone') && !publications.get('microphone').isMuted; },
+    get isCameraEnabled() { return !!publications.get('camera') && !publications.get('camera').isMuted; },
+    getTrackPublication: (source) => publications.get(source),
+    async publishTrack(input, { source }) {
+      const publication = {
+        track: { isUserProvided: true, mediaStreamTrack: input },
+        isMuted: false,
+        async mute() { this.isMuted = true; input.enabled = false; },
+        async unmute() { this.isMuted = false; input.enabled = true; },
+      };
+      publications.set(source, publication);
+      return publication;
+    },
+  };
+  t.mock.getter(globalThis, 'navigator', () => ({ mediaDevices: {
+    async getUserMedia({ audio, video }) {
+      assert.ok(audio);
+      assert.equal(video, false);
+      assert.equal(cam.readyState, 'live');
+      cameraRequests++;
+      return { getAudioTracks: () => [recoveredMic] };
+    },
+  } }));
+  media.LK = { Track: { Source: { Microphone: 'microphone', Camera: 'camera' } } };
+  media.room = { localParticipant: participant };
+  media.prepareInputs([mic, cam]);
+
+  const enabling = media.setMic(true);
+  t.mock.timers.tick(2500);
+  assert.equal(await enabling, true);
+  assert.equal(media.mic, true);
+  assert.equal(recoveredMic.readyState, 'live');
+  assert.equal(recoveredMic.enabled, true);
+  assert.equal(cam.readyState, 'live');
+  assert.equal(cameraRequests, 1);
+});
+
+it('switches camera without requesting or disturbing microphone capture', async (t) => {
+  const { Media } = await import(pathToFileURL(path.join(root, 'public/js/room/media.js')));
+  const makeTrack = (kind, deviceId, facingMode) => ({
+    kind, label: facingMode === 'environment' ? 'Back Camera' : 'Front Camera',
+    readyState: 'live', enabled: true, muted: false,
+    getSettings: () => ({ deviceId, facingMode, width: 1280, height: 720, frameRate: 24 }),
+    clone() { return makeTrack(kind, deviceId, facingMode); },
+    stop() { this.readyState = 'ended'; },
+  });
+  const mic = makeTrack('audio', 'mic', undefined);
+  const firstCamera = makeTrack('video', 'front', 'user');
+  const nextCamera = makeTrack('video', 'rear', 'environment');
+  const requests = [];
+  t.mock.getter(globalThis, 'navigator', () => ({ mediaDevices: {
+    async getUserMedia(options) {
+      requests.push(options);
+      return { getVideoTracks: () => [nextCamera] };
+    },
+  } }));
+  let replaced;
+  const publication = {
+    track: { isUserProvided: true, mediaStreamTrack: firstCamera },
+  };
+  publication.track.replaceTrack = async (track) => { replaced = track; publication.track.mediaStreamTrack = track; };
+  const media = new Media();
+  media.LK = { Track: { Source: { Camera: 'camera' } } };
+  media.room = { localParticipant: {
+    isMicrophoneEnabled: true,
+    getTrackPublication: () => publication,
+  } };
+  media.cam = true;
+  media.mic = true;
+  media.prepareInputs([mic, firstCamera.clone()]);
+  assert.equal(await media.switchCamera({ facing: 'environment', deviceId: 'rear' }), true);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].audio, false);
+  assert.equal(replaced, nextCamera);
+  assert.equal(mic.readyState, 'live');
+  assert.equal(media.mic, true);
+});
+
 it('only starts browser speech capture when captioning is explicitly enabled with the mic on', async () => {
   let starts = 0;
   const src = read('public/js/room/captions.js').replace(/^import .*$/gm, '').replace(/^export /gm, '');

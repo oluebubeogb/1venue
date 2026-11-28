@@ -133,14 +133,15 @@ export class Media {
         try {
           await waitForCapture(track, controller.signal);
         } catch (error) {
-          if (kind !== 'video' || controller.signal.aborted) throw error;
-          // A retained camera can stay muted when the browser suspends it.
-          // Request video only and keep the approved capture open until replaced.
+          if (controller.signal.aborted) throw error;
+          // iOS can leave a staged input muted. Reopen only the affected device
+          // while its sibling capture stays live.
           const deviceId = track.getSettings().deviceId;
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: false, video: deviceId ? { deviceId: { ideal: deviceId } } : true,
-          });
-          const replacement = stream.getVideoTracks()[0];
+          const constraints = kind === 'audio'
+            ? { audio: deviceId ? { ...AUDIO_CONSTRAINTS, deviceId: { ideal: deviceId } } : AUDIO_CONSTRAINTS, video: false }
+            : { audio: false, video: deviceId ? { deviceId: { ideal: deviceId } } : true };
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          const replacement = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
           if (!replacement) throw error;
           if (controller.signal.aborted) {
             replacement.stop();
@@ -228,12 +229,7 @@ export class Media {
       } else if (isMic) {
         await participant.setMicrophoneEnabled(on, { ...AUDIO_CONSTRAINTS, deviceId: devicePrefs().audioinput });
       } else {
-        const camera = await participant.setCameraEnabled(on, { deviceId: devicePrefs().videoinput });
-        if (on && camera?.track && !camera.track.isUserProvided) {
-          // The meeting manages camera swaps so an ended old feed cannot cause
-          // LiveKit to open a second capture while a switch is in progress.
-          await camera.track.replaceTrack(camera.track.mediaStreamTrack, { userProvidedTrack: true });
-        }
+        await participant.setCameraEnabled(on, { deviceId: devicePrefs().videoinput });
       }
       this.syncLocal();
       return this[key];
