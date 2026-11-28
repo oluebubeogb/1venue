@@ -16,9 +16,10 @@ test('instant meeting opens as an overlay from anywhere, with the log-in look', 
   assert.match(inst, /class: 'au-pill pj-field'/);
   assert.match(inst, /placeholder: 'Meeting name'/);
   assert.doesNotMatch(inst, /Start a room right now/);
-  assert.match(inst, /Host funded/);
-  assert.match(inst, /Participant funded/);
-  assert.match(inst, /paid_entry/);
+  assert.match(inst, /accessMode: 'host_funded'/, 'free entry is the default');
+  assert.match(inst, /paid \? 'Paid Entry' : 'Free Entry'/, 'the toggle shows the current entry label');
+  assert.match(inst, /opts\.accessMode === 'host_funded' \? 'paid_entry' : 'host_funded'/, 'the toggle switches between access modes');
+  assert.match(inst, /meetingAccessMode: opts\.accessMode/, 'the selected mode is passed to meeting setup');
   assert.match(inst, /checkCircle/);
   assert.match(inst, /e\.key === 'Escape'/); assert.match(inst, /e\.key === 'Tab'/, 'focus trap');
   assert.match(inst, /venue\.intent/); assert.match(inst, /navigate\('\/new'\)/);
