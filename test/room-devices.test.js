@@ -220,6 +220,78 @@ it('recovers a stalled setup camera on the first tap without reopening the micro
   assert.deepEqual(attached, [['host', publication.track, 'camera', true]]);
 });
 
+it('keeps the approved microphone live when camera activation needs a replacement', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { Media } = await import(pathToFileURL(path.join(root, 'public/js/room/media.js')));
+  const track = (kind, muted = false) => Object.assign(new EventTarget(), {
+    kind, readyState: 'live', enabled: true, muted,
+    getSettings: () => ({ deviceId: kind === 'video' ? 'front' : 'mic' }),
+    clone: () => track(kind, muted),
+    stop() { this.readyState = 'ended'; },
+  });
+  const mic = track('audio');
+  const camera = track('video', true);
+  const replacement = track('video');
+  const media = new Media();
+  const published = new Map();
+  let micError;
+  const localParticipant = {
+    identity: 'host',
+    get isMicrophoneEnabled() { return !!published.get('microphone')?.enabled; },
+    get isCameraEnabled() { return !!published.get('camera')?.enabled; },
+    getTrackPublication: (source) => published.get(source),
+    async publishTrack(input, { source }) {
+      if (input.kind === 'audio' && input.muted) micError = new Error('Your microphone did not start');
+      const trackWrapper = { mediaStreamTrack: input, isUserProvided: true };
+      const publication = {
+        track: trackWrapper, enabled: true, isMuted: false,
+        async mute() {
+          if (source === 'microphone') {
+            this.isMuted = true;
+            this.enabled = false;
+            input.enabled = false;
+          }
+        },
+        async unmute() {
+          if (source === 'microphone') {
+            this.isMuted = false;
+            this.enabled = true;
+            input.enabled = true;
+          }
+        },
+      };
+      published.set(source, publication);
+      return publication;
+    },
+    async unpublishTrack(input) {
+      for (const [source, publication] of published) if (publication.track === input) published.delete(source);
+    },
+  };
+  t.mock.getter(globalThis, 'navigator', () => ({ mediaDevices: {
+    async getUserMedia({ audio }) {
+      assert.equal(audio, false, 'camera recovery must not stop or reacquire the mic');
+      assert.equal(mic.readyState, 'live');
+      return { getVideoTracks: () => [replacement] };
+    },
+  } }));
+  media.LK = { Track: { Source: { Microphone: 'microphone', Camera: 'camera' } } };
+  media.room = { localParticipant };
+  media.prepareInputs([mic, camera]);
+
+  const micActivation = media.setMic(true);
+  const cameraActivation = media.setCam(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  t.mock.timers.tick(2500);
+  await Promise.all([micActivation, cameraActivation]);
+
+  assert.equal(micError, undefined);
+  assert.equal(media.mic, true);
+  assert.equal(media.cam, true);
+  assert.equal(mic.readyState, 'live');
+  assert.equal(mic.enabled, true);
+});
+
 it('only starts browser speech capture when captioning is explicitly enabled with the mic on', async () => {
   let starts = 0;
   const src = read('public/js/room/captions.js').replace(/^import .*$/gm, '').replace(/^export /gm, '');
