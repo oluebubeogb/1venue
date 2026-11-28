@@ -7,6 +7,20 @@ let heroCarouselFrame = 0;
 
 /** Homepage hero visual - lightweight preview cards around the join-first hero. */
 function previewCards() {
+  const livePreview = h('div', { class: 'hero-preview preview-live' },
+    h('div', { class: 'live-thumb' },
+      h('span', { class: 'live-badge' }, '● LIVE'),
+      h('picture', null,
+        h('source', { media: 'not all and (max-width: 560px)', srcset: '/img/hero/meeting-preview.webp' }),
+        h('img', {
+          alt: '', width: 726, height: 409, fetchpriority: 'high',
+          onload: async ({ currentTarget: image }) => {
+            try { await image.decode(); } catch { return; }
+            livePreview.classList.add('is-ready');
+          },
+        }))),
+    h('div', { class: 'preview-row' }, h('span', null, '128 viewers'), h('b', null, '16:45')));
+
   return [
     h('div', { class: 'hero-preview preview-poll' },
       h('div', { class: 'preview-kicker' }, 'POLL · 24 VOTES'),
@@ -15,9 +29,7 @@ function previewCards() {
       h('div', { class: 'preview-meter' }, h('i', { style: { width: '62%' } })),
       h('div', { class: 'preview-row' }, h('span', null, 'Testimony'), h('b', null, '38%')),
       h('div', { class: 'preview-meter lavender' }, h('i', { style: { width: '38%' } }))),
-    h('div', { class: 'hero-preview preview-live' },
-      h('div', { class: 'live-thumb' }, h('span', { class: 'live-badge' }, '● LIVE'), h('img', { src: '/img/hero/meeting.png', alt: '' })),
-      h('div', { class: 'preview-row' }, h('span', null, '128 viewers'), h('b', null, '16:45'))),
+    livePreview,
   ];
 }
 

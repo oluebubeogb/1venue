@@ -29,7 +29,11 @@ function cacheControl(urlPath, ext) {
 }
 
 function sendIndex(req, res) {
-  const html = build.injectShell(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'));
+  const isHome = req.url.split('?')[0] === '/';
+  const html = build.injectShell(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'))
+    .replace('<!-- desktop-hero-preload -->', isHome
+      ? '<link rel="preload" as="image" href="/img/hero/meeting-preview.webp" media="not all and (max-width: 560px)" fetchpriority="high" />'
+      : '');
   const buf = Buffer.from(html);
   const etag = `W/"${crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16)}"`;
   const headers = {
