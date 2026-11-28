@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { pathToFileURL } = require('node:url');
 const root = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
@@ -84,4 +85,81 @@ describe('device auto-select', () => {
     assert.match(read('public/js/room/devices.js'), /playTestSound/);
     assert.match(read('public/js/room/media.js'), /camTrack\(\)/);
   });
+});
+
+it('keeps setup devices off until the user enables them and reuses them across LiveKit connections', async () => {
+  const { Media } = await import(pathToFileURL(path.join(root, 'public/js/room/media.js')));
+  const track = (kind) => ({
+    kind, readyState: 'live', enabled: true,
+    clone: () => ({ ...track(kind), enabled: false }),
+    stop() { this.readyState = 'ended'; },
+  });
+  const media = new Media();
+  const mic = track('audio');
+  const cam = track('video');
+  const published = new Map();
+  const setEnabled = (source, on) => {
+    assert.ok(published.has(source), 'enabling a prepared device should never ask LiveKit to capture it');
+    const pub = published.get(source);
+    pub.isMuted = !on;
+    pub.track.mediaStreamTrack.enabled = on;
+  };
+  const localParticipant = {
+    get isMicrophoneEnabled() { return !!published.get('microphone') && !published.get('microphone').isMuted; },
+    get isCameraEnabled() { return !!published.get('camera') && !published.get('camera').isMuted; },
+    getTrackPublication: (source) => published.get(source),
+    async publishTrack(input, { source }) {
+      assert.equal(input.enabled, true);
+      published.set(source, { isMuted: false, track: { isUserProvided: true, mediaStreamTrack: input } });
+    },
+    async setMicrophoneEnabled(on) { setEnabled('microphone', on); },
+    async setCameraEnabled(on) { setEnabled('camera', on); },
+  };
+  const room = { localParticipant, async disconnect() {
+    for (const pub of published.values()) pub.track.mediaStreamTrack.stop();
+    published.clear();
+  } };
+  media.LK = { Track: { Source: { Microphone: 'microphone', Camera: 'camera' } } };
+  media.room = room;
+  media.prepareInputs([mic, cam]);
+  assert.deepEqual([media.mic, media.cam, mic.enabled, cam.enabled, published.size], [false, false, false, false, 0]);
+  for (const on of [true, false, true]) {
+    assert.equal(await media.setMic(on), on);
+    assert.equal(await media.setCam(on), on);
+  }
+  assert.notEqual(media.micTrack(), mic);
+  assert.notEqual(media.camTrack(), cam);
+  await media.disconnect({ keepInputs: true });
+  assert.deepEqual([media.mic, media.cam, mic.readyState, cam.readyState], [false, false, 'live', 'live']);
+  media.room = room;
+  assert.equal(await media.setMic(true), true);
+  assert.equal(await media.setCam(true), true);
+  await media.disconnect();
+  assert.deepEqual([mic.readyState, cam.readyState], ['ended', 'ended']);
+});
+
+it('only starts browser speech capture when captioning is explicitly enabled with the mic on', async () => {
+  let starts = 0;
+  const src = read('public/js/room/captions.js').replace(/^import .*$/gm, '').replace(/^export /gm, '');
+  const ctx = {
+    clearTimeout,
+    window: { SpeechRecognition: class {
+      start() { starts++; }
+      stop() {}
+    } },
+    toast() {},
+  };
+  vm.runInNewContext(src + '\nthis.Captioner = Captioner;', ctx);
+  const media = { mic: false };
+  const captions = new ctx.Captioner({ config: {}, me: { id: 'a' }, media, isSpeaker: () => true, captionLang: () => 'en' });
+  captions.autoSync();
+  await captions.setMine(true);
+  media.mic = true;
+  captions.autoSync();
+  assert.equal(starts, 0);
+  await captions.setMine(true);
+  assert.equal(starts, 1);
+  media.mic = false;
+  captions.onMic(false);
+  assert.equal(captions.on, false);
 });

@@ -21,6 +21,8 @@ export class Media {
     Object.assign(this, { onTrack, onTrackGone, onSpeakers, onState, onQuality, onLocal });
     this.room = null; this.LK = null; this.mic = false; this.cam = false; this.sharing = false; this.state = 'idle';
     this.localStream = null; // fallback preview stream when LiveKit is off
+    this.preparedInputs = new Map();
+    this.pendingInputs = new Map();
     this.grants = { canPublish: true };
     this.caps = null;
   }
@@ -68,34 +70,66 @@ export class Media {
     this.mic = lp.isMicrophoneEnabled; this.cam = lp.isCameraEnabled; this.sharing = lp.isScreenShareEnabled;
     this.onLocal && this.onLocal({ mic: this.mic, cam: this.cam, sharing: this.sharing });
   }
-  async setMic(on, previewTrack) {
-    if (on && previewTrack) {
-      if (previewTrack.readyState !== 'live') {
-        throw new Error('The setup microphone disconnected. Turn on your microphone to reconnect it.');
+  prepareInputs(tracks) {
+    for (const track of tracks) {
+      track.enabled = false;
+      this.preparedInputs.set(track.kind, track);
+    }
+  }
+  setMic(on) { return this.setInput('audio', on); }
+  setCam(on) { return this.setInput('video', on); }
+  async setInput(kind, on) {
+    const isMic = kind === 'audio';
+    const key = isMic ? 'mic' : 'cam';
+    const prepared = this.preparedInputs.get(kind);
+    const room = this.room;
+    if (room) {
+      const participant = room.localParticipant;
+      const source = isMic ? this.LK.Track.Source.Microphone : this.LK.Track.Source.Camera;
+      const pending = this.pendingInputs.get(kind);
+      if (pending) {
+        if (!on) pending.track.enabled = false;
+        await pending.publish;
+        if (on || this.room !== room) return this[key];
       }
-      previewTrack.enabled = true;
-      if (this.room) {
-        this.pendingMic = previewTrack;
+      let publication = participant.getTrackPublication(source);
+      if (on && publication?.track?.isUserProvided && publication.track.mediaStreamTrack.readyState !== 'live') {
+        await participant.unpublishTrack(publication.track);
+        publication = null;
+      }
+      if (on && prepared?.readyState === 'live' && !publication) {
+        // Keep the disabled setup track available across LiveKit disconnects.
+        const track = prepared.clone();
+        track.enabled = true;
+        const publish = participant.publishTrack(track, { source });
+        this.pendingInputs.set(kind, { track, publish });
         try {
-          await this.room.localParticipant.publishTrack(previewTrack, { source: this.LK.Track.Source.Microphone });
-          this.syncLocal();
-          return this.mic;
+          await publish;
         } catch (err) {
-          previewTrack.stop();
+          track.stop();
           throw err;
         } finally {
-          if (this.pendingMic === previewTrack) this.pendingMic = null;
+          if (this.pendingInputs.get(kind)?.track === track) this.pendingInputs.delete(kind);
         }
+      } else if (isMic) {
+        await participant.setMicrophoneEnabled(on, { ...AUDIO_CONSTRAINTS, deviceId: devicePrefs().audioinput });
+      } else {
+        await participant.setCameraEnabled(on, { deviceId: devicePrefs().videoinput });
       }
-      this.localStream ||= new MediaStream();
-      this.localStream.addTrack(previewTrack);
+      this.syncLocal();
+      return this[key];
     }
-    if (this.room) { await this.room.localParticipant.setMicrophoneEnabled(on, { ...AUDIO_CONSTRAINTS, deviceId: devicePrefs().audioinput }); this.syncLocal(); return this.mic; }
-    this.mic = on; await this.fallback(); this.onLocal && this.onLocal({ mic: this.mic, cam: this.cam, sharing: this.sharing }); return on;
-  }
-  async setCam(on) {
-    if (this.room) { await this.room.localParticipant.setCameraEnabled(on, { deviceId: devicePrefs().videoinput }); this.syncLocal(); return this.cam; }
-    this.cam = on; await this.fallback(); this.onLocal && this.onLocal({ mic: this.mic, cam: this.cam, sharing: this.sharing }); return on;
+    if (on && !this[key] && prepared?.readyState === 'live') {
+      const track = prepared.clone();
+      track.enabled = true;
+      this.localStream ||= new MediaStream();
+      this.localStream.addTrack(track);
+    }
+    const previous = this[key];
+    this[key] = on;
+    try { await this.fallback(); } catch (err) { this[key] = previous; throw err; }
+    this.onLocal?.({ mic: this.mic, cam: this.cam, sharing: this.sharing });
+    return this[key];
   }
   async setShare(on, quality = 'auto') {
     if (!this.room) throw new Error('Screen sharing needs the media server (LiveKit) to be configured');
@@ -141,7 +175,28 @@ export class Media {
     this.room.remoteParticipants.forEach((p) => p.audioTrackPublications.forEach((pub) => pub.track && out.push(pub.track.mediaStreamTrack)));
     return out;
   }
-  async switchDevice(kind, id) { saveDevicePref(kind, id); if (this.room) await this.room.switchActiveDevice(kind, id); else if (kind !== 'audiooutput') { if (this.localStream) { this.localStream.getTracks().forEach((t) => t.stop()); this.localStream = null; } await this.fallback(); } }
+  async switchDevice(kind, id) {
+    saveDevicePref(kind, id);
+    if (kind !== 'audiooutput') {
+      const trackKind = kind === 'audioinput' ? 'audio' : 'video';
+      this.preparedInputs.get(trackKind)?.stop();
+      this.preparedInputs.delete(trackKind);
+      if (!this.room) {
+        for (const track of this.localStream?.getTracks() || []) {
+          if (track.kind === trackKind) { track.stop(); this.localStream.removeTrack(track); }
+        }
+        await this.fallback();
+      }
+    }
+    const room = this.room;
+    if (room) {
+      const { localParticipant } = room;
+      const source = kind === 'audioinput' ? this.LK.Track.Source.Microphone : this.LK.Track.Source.Camera;
+      const publication = kind !== 'audiooutput' && localParticipant.getTrackPublication(source);
+      if (publication?.isMuted && publication.track?.isUserProvided) await localParticipant.unpublishTrack(publication.track);
+      if (this.room === room) await room.switchActiveDevice(kind, id);
+    }
+  }
   async stats() {
     if (!this.room) return null;
     const out = { participants: this.room.numParticipants, state: this.room.state, region: this.room.serverInfo?.region || '', version: this.room.serverInfo?.version || '' };
@@ -151,11 +206,16 @@ export class Media {
     } catch { /* ignore */ }
     return out;
   }
-  async disconnect() {
-    this.pendingMic?.stop();
-    this.pendingMic = null;
+  async disconnect({ keepInputs = false } = {}) {
+    for (const { track } of this.pendingInputs.values()) track.stop();
+    this.pendingInputs.clear();
+    if (!keepInputs) {
+      for (const track of this.preparedInputs.values()) track.stop();
+      this.preparedInputs.clear();
+    }
     try { if (this.room) await this.room.disconnect(true); } catch { /* ignore */ }
     this.room = null;
     if (this.localStream) { this.localStream.getTracks().forEach((t) => t.stop()); this.localStream = null; }
+    this.mic = this.cam = this.sharing = false;
   }
 }

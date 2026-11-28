@@ -73,7 +73,7 @@ class Room {
     const prefs = lsGet('venue.prejoin', { mic: true, cam: false, spk: true });
     const stageEvent = (ev && ev.category && ev.category !== 'meeting') || (this.intent && this.intent.stage);
     const audience = stageEvent && !creating && !(ev && ev.isHost);
-    let mic = audience ? false : prefs.mic !== false, cam = audience ? false : !!prefs.cam, spk = prefs.spk !== false, stream = null, reports = { audioinput: [], videoinput: [] };
+    let mic = audience ? false : prefs.mic !== false, cam = audience ? false : !!prefs.cam, spk = prefs.spk !== false, reports = { audioinput: [], videoinput: [] };
     let devKind = 'audioinput';
     let probeDone = !!audience, checking = !audience, skipMissing = false, picked = {};
     const video = h('video', { autoplay: true, playsinline: true, muted: true, class: 'pj-video mirror' });
@@ -85,17 +85,22 @@ class Room {
     const warnAgain = h('button', { class: 'btn sm', type: 'button' }, 'Try again');
     const warnGo = h('button', { class: 'btn sm primary', type: 'button' }, 'Continue without mic/camera');
     const warn = h('div', { class: 'pj-warn', hidden: true }, warnMsg, h('div', { class: 'row wrap gap-s' }, warnAgain, warnGo));
-    let ac, raf, lists = {}, previewRequest = 0;
-    const stopPrev = (keepTrack) => {
+    let ac, raf, lists = {}, previewRequest = 0, setupClosed = false;
+    const setupTracks = new Map();
+    const resetPreview = () => {
       previewRequest++;
       cancelAnimationFrame(raf);
       ac?.close().catch(() => {});
       ac = null;
-      stream?.getTracks().forEach((track) => { if (track !== keepTrack) track.stop(); });
-      stream = null;
       video.srcObject = null;
     };
-    const livePreviewMic = () => stream?.getAudioTracks().find((track) => track.readyState === 'live');
+    const setupTrack = (kind) => {
+      const t = setupTracks.get(kind);
+      const selected = devicePrefs()[kind === 'audio' ? 'audioinput' : 'videoinput'];
+      const actual = t?.getSettings?.().deviceId;
+      if (t?.readyState === 'live' && (!selected || selected === 'default' || !actual || actual === selected)) return t;
+      return null;
+    };
     const fillSel = (sel, kind, items, pickedId) => {
       const cur = pickedId || (kind === 'audiooutput' ? lsGet('venue.speaker', '') : devicePrefs()[kind]);
       const reps = reports[kind] || [];
@@ -132,41 +137,46 @@ class Room {
       warnGo.textContent = miss.includes('mic') && miss.includes('camera') ? 'Continue without mic/camera' : miss.includes('mic') ? 'Continue without mic' : 'Continue without camera';
     };
     const preview = async () => {
-      stopPrev();
+      if (setupClosed) return;
+      resetPreview();
       const request = previewRequest;
       pv.classList.remove('has-video');
+      for (const t of setupTracks.values()) t.enabled = false;
       if (!mic && !cam) return;
-      let captured;
+      let captured, captureError;
       try {
         const d = devicePrefs();
-        const audio = mic ? { ...AUDIO_CONSTRAINTS, deviceId: d.audioinput === 'default' ? undefined : d.audioinput } : false;
-        const videoOptions = cam ? { width: { ideal: 1280 }, height: { ideal: 720 }, deviceId: d.videoinput } : false;
-        try {
-          captured = await navigator.mediaDevices.getUserMedia({ audio, video: videoOptions });
-        } catch (error) {
-          if (!audio || !videoOptions || request !== previewRequest) throw error;
-          captured = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+        const audio = mic && !setupTrack('audio') ? { ...AUDIO_CONSTRAINTS, deviceId: d.audioinput === 'default' ? undefined : d.audioinput } : false;
+        const videoOptions = cam && !setupTrack('video') ? { width: { ideal: 1280 }, height: { ideal: 720 }, deviceId: d.videoinput } : false;
+        if (audio || videoOptions) {
+          try {
+            captured = await navigator.mediaDevices.getUserMedia({ audio, video: videoOptions });
+          } catch (error) {
+            if (!audio || !videoOptions || request !== previewRequest || error.name === 'NotAllowedError') throw error;
+            captured = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+          }
         }
-      } catch (e) {
-        if (request !== previewRequest) return;
-        if (mic) picked.audioinput = null;
-        if (cam) picked.videoinput = null;
-        paintJoin();
-        return;
-      }
+      } catch (error) { captureError = error; }
       if (request !== previewRequest) {
-        captured.getTracks().forEach((track) => track.stop());
+        captured?.getTracks().forEach((track) => track.stop());
         return;
       }
-      stream = captured;
-      const camTrack = cam && stream.getVideoTracks().find((track) => track.readyState === 'live');
-      video.srcObject = stream; pv.classList.toggle('has-video', !!camTrack);
+      for (const track of captured?.getTracks() || []) {
+        setupTracks.get(track.kind)?.stop();
+        setupTracks.set(track.kind, track);
+      }
+      const micTrack = mic && setupTrack('audio');
+      const camTrack = cam && setupTrack('video');
+      const previewTracks = [micTrack, camTrack].filter(Boolean);
+      for (const t of previewTracks) t.enabled = true;
+      const stream = previewTracks.length ? new MediaStream(previewTracks) : null;
+      video.srcObject = stream;
+      pv.classList.toggle('has-video', !!camTrack);
       if (cam) picked.videoinput = camTrack ? (camTrack.getSettings?.().deviceId || devicePrefs().videoinput || 'default') : null;
-      const micTrack = mic && stream.getAudioTracks().find((track) => track.readyState === 'live');
       if (mic) picked.audioinput = micTrack ? (micTrack.getSettings?.().deviceId || devicePrefs().audioinput || 'default') : null;
       paintJoin();
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!micTrack || !AudioCtx) return;
+      if (!micTrack || !AudioCtx) return captureError;
       try {
         ac = new AudioCtx();
         // Safari and Chromium can defer this until the user interacts with the page.
@@ -184,6 +194,7 @@ class Room {
         };
         loop();
       } catch { /* Capturing audio does not depend on the optional level meter. */ }
+      return captureError;
     };
     devSel.onchange = async (e) => {
       const id = e.target.value;
@@ -198,9 +209,9 @@ class Room {
     const tryKind = async (kind = devKind) => {
       status.textContent = 'Trying the next device…';
       tryB.classList.add('busy');
-      stopPrev();
       const cur = kind === 'audiooutput' ? (devSel.value || lsGet('venue.speaker', '')) : (devSel.value || devicePrefs()[kind]);
       const next = await tryNext(kind, cur);
+      if (setupClosed) return;
       status.textContent = '';
       tryB.classList.remove('busy');
       if (!next) return toast('No other working ' + (kind === 'audioinput' ? 'microphone' : kind === 'videoinput' ? 'camera' : 'speaker') + ' found', { icon: 'alert' });
@@ -226,19 +237,23 @@ class Room {
     const runProbe = async () => {
       if (audience) { probeDone = true; checking = false; paintJoin(); return; }
       checking = true; probeDone = false; skipMissing = false;
-      stopPrev();
       tryB.classList.add('busy');
       paintJoin();
       status.textContent = 'Finding a working mic and camera…';
       try {
-        const r = await pickWorking({ wantAudio: mic, wantVideo: cam });
-        reports = r.reports || reports;
-        picked = { audioinput: r.audioinput || null, videoinput: r.videoinput || null };
+        const error = await preview();
+        const wantAudio = mic && !setupTrack('audio');
+        const wantVideo = cam && !setupTrack('video');
+        if (!setupClosed && (wantAudio || wantVideo) && !['NotAllowedError', 'SecurityError'].includes(error?.name)) {
+          const r = await pickWorking({ wantAudio, wantVideo });
+          reports = r.reports || reports;
+          await preview();
+        }
       } catch { /* keep last-known prefs */ }
+      if (setupClosed) return;
       status.textContent = '';
       tryB.classList.remove('busy');
       await refreshSels();
-      await preview();
       checking = false; probeDone = true;
       paintJoin();
     };
@@ -284,8 +299,9 @@ class Room {
       e.preventDefault();
       const n = name.value.trim(); if (n.length < 1) { name.focus(); return toast('Enter your name', { icon: 'user' }); }
       if (!audience && !probeDone) return toast('Still checking devices…', { icon: 'headphones' });
-      if (mic && !livePreviewMic()) {
-        picked.audioinput = null;
+      if ((mic && !setupTrack('audio')) || (cam && !setupTrack('video'))) {
+        if (mic && !setupTrack('audio')) picked.audioinput = null;
+        if (cam && !setupTrack('video')) picked.videoinput = null;
         paintJoin();
         return;
       }
@@ -293,7 +309,7 @@ class Room {
       lsSet('venue.name', n); if (!audience) lsSet('venue.prejoin', { mic, cam, spk });
       saveWorkingPair({ ...devicePrefs(), audiooutput: devKind === 'audiooutput' ? devSel.value : (lsGet('venue.speaker', '') || undefined) });
       joinB.disabled = true; joinB.classList.add('loading');
-      try { await this.join({ name: n, mic, cam, spk, creating }); }
+      try { await this.join({ name: n, spk, creating }); }
       catch (err) { if (err.status === 401) requireLogin(); toastErr(err); }
       finally { if (this.alive && !this.inRoom && !this.waitingMode) paintJoin(); }
     } },
@@ -314,14 +330,17 @@ class Room {
       joinB,
       h('div', { class: 'row gap-s tiny muted center' }, h('span', { html: icon('lock', { size: 12 }) }), 'Recordings stay on your device. Captions are processed privately.'));
     this.view.replaceChildren(h('div', { class: 'prejoin' }, h('div', { class: 'pj-art', 'aria-hidden': 'true' }), pv, form));
-    this.cleanupPrejoin = ({ keepMic = false } = {}) => {
+    this.cleanupPrejoin = ({ keepInputs = false } = {}) => {
       this.cleanupPrejoin = null;
-      if (keepMic && this.want?.mic) {
-        this.prejoinMic = livePreviewMic();
-        if (this.prejoinMic) this.prejoinMic.enabled = false;
+      setupClosed = true;
+      this.prejoinInputs = keepInputs ? [setupTrack('audio'), setupTrack('video')].filter(Boolean) : [];
+      for (const track of setupTracks.values()) {
+        if (this.prejoinInputs.includes(track)) track.enabled = false;
+        else track.stop();
       }
+      setupTracks.clear();
       devPicker.destroy();
-      stopPrev(this.prejoinMic);
+      resetPreview();
     };
     paint();
     paintJoin();
@@ -329,7 +348,7 @@ class Room {
     setTimeout(() => name.focus(), 60);
   }
   /* ------------------------------------------------------------------ join */
-  async join({ name, mic, cam, spk = true, creating }) {
+  async join({ name, spk = true, creating }) {
     const saved = this.code ? roomsStore()[this.code] : null;
     const pid = saved?.participantId || undefined;
     let r;
@@ -339,7 +358,7 @@ class Room {
         r = await api('/api/create', { method: 'POST', body: { name: it.name || 'Meeting', participantName: name, eventId: it.eventId, venue: it.venue || undefined, code: it.venue ? (it.code || this.code || undefined) : undefined, stage: !!it.stage, speakerSeats: it.speakerSeats, waitingRoom: !!it.waitingRoom, meetingAccessMode: it.meetingAccessMode, meetingDurationMin: it.meetingDurationMin, meetingEntryPriceCredits: it.meetingEntryPriceCredits, device: deviceKind() } });
       } catch (e) {
         if (e.status === 401) { requireLogin(); return; }
-        if (e.status === 409 && (e.data?.code || it.code)) { this.code = e.data?.code || it.code; sessionStorage.removeItem('venue.intent'); return this.join({ name, mic, cam, creating: false }); }
+        if (e.status === 409 && (e.data?.code || it.code)) { this.code = e.data?.code || it.code; sessionStorage.removeItem('venue.intent'); return this.join({ name, spk, creating: false }); }
         throw e;
       }
       sessionStorage.removeItem('venue.intent');
@@ -353,9 +372,9 @@ class Room {
       } catch (e) {
         if (e.status === 401 && e.data?.signInRequired) { requireLogin(); return; }
         if (e.status === 404 && this.event && this.event.isHost) {
-          if (await confirmDlg('This event isn’t live yet. Start it now?', { ok: 'Go live' })) { this.intent = { create: true, eventId: this.event.id, name: this.event.title, stage: this.event.category !== 'meeting', speakerSeats: this.event.speakerSeats, code: this.event.code, meetingAccessMode: this.event.meetingAccessMode, meetingDurationMin: this.event.meetingDurationMin, meetingEntryPriceCredits: this.event.meetingEntryPriceCredits }; return this.join({ name, mic, cam, creating: true }); }
+          if (await confirmDlg('This event isn’t live yet. Start it now?', { ok: 'Go live' })) { this.intent = { create: true, eventId: this.event.id, name: this.event.title, stage: this.event.category !== 'meeting', speakerSeats: this.event.speakerSeats, code: this.event.code, meetingAccessMode: this.event.meetingAccessMode, meetingDurationMin: this.event.meetingDurationMin, meetingEntryPriceCredits: this.event.meetingEntryPriceCredits }; return this.join({ name, spk, creating: true }); }
         }
-        if (e.status === 404 && this.venueOwnerSlug) { this.intent = { create: true, venue: this.venueOwnerSlug, code: this.code, waitingRoom: true, name: this.venueName || 'Meeting' }; return this.join({ name, mic, cam, creating: true }); }
+        if (e.status === 404 && this.venueOwnerSlug) { this.intent = { create: true, venue: this.venueOwnerSlug, code: this.code, waitingRoom: true, name: this.venueName || 'Meeting' }; return this.join({ name, spk, creating: true }); }
         if (e.status === 404 && this.event) throw new Error('This event hasn’t started yet - we’ll be here when it goes live.');
         if (e.status === 403 && e.data && e.data.ticketRequired && e.data.eventSlug) { toast('You need a ticket for this event', { icon: 'ticket' }); location.assign('/e/' + e.data.eventSlug); return; }
         throw e;
@@ -369,12 +388,12 @@ class Room {
     this.me = { id: r.participantId, name, role: r.role || 'participant' };
     this.wsCredential = r.wsCredential;
     saveRoom(this.code, { participantId: r.participantId, wsCredential: r.wsCredential, name });
-    this.want = { mic, cam, spk };
+    this.want = { spk };
     if (r.status === 'WAITING') return this.waitingScreen(r);
     this.enter(r);
   }
   waitingScreen(r) {
-    this.cleanupPrejoin?.({ keepMic: true });
+    this.cleanupPrejoin?.({ keepInputs: true });
     this.view.replaceChildren(h('div', { class: 'waiting' }, h('div', { class: 'wait-orb', html: LOGO(64) }), h('h2', null, r.venue ? `You’re at ${r.venue.name}` : 'Waiting for the host to let you in'), h('p', { class: 'muted' }, r.venue ? `The host will let you in to ${r.name || 'the meeting'} shortly - this venue always uses a waiting room.` : r.paidEntry?.enabled ? (r.paidEntry.model === 'usage' ? 'The host must accept you. You will be billed per minute from your credits once you are in.' : `The host must accept you. ${r.paidEntry.paid ? 'Your entry is paid; rejoining this meeting will not charge you again.' : `${r.paidEntry.entryCredits} credits will be charged when the host accepts you.`}`) : `${r.name || fmtCode(this.code)} · we’ll bring you in automatically.`),
       h('div', { class: 'dots-loader' }, h('i'), h('i'), h('i')), h('button', { class: 'btn ghost', onclick: () => { this.destroy(); navigate('/'); } }, 'Cancel')));
     this.waitingMode = true;
@@ -462,7 +481,7 @@ Object.assign(Room.prototype, {
   enter(r) {
     if (!this.alive) return;
     this.creditControl?.unsubscribe();
-    this.cleanupPrejoin?.({ keepMic: true });
+    this.cleanupPrejoin?.({ keepInputs: true });
     this.inRoom = true;
     this.eventId = r.eventId || this.eventId || (this.event && this.event.id) || null;
     this.settings = { ...(this.settings || {}), certs: r.certs || (this.settings && this.settings.certs) || {} };
@@ -487,8 +506,10 @@ Object.assign(Room.prototype, {
       onSpeakers: (ids) => { this.speaking = new Set(ids); this.stageR.paintAll(); if (this.panel.tab === 'people') this.panel.refresh(); },
       onQuality: (id, q) => { this.quality[id] = String(q).toLowerCase(); this.stageR.paintAll(); },
       onState: (s) => { this.mediaStatus = s; this.paintHead(); if (s === 'disconnected' && this.alive && !this.switchingRoom) this.netBanner(true, 'Media disconnected - reconnecting…'); else if (s === 'connected') this.netBanner(false); },
-      onLocal: () => { this.stageR.paintAll(); refreshBar(); this.paintHead(); },
+      onLocal: ({ mic }) => { if (!mic) this.captioner?.onMic(false); this.stageR.paintAll(); refreshBar(); this.paintHead(); },
     });
+    this.media.prepareInputs(this.prejoinInputs || []);
+    this.prejoinInputs = null;
     this.captioner = new Captioner(this);
     // Voice typing in the / bar: muted -> local-only capture (never published); mic open -> clone of the
     // published track, or your own caption lines when captions are already transcribing you.
@@ -507,9 +528,8 @@ Object.assign(Room.prototype, {
     this.buildUi();
     trackLiveMeeting(this);
     this.connectWs();
-    this.connectMedia().then(async () => {
-      if (!this.alive) return;
-      await this.applyWant();
+    if (this.want?.spk === false) this.setCallMuted(true, { silent: true });
+    this.mediaReady = this.connectMedia().then(() => {
       if (!this.alive) return;
       saveWorkingPair(devicePrefs());
       this.stopDeviceWatch && this.stopDeviceWatch();
@@ -671,19 +691,6 @@ Object.assign(Room.prototype, {
     if (id && this.stageR.screens().length) this.stageR.setPick('cameras');
     else this.renderStage(true);
   },
-  async applyWant() {
-    const w = this.want || {};
-    const micTrack = this.prejoinMic;
-    this.prejoinMic = null;
-    if (w.spk === false) this.setCallMuted(true, { silent: true });
-    const canSpeak = this.isSpeaker(this.me.id);
-    if (w.mic && canSpeak && this.perm('microphone') && micTrack?.readyState === 'live') {
-      await this.toggleMic(true, micTrack);
-    } else {
-      micTrack?.stop();
-    }
-    if (this.alive && w.cam && canSpeak && this.perm('camera')) this.toggleCam(true);
-  },
   applyPerms() { if (!this.perm('microphone') && this.media.mic) this.media.setMic(false); if (!this.perm('camera') && this.media.cam) this.media.setCam(false); if (!this.perm('screenShare') && this.media.sharing) this.toggleShare(false); },
   promoted() { this.reconnectMedia(true); this.maybeAutoRecord && this.maybeAutoRecord(); },
   demoted() { this.media.setMic(false).catch(() => {}); this.media.setCam(false).catch(() => {}); if (this.media.sharing) this.toggleShare(false); },
@@ -693,7 +700,9 @@ Object.assign(Room.prototype, {
     if (!this.config.livekitConfigured) { await this.media.fallback(); this.mediaStatus = 'local'; this.netNote = 'Live audio/video server not configured - local preview only'; this.paintHead(); return; }
     try {
       const t = await api('/api/livekit-token', { method: 'POST', body: { code: this.code, participantId: this.me.id, participantName: this.me.name, wsCredential: this.wsCredential, room: roomOverride || undefined } });
+      if (!this.alive) return;
       await this.media.connect({ url: t.url, token: t.token, media: t.media || this.config.media });
+      if (!this.alive) { await this.media.disconnect(); return; }
       const lr = this.media.room;
       if (lr && lr.canPlaybackAudio === false) this.audioBlocked();
       if (lr) lr.on && lr.on('audioPlaybackChanged', () => { if (lr.canPlaybackAudio === false) this.audioBlocked(); });
@@ -701,14 +710,34 @@ Object.assign(Room.prototype, {
       lr && lr.remoteParticipants && lr.remoteParticipants.forEach((rp) => rp.trackPublications.forEach((pub) => pub.track && pub.isSubscribed && this.onTrack(rp.identity, pub.track, pub.source)));
       this.captioner && this.captioner.autoSync();
       this.maybeAutoRecord();
-    } catch (e) { console.warn('media', e); toast('Couldn’t connect audio/video - retrying from Tools › Diagnostics', { icon: 'wifi', group: 'media' }); await this.media.fallback().catch(() => {}); }
+    } catch (e) {
+      if (!this.alive) return;
+      console.warn('media', e);
+      toast('Couldn’t connect audio/video - retrying from Tools › Diagnostics', { icon: 'wifi', group: 'media' });
+      await this.media.disconnect({ keepInputs: true });
+      if (this.alive) await this.media.fallback().catch(() => {});
+    }
   },
   audioBlocked() {
     if (this.audioBtn) return;
     this.audioBtn = h('button', { class: 'audio-unlock btn primary', onclick: async () => { await this.media.room.startAudio().catch(() => {}); this.audioBtn.remove(); this.audioBtn = null; }, html: icon('volume', { size: 18 }) + '<span>Tap to hear the room</span>' });
     this.root.append(this.audioBtn);
   },
-  async reconnectMedia(silent) { this.switchingRoom = true; this.stopDeviceWatch && this.stopDeviceWatch(); await this.media.disconnect().catch(() => {}); this.audioEls && this.audioEls.forEach((a) => a.remove()); this.audioEls = new Map(); await this.connectMedia(this.breakoutRoom); this.switchingRoom = false; this.stopDeviceWatch = startWatchdog(this); if (!silent) toast('Media reconnected', { icon: 'refresh', group: 'settings' }); },
+  async reconnectMedia(silent) {
+    this.switchingRoom = true;
+    this.captioner?.onMic(false);
+    this.stopDeviceWatch?.();
+    this.mediaReady = this.media.disconnect({ keepInputs: true }).then(async () => {
+      if (!this.alive) return;
+      this.audioEls?.forEach((a) => a.remove());
+      this.audioEls = new Map();
+      await this.connectMedia(this.breakoutRoom);
+      if (!this.alive) return;
+      this.stopDeviceWatch = startWatchdog(this);
+      if (!silent) toast('Media reconnected', { icon: 'refresh', group: 'settings' });
+    }).finally(() => { this.switchingRoom = false; });
+    await this.mediaReady;
+  },
   onTrack(id, track, source) {
     if (track.kind === 'audio') {
       if (id === this.me.id) return;
@@ -725,12 +754,14 @@ Object.assign(Room.prototype, {
     if (track && track.kind === 'audio') { const a = this.audioEls && this.audioEls.get(id + source); if (a) { try { track.detach(a); } catch { /* */ } } this.stageR.paintAll(); return; }
     this.stageR.clearTrack(id, source);
   },
-  async toggleMic(force, previewTrack) {
+  async toggleMic(force) {
+    await this.mediaReady;
+    if (!this.alive) return;
     const on = typeof force === 'boolean' ? force : !this.media.mic;
-    if (on && !this.isSpeaker(this.me.id)) { previewTrack?.stop(); toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
-    if (on && !this.perm('microphone') && !this.isMod()) { previewTrack?.stop(); toast('The host has disabled microphones', { icon: 'micOff' }); return; }
+    if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
+    if (on && !this.perm('microphone') && !this.isMod()) { toast('The host has disabled microphones', { icon: 'micOff' }); return; }
     if (on && this.meP()?.mutedByHost && !this.isMod()) this.send('unmute-self', {});
-    try { await this.media.setMic(on, previewTrack); this.captioner.onMic(this.media.mic); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
+    try { await this.media.setMic(on); this.captioner.autoSync(); roomMicChanged(); } catch (e) { toastErr(e); }
     this.changed();
     bindMediaSession(this);
     syncChrome(this);
@@ -759,6 +790,8 @@ Object.assign(Room.prototype, {
     this.setCallMuted(on);
   },
   async toggleCam(force) {
+    await this.mediaReady;
+    if (!this.alive) return;
     const on = typeof force === 'boolean' ? force : !this.media.cam;
     if (on && !this.isSpeaker(this.me.id)) { toast('You’re in the audience - request to speak first', { icon: 'stage', group: 'engage' }); return; }
     if (on && !this.perm('camera') && !this.isMod()) { toast('The host has disabled cameras', { icon: 'videoOff' }); return; }
@@ -1222,8 +1255,8 @@ Object.assign(Room.prototype, {
     this.stopDeviceWatch && this.stopDeviceWatch();
     this.creditControl?.unsubscribe();
     this.cleanupPrejoin && this.cleanupPrejoin();
-    this.prejoinMic?.stop();
-    this.prejoinMic = null;
+    this.prejoinInputs?.forEach((track) => track.stop());
+    this.prejoinInputs = null;
     clearInterval(this.tick); clearInterval(this.billingSyncTimer); clearInterval(this.paidEntrySyncTimer); window.removeEventListener('keydown', this.onKey); window.removeEventListener('pagehide', this.onUnload); window.removeEventListener('resize', this.onResize);
     try { this.ws && this.ws.close(); } catch { /* */ }
     this.captioner && this.captioner.stop(); this.media && this.media.disconnect().catch(() => {});

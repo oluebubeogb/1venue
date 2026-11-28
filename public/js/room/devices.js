@@ -225,6 +225,7 @@ export async function playTestSound(sinkId) {
 
 export function startWatchdog(room) {
   let silentMs = 0, offered = false, lastMic, lastCam, ac, src, unsub = [];
+  const inputOn = (kind) => room.alive && (kind === 'audioinput' ? room.media?.mic : room.media?.cam);
   const hook = (track, kind) => {
     if (!track || track._venueEndedHook) return;
     track._venueEndedHook = true;
@@ -233,8 +234,10 @@ export function startWatchdog(room) {
     unsub.push(() => { try { track.removeEventListener('ended', onEnd); } catch { /* */ } });
   };
   const switchKind = async (kind) => {
+    if (!inputOn(kind)) return false;
     const cur = devicePrefs()[kind];
     const next = await tryNext(kind, cur);
+    if (!inputOn(kind)) return false;
     if (!next) { toast(kind === 'audioinput' ? 'Couldn’t find another working microphone' : 'Couldn’t find another working camera', { icon: 'alert', group: 'media' }); return false; }
     try {
       await room.media?.switchDevice(kind, next.deviceId);

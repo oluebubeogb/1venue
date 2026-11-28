@@ -10,31 +10,30 @@ export const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognit
 export class Captioner {
   constructor(R) { this.R = R; this.on = false; this.mode = null; this.rec = null; this.sr = null; this.timer = null; this.failures = 0; }
   get lang() { return this.R.captionLang(); }
+  get usesServer() { return !!(this.R.config.stt?.server && window.MediaRecorder && !this.browserFallback); }
   // Per-user opt-out from auto captions (when the host saves a transcript).
   get optOut() { try { return localStorage.getItem('venue.captionOptOut') === '1'; } catch { return false; } }
   set optOut(v) { try { localStorage.setItem('venue.captionOptOut', v ? '1' : '0'); } catch { /* */ } }
   // Always-on pipeline: runs whenever the room transcribes, independent of any panel being open.
   autoSync() {
-    const R = this.R; const cfg = R.config.stt || {};
-    const supported = !!((cfg.server && window.MediaRecorder) || SpeechRec);
-    const want = !this.optOut && supported && R.isSpeaker(R.me.id) && !!R.media;
-    // STT starts on join for speakers (overlay visibility is a separate pref).
+    const R = this.R;
+    const want = !this.optOut && this.usesServer && R.isSpeaker(R.me.id) && !!R.media;
+    // Server STT waits for the published microphone track.
     if (want && !this.on) { this.auto = true; this.start().catch(() => {}); }
     else if (!want && this.on && this.auto) this.stop();
   }
   // User toggled "caption me": manual start clears the opt-out, manual stop during a saved transcript sets it.
   setMine(on) { if (on) { this.optOut = false; this.auto = false; return this.start(); } if (this.R.transcribe) this.optOut = true; this.stop(); return Promise.resolve(); }
-  // Mic toggled: pause instead of tearing down (STT loop already idles while muted).
+  // Browser speech opens its own capture. Only an explicit Caption me action starts it.
   onMic(on) {
-    if (!this.on || this.mode !== 'webspeech' || !this.sr) return;
-    try { on ? this.sr.start() : this.sr.stop(); } catch { /* already in that state */ }
+    if (!on && this.mode === 'webspeech') this.stop();
   }
   async start() {
     if (this.on) return;
     this.on = true;
-    const cfg = this.R.config.stt || {};
-    if (cfg.server && window.MediaRecorder) { this.mode = 'stt'; this.loopStt(); }
-    else if (SpeechRec) this.startWebSpeech();
+    if (this.usesServer) { this.mode = 'stt'; this.loopStt(); }
+    else if (SpeechRec && this.R.media.mic) this.startWebSpeech();
+    else if (SpeechRec) { this.on = false; toast('Unmute before turning on browser captions', { icon: 'captions' }); return; }
     else { this.on = false; toast('Captions need a speech service or a browser with speech recognition (Chrome / Edge)', { icon: 'alert' }); return; }
     this.R.onCaptionMode && this.R.onCaptionMode(this.mode);
   }
@@ -67,9 +66,9 @@ export class Captioner {
       this.failures = 0;
     } catch (e) {
       if ((e.fallback === 'webspeech' || ++this.failures >= 3) && SpeechRec && this.mode === 'stt') {
-        toast(e.fallback ? 'Caption limit for today reached - switched to on-device captions' : 'Speech service unavailable - switched to on-device captions', { icon: 'captions', group: 'ai' });
-        if (this.seg) { this.seg.stop(); this.seg = null; } clearTimeout(this.timer);
-        this.mode = null; this.startWebSpeech(); this.R.onCaptionMode && this.R.onCaptionMode(this.mode);
+        this.browserFallback = true;
+        this.stop();
+        toast(e.fallback ? 'Caption limit reached. Choose Caption me to use browser captions.' : 'Speech service unavailable. Choose Caption me to use browser captions.', { icon: 'captions', group: 'ai' });
       }
     }
   }
@@ -88,7 +87,13 @@ export class Captioner {
       }
     };
     sr.onerror = (e) => { if (e.error === 'not-allowed') { this.stop(); toast('Microphone permission is needed for captions', { icon: 'alert' }); } };
-    sr.onend = () => { if (this.on && this.mode === 'webspeech' && this.R.media.mic) setTimeout(() => { try { sr.start(); } catch { /* */ } }, 300); };
+    sr.onend = () => {
+      if (this.sr !== sr || !this.R.media.mic) return;
+      this.timer = setTimeout(() => {
+        if (this.sr !== sr || !this.R.media.mic) return;
+        try { sr.start(); } catch { /* */ }
+      }, 300);
+    };
     try { sr.start(); } catch { /* */ }
   }
 }

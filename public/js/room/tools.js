@@ -360,8 +360,8 @@ export function buildTools(R) {
       const chip = (ic, label, on, run, tip, disabled) => h('button', { class: `chip sm${on ? ' on' : ''}`, type: 'button', 'data-group': 'media', 'aria-pressed': on ? 'true' : 'false', 'data-tip': tip, 'aria-label': label, disabled: !!disabled, onclick: run, html: icon(ic, { size: 14 }) + `<span>${esc(label)}</span>` });
       const text = () => R.data.captions.map((l) => `${l.name}: ${l.text}`).join('\n');
       const ib = (ic, tip, run, group) => h('button', { class: 'icon-btn sm', type: 'button', 'data-tip': tip, 'aria-label': tip, 'data-group': group || undefined, onclick: run, html: icon(ic, { size: 15 }) });
-      const canMic = !!(cfg.server || SpeechRec);
-      const micSub = c.on ? `Active · ${c.mode === 'stt' ? 'Nigerian STT (' + (cfg.providers || []).join(' → ') + ')' : 'on-device speech'}` : (cfg.server ? 'Uses ' + (cfg.providers || []).join(' → ') : SpeechRec ? 'Uses your browser’s speech engine' : 'Not supported on this browser');
+      const canMic = c.usesServer || !!SpeechRec;
+      const micSub = c.on ? `Active · ${c.mode === 'stt' ? 'Nigerian STT (' + (cfg.providers || []).join(' → ') + ')' : 'on-device speech'}` : (c.usesServer ? 'Uses ' + (cfg.providers || []).join(' → ') : SpeechRec ? 'Uses your browser’s speech engine' : 'Not supported on this browser');
       const head = h('div', { class: 'cap-head' },
         h('div', { class: 'cap-bar' },
           chip('captions', 'Show', R.showCaptions, () => { R.setShowCaptions(!R.showCaptions); R.panel.render(); }, 'Overlay captions on the stage'),
