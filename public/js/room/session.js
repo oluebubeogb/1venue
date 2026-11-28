@@ -76,6 +76,7 @@ export function primeAutoPip(reason, dest) {
     dbg('no-gesture', reason);
     return null;
   }
+  if (hasVideoPip()) return null;
   if (pendingWin) { dbg('already-pending'); return pendingWin; }
   if (hasPip()) { dbg('already-open'); return Promise.resolve(currentPip()); }
   const api = typeof documentPictureInPicture !== 'undefined' ? documentPictureInPicture : null;
@@ -85,12 +86,8 @@ export function primeAutoPip(reason, dest) {
     const otherPopOut = api.window;
     if (otherPopOut && !otherPopOut.closed) otherPopOut.close();
     const p = api.requestWindow({ width: 420, height: 300 });
-    pendingWin = Promise.resolve(p).then((w) => {
-      if (live) live.autoPip = w;
-      return w;
-    }).catch((err) => {
+    pendingWin = Promise.resolve(p).catch((err) => {
       dbg('request-rejected', err && (err.message || err));
-      pendingWin = null;
       return null;
     });
     return pendingWin;
@@ -134,6 +131,11 @@ export function park(room) {
   try { shell.setRoomMode && shell.setRoomMode(false); } catch { /* ignore */ }
   live.code = room.code;
   live.url = liveUrl(room);
+  if (hasVideoPip()) {
+    closeMini();
+    noGesture = false;
+    return true;
+  }
   const skipWin = noGesture;
   noGesture = false;
   if (skipWin) {
@@ -234,33 +236,102 @@ function currentPip() {
 export function startAutoPip(room, reason = 'start') {
   if (!room || !room.alive) return Promise.resolve('none');
   if (hasPip()) { dbg('already-open', reason); return Promise.resolve('auto'); }
+  if (hasVideoPip()) return Promise.resolve('video');
+  const explicit = reason === 'command' || reason === 'shortcut';
+  if (explicit) noGesture = false;
   if (reason === 'popstate' || noGesture) {
     noGesture = false;
-    showMini(room);
-    return Promise.resolve('mini');
+    return Promise.resolve(showMini(room) ? 'mini' : 'none');
   }
   const p = pendingWin || primeAutoPip(reason);
-  return attachAutoPip(room, p);
+  return attachAutoPip(room, p, { videoFallback: explicit || reason === 'mediasession' });
 }
 
-function attachAutoPip(room, winP) {
-  if (!winP) { showMini(room); return Promise.resolve('mini'); }
+function attachAutoPip(room, winP, { videoFallback = false } = {}) {
+  const session = live;
+  const fallback = async () => {
+    if (!isLiveMeeting(room) || live !== session) return 'none';
+    if (videoFallback && await openVideoPip(room)) {
+      closeMini();
+      return 'video';
+    }
+    return live === session && showMini(room) ? 'mini' : 'none';
+  };
+  if (!winP) return fallback();
   return Promise.resolve(winP).then((w) => {
+    if (w && currentPip() === w && live === session) return 'auto';
+    if (pendingWin !== winP || live !== session || !isLiveMeeting(room)) {
+      if (w && !w.closed && currentPip() !== w) w.close();
+      return 'none';
+    }
     pendingWin = null;
-    if (!w || w.closed) { dbg('window-missing'); showMini(room); return 'mini'; }
-    if (live) live.autoPip = w;
-    fillAutoPip(w, room);
-    moveStage(w, room);
+    if (!w || w.closed) return fallback();
+    try {
+      fillAutoPip(w, room);
+      moveStage(w, room);
+    } catch (err) {
+      dbg('attach-failed', err && err.message);
+      restoreStage(room);
+      w.close();
+      return fallback();
+    }
+    session.autoPip = w;
     closeMini();
     if (!w._autoPipHide) {
       w._autoPipHide = true;
       w.addEventListener('pagehide', () => {
-        if (live) live.autoPip = null;
-        onPipClosed(room);
+        if (live === session && session.autoPip === w) {
+          session.autoPip = null;
+          onPipClosed(room);
+        }
       });
     }
     return 'auto';
-  }).catch((err) => { dbg('attach-failed', err && (err.message || err)); showMini(room); return 'mini'; });
+  });
+}
+
+async function openVideoPip(room) {
+  const session = live;
+  const stage = room.stageR?.el;
+  if (!stage || session?.room !== room) return false;
+  const videos = [...stage.querySelectorAll('video')].filter((video) =>
+    video.readyState >= 2 && video.videoWidth > 0 && !video.disablePictureInPicture);
+  const video = videos.find((candidate) => candidate.closest('.present:not([hidden]), .tile-main'))
+    || videos.find((candidate) => candidate.closest('.tile')?.dataset.id !== room.me?.id)
+    || videos[0];
+  if (!video) return false;
+  if (hasVideoPip()) return true;
+
+  session.videoPip = video;
+  try {
+    if (document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function') {
+      try {
+        await video.requestPictureInPicture();
+        if (session.videoPip === video && live === session) {
+          video.addEventListener('leavepictureinpicture', () => {
+            if (live !== session || session.videoPip !== video) return;
+            session.videoPip = null;
+            showMini(room);
+          }, { once: true });
+          return true;
+        }
+        if (document.pictureInPictureElement === video) await document.exitPictureInPicture();
+        return false;
+      } catch { /* Try the WebKit video API when available. */ }
+    }
+    if (live === session && session.videoPip === video
+      && video.webkitSupportsPresentationMode?.('picture-in-picture')) {
+      video.webkitSetPresentationMode('picture-in-picture');
+      return true;
+    }
+  } catch { /* Keep the meeting controls available when the browser declines. */ }
+  if (session.videoPip === video) session.videoPip = null;
+  return false;
+}
+
+function hasVideoPip() {
+  const video = live?.videoPip;
+  return !!video && (document.pictureInPictureElement === video || video.webkitPresentationMode === 'picture-in-picture');
 }
 
 function isParked(room) {
@@ -453,7 +524,8 @@ export function syncChrome(room) {
   if (!r) return;
   const nodes = [];
   const mini = document.getElementById('live-call-mini');
-  if (mini) nodes.push(mini);
+  if (mini && isParked(r)) nodes.push(mini);
+  else if (mini) closeMini();
   try {
     const w = currentPip();
     if (w && w.document) w.document.querySelectorAll('.live-call-bar').forEach((el) => nodes.push(el));
@@ -468,10 +540,15 @@ function timerText(room) {
 }
 
 function showMini(room) {
+  if (!isLiveMeeting(room) || !isParked(room)) {
+    closeMini();
+    return false;
+  }
   closeMini();
   const bar = h('div', { id: 'live-call-mini', class: 'live-call-mini live-call-bar', role: 'dialog', 'aria-label': 'Meeting in progress' });
   document.body.append(bar);
   paintBar(bar, room, document);
+  return true;
 }
 
 function closeMini() {
@@ -480,6 +557,12 @@ function closeMini() {
 }
 
 function closeAutoPip() {
+  const video = live?.videoPip;
+  if (live) live.videoPip = null;
+  try {
+    if (video && document.pictureInPictureElement === video) document.exitPictureInPicture().catch(() => {});
+    else if (video?.webkitPresentationMode === 'picture-in-picture') video.webkitSetPresentationMode('inline');
+  } catch { /* The browser may have already closed the video. */ }
   try {
     if (live && live.autoPip && !live.autoPip.closed) live.autoPip.close();
   } catch { /* */ }

@@ -134,6 +134,9 @@ body[data-page="session"] .main {
   height: 2.6rem;
   padding: 0;
 }
+.sess-end-meeting > svg {
+  color: var(--g-admin);
+}
 
 .sess-certs-panel { margin: 0 0 1rem; }
 .sess-certs-body { display: flex; flex-direction: column; gap: .85rem; }

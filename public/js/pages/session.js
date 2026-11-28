@@ -7,7 +7,7 @@ import { certEditor } from '../cert-ui.js';
 
 
 function liveActions(s, view) {
-  const endBtn = h('button', { type: 'button', class: 'btn ev-act', 'data-group': 'session', 'data-tip': 'End meeting', 'aria-label': 'End meeting', html: icon('phoneOff', { size: 18 }) + '<span class="ev-act-lbl">End meeting</span>' });
+  const endBtn = h('button', { type: 'button', class: 'btn ev-act sess-end-meeting', 'data-group': 'session', 'data-tip': 'End meeting', 'aria-label': 'End meeting', html: icon('phoneOff', { size: 18 }) + '<span class="ev-act-lbl">End meeting</span>' });
   endBtn.onclick = async () => {
     if (!await confirmDlg('End this meeting for everyone? Billing will close and the room will stop.', { ok: 'End meeting', danger: true })) return;
     try {

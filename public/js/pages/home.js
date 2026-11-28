@@ -35,6 +35,7 @@ function mobileCarousel() {
   return h('div', { class: 'hero-visual hero-mobile-carousel', 'aria-hidden': 'true' },
     h('div', { class: 'hero-carousel-track' },
       h('div', { class: 'hero-carousel-group' }, ...mobileImageCards()),
+      h('div', { class: 'hero-carousel-group' }, ...mobileImageCards()),
       h('div', { class: 'hero-carousel-group' }, ...mobileImageCards())));
 }
 
@@ -48,26 +49,30 @@ function startHeroCarousel(root) {
   const group = carousel?.querySelector('.hero-carousel-group');
   if (!carousel || !group) return;
 
-  const systemReduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const phoneWidth = matchMedia('(max-width: 560px)');
-  let lastFrame = 0;
-  let offset = 0;
+  let lastFrame = null;
+  let loopWidth = 0;
+  let phase = 0;
   const step = (now) => {
     if (!carousel.isConnected) {
       heroCarouselFrame = 0;
       return;
     }
-    const reduceMotion = systemReduceMotion.matches || document.documentElement.classList.contains('reduce-motion');
-    if (phoneWidth.matches && !reduceMotion && document.visibilityState === 'visible') {
-      const loopWidth = group.getBoundingClientRect().width;
-      const elapsed = lastFrame ? Math.min(now - lastFrame, 50) : 0;
-      if (loopWidth > 0 && elapsed > 0) {
-        // Keep fractional progress independently of the browser's rounded scroll position.
-        offset = ((offset - elapsed * 0.03) % loopWidth + loopWidth) % loopWidth;
-        carousel.scrollLeft = offset;
+    if (phoneWidth.matches && document.visibilityState === 'visible') {
+      const width = group.getBoundingClientRect().width;
+      if (width > 0) {
+        if (loopWidth && width !== loopWidth) phase *= width / loopWidth;
+        loopWidth = width;
+        const elapsed = lastFrame === null ? 0 : Math.min(now - lastFrame, 50);
+        // Wrap between matching views of the repeated images. The scroll position
+        // stays away from both ends, with a full copy available on either side.
+        phase = ((phase - elapsed * 0.03) % loopWidth + loopWidth) % loopWidth;
+        carousel.scrollLeft = loopWidth + phase;
       }
+      lastFrame = now;
+    } else {
+      lastFrame = null;
     }
-    lastFrame = now;
     heroCarouselFrame = requestAnimationFrame(step);
   };
   heroCarouselFrame = requestAnimationFrame(step);

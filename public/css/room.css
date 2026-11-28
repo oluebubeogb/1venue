@@ -3433,7 +3433,7 @@ html.room-fs .cmdbar {
       calc(var(--cmd-h) + 16px + var(--safe-b)) max(8px, var(--safe-l));
   }
   .room-head {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 4px;
     min-height: 44px;
     padding: 3px 4px;
@@ -3449,18 +3449,9 @@ html.room-fs .cmdbar {
     gap: inherit;
     min-width: 0;
   }
-  .rh-info {
-    flex: 1 1 0;
-  }
+  .rh-info,
   .rh-controls {
-    max-width: 100%;
-    margin-inline-start: auto;
-  }
-  .room-head:has(.rh-rec:not([hidden]), .rh-call-muted:not([hidden]), .rh-lock:not([hidden])) {
-    flex-wrap: wrap;
-  }
-  .room-head:has(.rh-rec:not([hidden]), .rh-call-muted:not([hidden]), .rh-lock:not([hidden])) .rh-info {
-    flex-basis: 100%;
+    flex: 1 1 100%;
   }
   .room-head .rh-logo {
     width: 34px;
@@ -3505,6 +3496,7 @@ html.room-fs .cmdbar {
   }
   .room-head .rh-menu {
     display: inline-grid;
+    margin-inline-start: auto;
   }
   .stage[data-layout="grid"] .tiles {
     --cols: 1;

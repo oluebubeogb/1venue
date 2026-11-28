@@ -1077,29 +1077,7 @@ Object.assign(Room.prototype, {
       h('label', { class: 'switch-row' }, h('span', { class: 'grow' }, 'Mirror my camera'), h('span', { class: 'switch' }, h('input', { type: 'checkbox', checked: this.mirror, onchange: (e) => { this.mirror = e.target.checked; lsSet('venue.mirror', this.mirror); this.stageR?.paintAll(); } }), h('span'))),
       h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Screen share quality'), h('select', { class: 'input', onchange: (e) => lsSet('venue.shareQuality', e.target.value) }, [['auto', 'Auto (balanced)'], ['text', 'Sharp text & slides'], ['motion', 'Smooth video']].map(([v, l]) => h('option', { value: v, selected: lsGet('venue.shareQuality', 'auto') === v }, l))))));
   },
-  async pip() {
-    if (window.documentPictureInPicture) {
-      try {
-        if (this.pipWin) { this.pipWin.close(); return; }
-        const w = await documentPictureInPicture.requestWindow({ width: 380, height: 300 });
-        this.pipWin = w;
-        [...document.styleSheets].forEach((ss) => { try { const st = w.document.createElement('style'); st.textContent = [...ss.cssRules].map((r) => r.cssText).join('\n'); w.document.head.append(st); } catch { const l = w.document.createElement('link'); l.rel = 'stylesheet'; l.href = ss.href; w.document.head.append(l); } });
-        w.document.documentElement.dataset.theme = document.documentElement.dataset.theme;
-        w.document.body.className = 'pip-body';
-        const stageEl = this.stageR.el; const ph = h('div', { class: 'pip-placeholder' }, h('span', { html: icon('pip', { size: 28 }) }), 'Playing in picture-in-picture', h('button', { class: 'btn sm', onclick: () => w.close() }, 'Bring back'));
-        stageEl.replaceWith(ph);
-        const mini = w.document.createElement('div'); mini.className = 'pip-dock';
-        const mk = (ic, fn, on) => { const b = w.document.createElement('button'); b.className = 'icon-btn' + (on() ? '' : ' off'); b.innerHTML = icon(ic(), { size: 18 }); b.onclick = async () => { await fn(); b.innerHTML = icon(ic(), { size: 18 }); b.className = 'icon-btn' + (on() ? '' : ' off'); }; return b; };
-        mini.append(mk(() => (this.media.mic ? 'mic' : 'micOff'), () => this.toggleMic(), () => this.media.mic), mk(() => (this.media.cam ? 'video' : 'videoOff'), () => this.toggleCam(), () => this.media.cam), mk(() => (this.callMuted ? 'volumeOff' : 'volume'), () => this.toggleCallAudio(), () => !this.callMuted), mk(() => 'hand', () => this.raiseHand(), () => true), mk(() => 'phoneOff', () => { w.close(); this.leave(); }, () => true));
-        w.document.body.append(stageEl, mini);
-        w.addEventListener('pagehide', () => { ph.replaceWith(stageEl); this.pipWin = null; this.renderStage(true); });
-        return;
-      } catch (e) { console.warn('docPiP', e); }
-    }
-    const v = [...this.stageR.el.querySelectorAll('video')].find((x) => x.srcObject && x.readyState >= 2 && !x.closest('.tile[data-id="' + this.me.id + '"]')) || this.stageR.el.querySelector('video');
-    if (!v || !document.pictureInPictureEnabled) return toast('Picture-in-picture needs someone’s video on screen', { icon: 'pip' });
-    try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await v.requestPictureInPicture(); } catch (e) { toastErr(e); }
-  },
+
   /* boards / timeline / breakouts */
   openMyBoard() { this.stageView = this.stageView === 'my-board' ? null : 'my-board'; this.renderStage(true); refreshBar(); },
   openTeamBoard() { this.stageView = this.stageView === 'team-board' ? null : 'team-board'; this.renderStage(true); refreshBar(); },
@@ -1200,7 +1178,6 @@ Object.assign(Room.prototype, {
     try { this.ws && this.ws.close(); } catch { /* */ }
     this.captioner && this.captioner.stop(); this.media && this.media.disconnect().catch(() => {});
     setRoomBridge(null);
-    this.pipWin && this.pipWin.close();
     unregisterCommands('room');
     if (this.onFsChange) { document.removeEventListener('fullscreenchange', this.onFsChange); document.documentElement.classList.remove('room-fs'); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
     this.stopShareEl && this.stopShareEl.remove();
@@ -1215,8 +1192,7 @@ Object.assign(Room.prototype, {
     if (map[k]) { e.preventDefault(); map[k](); }
   },
   popOutMeeting(reason = 'command') {
-    if (typeof documentPictureInPicture !== 'undefined') return startAutoPip(this, reason);
-    return this.pip();
+    return startAutoPip(this, reason);
   },
   // Fullscreen the whole page (not just .room): keeps the soft site background, the top rail and the
   // dynamic search / command bar, plus menus & toasts that live on <body>. CSS pads it (html.room-fs).
