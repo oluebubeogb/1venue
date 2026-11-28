@@ -7,16 +7,20 @@ let heroCarouselFrame = 0;
 
 /** Homepage hero visual - lightweight preview cards around the join-first hero. */
 function previewCards() {
-  const livePreview = h('div', { class: 'hero-preview preview-live' },
+  const previewImage = '/img/hero/meeting-preview.webp';
+  const source = h('source', { media: 'not all and (max-width: 560px)', srcset: previewImage });
+  const livePreview = h('div', { class: 'hero-preview preview-live', style: { visibility: 'hidden' } },
     h('div', { class: 'live-thumb' },
       h('span', { class: 'live-badge' }, '● LIVE'),
-      h('picture', null,
-        h('source', { media: 'not all and (max-width: 560px)', srcset: '/img/hero/meeting-preview.webp' }),
+      h('picture', null, source,
         h('img', {
           alt: '', width: 726, height: 409, fetchpriority: 'high',
           onload: async ({ currentTarget: image }) => {
-            try { await image.decode(); } catch { return; }
-            livePreview.classList.add('is-ready');
+            try { await image.decode(); } catch { /* The image has already loaded. */ }
+            if (image.naturalWidth) livePreview.style.visibility = 'visible';
+          },
+          onerror: () => {
+            if (source.srcset === previewImage) source.srcset = '/img/hero/meeting.png';
           },
         }))),
     h('div', { class: 'preview-row' }, h('span', null, '128 viewers'), h('b', null, '16:45')));
