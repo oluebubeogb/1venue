@@ -12,6 +12,13 @@ let guardsOn = false;
 export function bindShell(s) { if (s) shell = { ...shell, ...s }; }
 export function getLive() { return live; }
 export function liveUrl(room) { return '/' + fmtCode((room && room.code) || (live && live.code) || ''); }
+export function trackLiveMeeting(room) {
+  if (live?.room === room) return;
+  if (live?.room) {
+    try { live.room.destroy(); } catch { /* A stale room must not block the new one. */ }
+  }
+  live = { room, code: room.code, url: liveUrl(room), autoPip: null };
+}
 export function isLiveMeeting(room) {
   const r = room || (live && live.room);
   return !!(r && r.alive && r.inRoom && r.root && !r._leaving);
@@ -75,6 +82,8 @@ export function primeAutoPip(reason, dest) {
   if (!api || typeof api.requestWindow !== 'function') { dbg('unsupported'); return null; }
   try {
     dbg('requestWindow', reason);
+    const otherPopOut = api.window;
+    if (otherPopOut && !otherPopOut.closed) otherPopOut.close();
     const p = api.requestWindow({ width: 420, height: 300 });
     pendingWin = Promise.resolve(p).then((w) => {
       if (live) live.autoPip = w;
@@ -120,13 +129,9 @@ export function park(room) {
     dbg('park-skipped', 'not-live');
     return false;
   }
-  if (live && live.room && live.room !== room) {
-    try { live.room.destroy(); } catch { /* ignore */ }
-  }
+  trackLiveMeeting(room);
   if (room.root && room.root.parentNode !== holder()) holder().append(room.root);
   try { shell.setRoomMode && shell.setRoomMode(false); } catch { /* ignore */ }
-  live = live && live.room === room ? live : { room, code: room.code, url: liveUrl(room), autoPip: live && live.autoPip };
-  live.room = room;
   live.code = room.code;
   live.url = liveUrl(room);
   const skipWin = noGesture;
@@ -222,8 +227,7 @@ function hasPip() {
 function currentPip() {
   try {
     if (live && live.autoPip && !live.autoPip.closed) return live.autoPip;
-    const w = typeof documentPictureInPicture !== 'undefined' && documentPictureInPicture.window;
-    return (w && !w.closed) ? w : null;
+    return null;
   } catch { return null; }
 }
 

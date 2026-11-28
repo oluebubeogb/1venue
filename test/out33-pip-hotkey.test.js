@@ -3,6 +3,7 @@ const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
+const vm = require('node:vm');
 const { describe, it } = require('node:test');
 
 const root = path.join(__dirname, '..');
@@ -43,13 +44,31 @@ describe('O pops out and returns to the tab', () => {
     assert.match(hot, /isContentEditable/);
     assert.match(hot, /metaKey \|\| e\.ctrlKey \|\| e\.altKey/);
     assert.match(hot, /requestWindow/);
-    assert.match(hot, /startAutoPip\(room, 'shortcut'\)/);
+    assert.match(hot, /room\.popOutMeeting\('shortcut'\)/);
     assert.match(hot, /returnToMeeting\(pipDoc\)/);
     const app = read('public/js/app.js');
     assert.match(app, /installPipHotkey\(document\)/);
     assert.match(app, /id: 'popout'/);
     assert.match(app, /kbd: 'O'/);
     assert.match(app, /\['O', 'Pop out \/ back to tab'\]/);
+  });
+
+  it('routes O to an active meeting before the room is parked', () => {
+    let keydown;
+    let popOutReason;
+    const doc = { addEventListener: (_, handler) => { keydown = handler; } };
+    const room = { popOutMeeting: (reason) => { popOutReason = reason; } };
+    const ctx = {
+      isLiveMeeting: () => true,
+      getLive: () => ({ room }),
+      documentPictureInPicture: { requestWindow: () => assert.fail('Opened the Messages pop-out') },
+    };
+    const hotkey = read('public/js/pip-hotkey.js').replace(/^import .*$/gm, '').replace(/^export \{.*$/gm, '').replace(/^export /gm, '');
+    vm.runInNewContext(hotkey, ctx);
+    ctx.installPipHotkey(doc);
+    keydown({ key: 'O', preventDefault() {}, stopPropagation() {} });
+    assert.equal(popOutReason, 'shortcut');
+    assert.match(read('public/js/room/room.js'), /this\.buildUi\(\);\s*trackLiveMeeting\(this\);/);
   });
 
   it('wires the room command and leaves O out of the room shortcut map', () => {

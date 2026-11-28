@@ -18,7 +18,7 @@ import { maybeShowBanner } from '../pwa.js';
 import { setRoomBridge, roomMicChanged } from '../voice.js';
 import { fmtCode, wantsCreate } from './intent.js';
 import { surahCommands, loadSurahs, looksLikeQuran } from '../quran-cmd.js';
-import { pageApi, bindMediaSession, release as releaseSession, syncChrome, startAutoPip } from './session.js';
+import { pageApi, bindMediaSession, release as releaseSession, syncChrome, startAutoPip, trackLiveMeeting } from './session.js';
 import { openGiftSheet } from '../gift.js';
 
 export const isRoom = true;
@@ -477,6 +477,7 @@ Object.assign(Room.prototype, {
     this.panel = createPanel(this);
     this.stageR = createStage(this);
     this.buildUi();
+    trackLiveMeeting(this);
     this.connectWs();
     this.connectMedia().then(() => {
       this.applyWant();
@@ -1213,8 +1214,8 @@ Object.assign(Room.prototype, {
     const map = { m: () => this.toggleMic(), v: () => this.toggleCam(), s: () => this.toggleShare(), h: () => this.raiseHand(), c: () => this.panel.toggle('chat'), p: () => this.panel.toggle('people'), e: () => this.panel.toggle('engage'), t: () => this.panel.toggle('tools'), g: () => this.cycleLayout(1), f: () => this.fullscreen(), i: () => this.invite() };
     if (map[k]) { e.preventDefault(); map[k](); }
   },
-  popOutMeeting() {
-    if (typeof documentPictureInPicture !== 'undefined') return startAutoPip(this, 'command');
+  popOutMeeting(reason = 'command') {
+    if (typeof documentPictureInPicture !== 'undefined') return startAutoPip(this, reason);
     return this.pip();
   },
   // Fullscreen the whole page (not just .room): keeps the soft site background, the top rail and the

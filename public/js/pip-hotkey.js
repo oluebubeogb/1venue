@@ -1,5 +1,5 @@
 /** Single-key O: pop out the app or a live meeting, and return to the tab from inside the pop-out. */
-import { isLiveMeeting, getLive, startAutoPip, returnToMeeting } from './room/session.js';
+import { isLiveMeeting, getLive, returnToMeeting } from './room/session.js';
 
 const APP_PIP_SIZE = { width: 380, height: 640, disallowReturnToOpener: false };
 
@@ -31,7 +31,7 @@ export function openPopOut() {
   if (isLiveMeeting()) {
     const live = getLive();
     const room = live && live.room;
-    if (room) return startAutoPip(room, 'shortcut');
+    if (room) return room.popOutMeeting('shortcut');
   }
   const api = typeof documentPictureInPicture !== 'undefined' ? documentPictureInPicture : null;
   if (!api || typeof api.requestWindow !== 'function') {
