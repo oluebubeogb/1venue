@@ -333,7 +333,7 @@ export function setRoomMode(on) {
 
 /* ---------- shell ---------- */
 const NAV = [
-  ['/', 'home', 'Home'], ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/messages', 'messages', 'Messages'], ['/dashboard', 'dashboard', 'Dashboard'],
+  ['/discover', 'compass', 'Discover'], ['/feed', 'feed', 'Feed'], ['/messages', 'messages', 'Messages'], ['/dashboard', 'dashboard', 'Dashboard'],
 ];
 function highlightNav(path) {
   document.querySelectorAll('[data-nav]').forEach((a) => {
@@ -440,7 +440,7 @@ function buildShell() {
   });
   booksBtn.onclick = (e) => { e.preventDefault(); openBooksPicker(booksBtn); };
   const top = h('header', { class: 'topbar' },
-    h('a', { class: 'brand', href: '/', 'data-link': '', html: LOGO(30) + '<span>1venue</span>' }),
+    h('a', { class: 'brand', href: '/', 'data-link': '', 'aria-label': '1venue Home', html: LOGO(30) + '<span>1venue</span>' }),
     h('nav', { class: 'topnav', 'aria-label': 'Primary' },
       ...NAV.map(([p, ic, l]) => h('a', { href: p, 'data-link': '', 'data-nav': p, 'data-tip': l, 'aria-label': l, html: icon(ic, { size: 18 }) + l })),
       booksBtn),
